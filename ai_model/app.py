@@ -5,7 +5,7 @@ import torchaudio
 import torch.nn as nn
 import torch.nn.functional as F
 from flask import Flask, request, jsonify
-
+from pathlib import Path
 # ===================================================================
 # 1. RE-DEFINE THE EXACT SAME MODEL ARCHITECTURE
 # This must be identical to the class in your training script.
@@ -39,7 +39,8 @@ class AudioClassifierCNN(nn.Module):
 # ===================================================================
 # 2. LOAD THE TRAINED MODEL FROM THE SAVED FILE
 # ===================================================================
-MODEL_PATH = "deepfake_audio_detector.pth"
+SCRIPT_DIR = Path(__file__).resolve().parent
+MODEL_PATH = SCRIPT_DIR / "deepfake_audio_detector.pth"
 model = AudioClassifierCNN()
 
 # Load the weights from the file into the model structure

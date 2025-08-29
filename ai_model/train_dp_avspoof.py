@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from opacus import PrivacyEngine
 from tqdm import tqdm
+from pathlib import Path
 
 # --- Hyperparameters & Constants ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,8 +24,9 @@ TARGET_DELTA = 1e-5       # Target privacy parameter delta
 
 # --- UPDATE THESE PATHS ---
 # This setup assumes your audio files and text file are in the same folder as the script.
-TRAIN_PROTOCOL_FILE = "train_file.txt" # The text file with audio names and labels
-TRAIN_AUDIO_DIR = "."                  # "." means the current directory
+SCRIPT_DIR = Path(__file__).resolve().parent
+TRAIN_PROTOCOL_FILE = SCRIPT_DIR / "train_file.txt" # The text file with audio names and labels
+TRAIN_AUDIO_DIR = SCRIPT_DIR                  # "." means the current directory
 
 
 # ===================================================================
@@ -50,7 +52,7 @@ class AVSpoofDataset(Dataset):
         label = self.label_map[label_str]
         
         # Load audio waveform
-        waveform, sample_rate = torchaudio.load(f"{self.audio_dir}/{audio_name}.flac")
+        waveform, sample_rate = torchaudio.load(str(TRAIN_AUDIO_DIR / f"{audio_name}.flac"))
         
         # Pad or truncate the waveform to a fixed length
         if waveform.shape[1] > self.max_len:
