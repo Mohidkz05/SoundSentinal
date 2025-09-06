@@ -44,3 +44,5 @@ venv/
 .venv/
 
 data/
+checkpoints/
+*.pth
