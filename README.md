@@ -2,7 +2,22 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+Create a virtual environment(venv) in the root directory (/SoundSentinel/)
+
+python -m venv venv
+
+then run:
+.\venv\Scripts\Activate.ps1
+
+Things to install to run AI model
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install pandas tqdm opacus
+pip install flask
+pip install soundfile
+
+First, lets install the Dependancies: ```npm install```
+
+Now lets, run the development server:
 
 ```bash
 npm run dev
