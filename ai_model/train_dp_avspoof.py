@@ -2,7 +2,6 @@
 
 import torch
 import torchaudio
-import torchaudio.transforms as T
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
@@ -15,6 +14,16 @@ from time import strftime
 import numpy as np
 import argparse
 import os
+
+# Model + preprocessing live in model.py so app.py serves exactly what we train.
+from model import (
+    AudioClassifierCNN,
+    LABEL_MAP,
+    MAX_LEN,
+    SAMPLE_RATE,
+    build_transform,
+    preprocess_waveform,
+)
 
 # --- Hyperparameters & Constants ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -50,7 +59,6 @@ REPO_ROOT = find_repo_root(SCRIPT_DIR)
 DATA_ROOT = Path(os.getenv("ASVSPOOF_ROOT", REPO_ROOT / "data"))
 
 def get_corpus_paths(corpus: str = "LA"):
-    # ... (This function is unchanged) ...
     corpus = corpus.upper()
     if corpus not in {"LA", "PA"}:
         raise ValueError("corpus must be 'LA' or 'PA'")
@@ -74,7 +82,6 @@ LAST_CKPT = CKPT_DIR / "last.pth"
 BEST_CKPT = CKPT_DIR / "best.pth"
 
 def save_ckpt(model, optimizer, epoch, steps_done, is_best=False):
-    # ... (This function is unchanged) ...
     payload = {
         "epoch": epoch, "steps_done": steps_done,
         "model": model._module.state_dict(),
@@ -94,14 +101,14 @@ def save_ckpt(model, optimizer, epoch, steps_done, is_best=False):
 # 1. DATASET CLASS
 # ===================================================================
 class AVSpoofDataset(Dataset):
-    def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=16000, max_len=64000):
-        self.protocol = pd.read_csv(protocol_file, sep='\s+', header=None, engine='python')
+    def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE, max_len=MAX_LEN):
+        self.protocol = pd.read_csv(protocol_file, sep=r'\s+', header=None, engine='python')
         self.protocol.columns = ['speaker_id', 'audio_file_name', '_', 'system_id', 'label']
         self.audio_dir = audio_dir
-        self.transform_pipeline = transform_pipeline # <-- CHANGED: Now a pipeline
+        self.transform_pipeline = transform_pipeline
         self.max_len = max_len
         self.target_sample_rate = target_sample_rate
-        self.label_map = {"bonafide": 0, "spoof": 1}
+        self.label_map = LABEL_MAP
 
     def __len__(self):
         return len(self.protocol)
@@ -110,70 +117,20 @@ class AVSpoofDataset(Dataset):
         audio_name = self.protocol.iloc[idx]['audio_file_name']
         label_str = self.protocol.iloc[idx]['label']
         label = self.label_map[label_str]
-        
+
         waveform, sample_rate = torchaudio.load(str(self.audio_dir / f"{audio_name}.flac"))
-        
-        # Audio Preprocessing Parity
-        if waveform.shape[0] > 1:
-            waveform = waveform.mean(dim=0, keepdim=True)
-        if sample_rate != self.target_sample_rate:
-            resampler = T.Resample(orig_freq=sample_rate, new_freq=self.target_sample_rate)
-            waveform = resampler(waveform)
-            
-        if waveform.shape[1] > self.max_len:
-            waveform = waveform[:, :self.max_len]
-        else:
-            padding = self.max_len - waveform.shape[1]
-            waveform = torch.nn.functional.pad(waveform, (0, padding))
-            
-        # --- CHANGED: Apply transform pipeline and then standardize ---
-        spectrogram = self.transform_pipeline(waveform)
-        
-        # Per-sample standardization
-        spectrogram = (spectrogram - spectrogram.mean()) / (spectrogram.std() + 1e-6)
-        # -----------------------------------------------------------
-        
+
+        # Same preprocessing the Flask server applies at inference time.
+        spectrogram = preprocess_waveform(
+            waveform, sample_rate, self.transform_pipeline, max_len=self.max_len
+        )
+
         return spectrogram, torch.tensor(label, dtype=torch.long)
 
 # ===================================================================
-# 2. MODEL ARCHITECTURE
-# ===================================================================
-class AudioClassifierCNN(nn.Module):
-    def __init__(self):
-        super(AudioClassifierCNN, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
-
-        # --- CHANGED: Use Adaptive Pooling instead of hardcoded size ---
-        # This makes the model robust to input size changes.
-        self.gap = nn.AdaptiveAvgPool2d((8, 8))
-        # The first linear layer now has a fixed, known input size.
-        self.fc1 = nn.Linear(32 * 8 * 8, 128)
-        # -------------------------------------------------------------
-        
-        self.fc2 = nn.Linear(128, 2)
-        self.dropout = nn.Dropout(0.3)
-
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        
-        # --- CHANGED: Apply adaptive pooling and flatten ---
-        x = self.gap(x)
-        x = x.flatten(1) # Flatten all dimensions except batch
-        # -------------------------------------------------
-        
-        x = F.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.fc2(x)
-        return x
-
-# ===================================================================
-# 3. EVALUATION AND EER (Unchanged)
+# 2. EVALUATION AND EER
 # ===================================================================
 def compute_eer_np(labels, scores):
-    # ... (This function is unchanged) ...
     labels, scores = np.asarray(labels).astype(int), np.asarray(scores, dtype=np.float64)
     idx = np.argsort(scores)[::-1]
     scores, labels = scores[idx], labels[idx]
@@ -187,7 +144,6 @@ def compute_eer_np(labels, scores):
 
 @torch.no_grad()
 def evaluate(model, loader, criterion, device):
-    # ... (This function is unchanged) ...
     model.eval()
     total_loss, total, correct, batches = 0.0, 0, 0, 0
     all_scores, all_labels = [], []
@@ -210,7 +166,7 @@ def evaluate(model, loader, criterion, device):
     return avg_loss, acc, eer, thresh
 
 # ===================================================================
-# 4. MAIN TRAINING AND EVALUATION FUNCTION
+# 3. MAIN TRAINING AND EVALUATION FUNCTION
 # ===================================================================
 def main():
     parser = argparse.ArgumentParser(description="DP Deepfake Audio Trainer")
@@ -221,13 +177,8 @@ def main():
     print(f"--- Using Corpus: {args.corpus} ---")
     for key, val in PATHS.items(): print(f"{key}: {val}")
 
-    # --- CHANGED: Create a transform pipeline for Log-Mel Spectrograms ---
-    mel_transform = T.MelSpectrogram(
-        sample_rate=16000, n_fft=1024, hop_length=512, n_mels=128
-    )
-    db_transform = T.AmplitudeToDB(stype="power", top_db=80)
-    transform_pipeline = nn.Sequential(mel_transform, db_transform)
-    # -----------------------------------------------------------------
+    # Log-Mel pipeline, shared with the inference server (see model.py).
+    transform_pipeline = build_transform()
 
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"], transform_pipeline)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True)
