@@ -22,6 +22,7 @@ from model import (
     MAX_LEN,
     SAMPLE_RATE,
     build_transform,
+    load_audio,
     preprocess_waveform,
 )
 
@@ -118,7 +119,7 @@ class AVSpoofDataset(Dataset):
         label_str = self.protocol.iloc[idx]['label']
         label = self.label_map[label_str]
 
-        waveform, sample_rate = torchaudio.load(str(self.audio_dir / f"{audio_name}.flac"))
+        waveform, sample_rate = load_audio(str(self.audio_dir / f"{audio_name}.flac"))
 
         # Same preprocessing the Flask server applies at inference time.
         spectrogram = preprocess_waveform(

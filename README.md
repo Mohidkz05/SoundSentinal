@@ -1,19 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# SoundSentinal
+
+Deepfake audio detector: a [Next.js](https://nextjs.org) frontend and a Flask +
+PyTorch backend that classifies an uploaded clip as real or spoofed. The model is
+trained with differential privacy (Opacus) on the ASVspoof2019 corpus.
 
 ## Getting Started
 
-Create a virtual environment(venv) in the root directory (/SoundSentinel/)
+### AI model (Python)
 
+Create a virtual environment in the repo root:
+
+```bash
 python -m venv venv
+source venv/bin/activate          # Windows: .\venv\Scripts\Activate.ps1
+```
 
-then run:
-.\venv\Scripts\Activate.ps1
+If that fails on Ubuntu/WSL with "ensurepip is not available", either
+`sudo apt install python3.12-venv`, or bootstrap pip without sudo:
 
-Things to install to run AI model
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install pandas tqdm opacus
-pip install flask
-pip install soundfile
+```bash
+python3 -m venv --without-pip venv
+curl -sS https://bootstrap.pypa.io/get-pip.py | ./venv/bin/python -
+```
+
+Then install the dependencies:
+
+```bash
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install pandas tqdm opacus flask soundfile requests
+```
+
+Use the CPU wheels unless you intend to train — only training benefits from a
+GPU. For CUDA, swap the index URL for `https://download.pytorch.org/whl/cu128`.
+
+Check the install, then run the API:
+
+```bash
+cd ai_model
+python verify_setup.py            # shapes + train/serve parity
+python app.py                     # http://127.0.0.1:5000
+python test_api.py                # in a second shell
+```
+
+Training needs the ASVspoof2019 dataset in `data/` (or set `$ASVSPOOF_ROOT`):
+
+```bash
+python train_dp_avspoof.py --corpus LA
+```
+
+Note: there are no trained weights in the repo, so `app.py` will refuse to start
+until you train. See `CLAUDE.md` for project state and architecture details.
+
+### Frontend
 
 First, lets install the Dependancies: ```npm install```
 

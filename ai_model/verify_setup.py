@@ -12,9 +12,8 @@ import sys
 from pathlib import Path
 
 import torch
-import torchaudio
 
-from model import AudioClassifierCNN, build_transform, preprocess_waveform
+from model import AudioClassifierCNN, build_transform, load_audio, preprocess_waveform
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SAMPLE = SCRIPT_DIR / "LA_T_1000137.flac"
@@ -32,7 +31,7 @@ def check(name, condition, extra=""):
 def main():
     print("--- Preprocessing ---")
     transform_pipeline = build_transform()
-    waveform, sample_rate = torchaudio.load(str(SAMPLE))
+    waveform, sample_rate = load_audio(str(SAMPLE))
     spec = preprocess_waveform(waveform, sample_rate, transform_pipeline)
 
     check("spectrogram shape is (1, 128, 126)", tuple(spec.shape) == (1, 128, 126), tuple(spec.shape))
@@ -55,14 +54,28 @@ def main():
 
     print("--- Train/serve parity ---")
     # app.py must produce a byte-identical tensor to the training dataset path.
+    # It loads weights at import time, so if there is no usable checkpoint yet we
+    # drop in a temporary one built from an untrained net — the parity check cares
+    # about preprocessing, not about what the weights contain.
+    ckpt_dir = SCRIPT_DIR / "checkpoints"
+    best = ckpt_dir / "best.pth"
+    created_ckpt = not best.exists()
+    if created_ckpt:
+        ckpt_dir.mkdir(exist_ok=True)
+        torch.save({"epoch": 0, "steps_done": 0, "model": net.state_dict()}, best)
+        print("  (no trained weights found; using a temporary untrained checkpoint)")
+
     try:
         import app
-    except FileNotFoundError as e:
-        print(f"  [SKIP] app.py load (no trained weights yet)\n         {e}")
-    else:
+
         served = app.preprocess_audio(str(SAMPLE))
         check("app.py preprocessing matches training exactly",
               torch.allclose(served, spec.unsqueeze(0), atol=0))
+        check("app.py output tensor shape is (1, 1, 128, 126)",
+              tuple(served.shape) == (1, 1, 128, 126), tuple(served.shape))
+    finally:
+        if created_ckpt:
+            best.unlink()
 
     print()
     if failures:

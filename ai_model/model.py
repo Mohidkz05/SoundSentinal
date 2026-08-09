@@ -8,6 +8,7 @@
 # stayed on raw power Mel). Keep new preprocessing changes in this file so the
 # two sides cannot disagree again.
 
+import soundfile as sf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,6 +21,21 @@ N_FFT = 1024
 HOP_LENGTH = 512
 N_MELS = 128
 TOP_DB = 80
+
+
+def load_audio(path_or_file):
+    """
+    Read an audio file into a (channels, frames) float32 tensor, plus its rate.
+
+    Uses soundfile rather than torchaudio.load: as of torchaudio 2.11 that call
+    delegates to TorchCodec, which needs system FFmpeg libraries installed.
+    soundfile bundles libsndfile in the wheel, so FLAC/WAV work everywhere with
+    no system packages. Accepts a path or an open file object (Flask uploads).
+    """
+    data, sample_rate = sf.read(path_or_file, dtype="float32", always_2d=True)
+    # soundfile gives (frames, channels); torch convention is (channels, frames).
+    waveform = torch.from_numpy(data).T.contiguous()
+    return waveform, sample_rate
 
 
 def build_transform():

@@ -1,14 +1,19 @@
 # app.py
 
 import torch
-import torchaudio
 import torch.nn.functional as F
 from flask import Flask, request, jsonify
 from pathlib import Path
 
 # The architecture and the preprocessing come from model.py, the same module the
 # trainer uses. Never redefine them here — that is how train/serve drift starts.
-from model import AudioClassifierCNN, CLASS_NAMES, build_transform, preprocess_waveform
+from model import (
+    AudioClassifierCNN,
+    CLASS_NAMES,
+    build_transform,
+    load_audio,
+    preprocess_waveform,
+)
 
 # ===================================================================
 # 1. LOAD THE TRAINED MODEL FROM THE SAVED FILE
@@ -60,7 +65,7 @@ transform_pipeline = build_transform()
 # 2. PREPROCESS A SINGLE AUDIO FILE
 # ===================================================================
 def preprocess_audio(audio_file):
-    waveform, sample_rate = torchaudio.load(audio_file)
+    waveform, sample_rate = load_audio(audio_file)
     spectrogram = preprocess_waveform(waveform, sample_rate, transform_pipeline)
     # Add a "batch" dimension for the model
     return spectrogram.unsqueeze(0)

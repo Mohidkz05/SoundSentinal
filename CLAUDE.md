@@ -23,24 +23,38 @@ components/              header.js, theme.js.
 
 ## Setup
 
-```bash
-# Python side, from the repo root
-python -m venv venv
-source venv/bin/activate          # Windows: .\venv\Scripts\Activate.ps1
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install pandas tqdm opacus flask soundfile requests
+A working venv already exists at `venv/` (CPU torch 2.13.0, torchaudio 2.11.0).
+Activate it with `source venv/bin/activate`.
 
-# Frontend
+To rebuild it from scratch on this machine, note that Ubuntu splits `ensurepip`
+into a separate `python3.12-venv` package which is **not installed here**, and
+installing it needs sudo in an interactive terminal. The sudo-free workaround:
+
+```bash
+python3 -m venv --without-pip venv
+curl -sS https://bootstrap.pypa.io/get-pip.py | ./venv/bin/python -
+./venv/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+./venv/bin/pip install pandas tqdm opacus flask soundfile requests
+```
+
+CPU wheels are deliberate: ~1.2 GB installed vs several GB for CUDA, and nothing
+except training needs a GPU. There *is* a working RTX 4070 visible from WSL
+(`/dev/dxg` present, driver 610.62), so if you start training here rather than on
+Windows, swap in the CUDA build with
+`pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128`.
+
+```bash
+# Frontend (node v24 via nvm; node_modules is not installed yet)
 npm install
 npm run dev                       # http://localhost:3000
 ```
 
 ```bash
 cd ai_model
-python verify_setup.py            # confirms shapes + train/serve parity
-python train_dp_avspoof.py --corpus LA
-python app.py                     # http://127.0.0.1:5000
-python test_api.py                # in a second shell
+../venv/bin/python verify_setup.py       # shapes + train/serve parity
+../venv/bin/python train_dp_avspoof.py --corpus LA
+../venv/bin/python app.py                # http://127.0.0.1:5000
+../venv/bin/python test_api.py           # in a second shell
 ```
 
 ## The one rule: model.py is the single source of truth
@@ -60,6 +74,11 @@ change `model.py`, run `python verify_setup.py` — it asserts that the tensor
 
 ## Architecture and data details
 
+- **Audio loading**: `load_audio()` in `model.py` uses **soundfile**, not
+  `torchaudio.load`. As of torchaudio 2.11 that call delegates to TorchCodec,
+  which requires system FFmpeg libraries (absent here, and installing them needs
+  sudo). soundfile bundles libsndfile in the wheel, so FLAC works with no system
+  packages. Don't switch back to `torchaudio.load`.
 - **Input**: mono, 16 kHz, padded/truncated to 64000 samples (4 s) → log-Mel
   spectrogram (`n_fft=1024`, `hop=512`, `n_mels=128`, `top_db=80`) → per-sample
   standardization. Shape `(1, 128, 126)`.
@@ -95,9 +114,12 @@ Be honest about these rather than assuming they work:
 1. **The frontend is not wired to the backend.** There is no `fetch` anywhere in
    `src/` or `components/`. `/upload` and `/result` are UI shells; nothing calls
    `POST http://127.0.0.1:5000/predict`. This is the biggest missing piece.
-2. **The model has never been evaluated end-to-end since the merge.** The
-   architecture and preprocessing changed; no run has happened against them.
-   Any accuracy or EER number predating that merge is meaningless now.
+2. **No model has been trained against the current architecture.** The plumbing
+   is verified end-to-end (server loads weights, accepts a FLAC upload, returns
+   JSON — confirmed with a temporary untrained checkpoint, which predicted at
+   ~51%, i.e. chance, as expected). But no real training run has happened since
+   the architecture and preprocessing changed. Any accuracy or EER number
+   predating that change is meaningless now.
 3. **`app.py` runs with `debug=True`** and no CORS headers. Both need attention
    before the frontend can call it from `localhost:3000`.
 4. **No tests** beyond `verify_setup.py` (a shape/parity smoke test) and
