@@ -1,0 +1,41 @@
+# Python dependencies for the model and the inference server.
+#
+# Versions are what is installed and verified on this machine, not guesses.
+# Install into a fresh venv with:
+#
+#   python3 -m venv venv
+#   ./venv/bin/pip install -r requirements.txt
+#
+# Torch is deliberately the CPU build: ~1.2 GB installed against several GB for
+# CUDA, and nothing except training needs a GPU. The extra index line below is
+# what selects it, so `pip install -r requirements.txt` alone is enough — no
+# separate --index-url invocation to remember.
+#
+# For training on the RTX 4070, swap the index for the CUDA build instead:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+#
+# On Ubuntu, `python3 -m venv` may fail because ensurepip lives in a separate
+# python3.12-venv package. See "Setup" in CLAUDE.md for the sudo-free
+# workaround, or use uv, which sidesteps the problem entirely.
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.13.0
+torchaudio==2.11.0
+
+# soundfile, not torchaudio.load: as of torchaudio 2.11 that call delegates to
+# TorchCodec and needs system FFmpeg libraries. soundfile bundles libsndfile in
+# the wheel. See "Architecture and data details" in CLAUDE.md.
+soundfile==0.14.0
+
+numpy==2.5.1
+pandas==3.0.5
+tqdm==4.70.0
+
+# Differential privacy. 1.6.0 already defaults to the `prv` accountant, the
+# tighter epsilon bound — older guides tell you to opt in.
+opacus==1.6.0
+
+# The inference server. requests is used only by test_api.py.
+Flask==3.1.3
+requests==2.34.2

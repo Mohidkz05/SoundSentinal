@@ -6,6 +6,11 @@ differential privacy (Opacus) on the ASVspoof2019 corpus.
 
 University project. `main` is the only branch — see "Branching" below.
 
+> **There is an uncommitted frontend redesign in the working tree.** Read
+> **`HANDOFF.md`** first: it covers the full-bleed layout, the graduated
+> monochrome verdict scale, the new `/upload` 3D intake surface, the rebuilt
+> `/result`, and a silent WebGL uniform bug that had frozen the entire 3D layer.
+
 ## Layout
 
 ```
@@ -17,9 +22,88 @@ ai_model/
   test_api.py            Sends a sample .flac to a running server.
   LA_T_*.flac            Two sample clips (one bonafide, one spoof).
   train_file.txt         Two-line protocol snippet matching those clips.
-src/app/                 Next.js App Router pages: /, /upload, /result.
+requirements.txt         Pinned Python dependencies, verified versions.
+src/app/                 Next.js App Router pages: /, /upload, /result, /design.
+  globals.css            The design system. Single source of truth for tokens.
+  api/predict/route.js   The proxy to Flask. The browser's only route to the
+                         model; nothing in src/ addresses port 5000 directly.
+src/lib/                 motion.js (Motion variants), verdict.js (tiers),
+                         peaks.js (browser-side audio decode + envelope),
+                         clip.js (carries the measured clip /upload → /result).
 components/              header.js, theme.js.
+  ui/                    button.js, calibration-meter.js, verdict-scale.js,
+                         mark.js.
+  three/                 The WebGL layer. lazy.js is the entry point —
+                         import scenes from there, never directly.
 ```
+
+## Design system
+
+See **`DESIGN.md`** for the rules and the reasoning, and **`/design`** for the
+living reference — it renders from the same CSS the product does, so it can't
+drift. Tokens are defined once in `src/app/globals.css`; don't write one-off
+colours, radii or durations in components.
+
+Thesis: **an instrument, not a verdict machine.** The model returns a
+probability, so the UI reports a reading against a visible threshold rather than
+stamping a verdict. Three rules follow: the brand colour never renders a result;
+the result scale desaturates where the model is least certain; the decision
+threshold is drawn on screen.
+
+Two things that follow from the thesis and are easy to undo by accident:
+
+- **A reading is never drawn as a filled bar.** The diverging ramp
+  (`verdict-ramp`) is only rendered raw on `/design`, as palette documentation.
+  Readings go through `components/ui/verdict-scale.js`, which masks the ramp
+  into an engraved graduated scale — a continuous fill reads as a progress bar,
+  i.e. a quantity accumulating towards completion, which is not what a
+  probability is. Shared by the meter, the home illustration and `/design`;
+  don't hand-roll a second copy.
+- **One measure for the whole app**: the `shell` utility (`--shell`, 84rem),
+  used by the header and every page. Widening it must never widen a paragraph —
+  prose keeps its own `ch` measure, and what earns the width is the scale and
+  the waveform, where width is resolution. See "Layout" in `DESIGN.md`.
+
+Brand is Sentinel Teal (hue 190.3°, viridis at 0.50). The verdict scale is a
+diverging violet↔orange (the ends of `plasma`, same axis as ColorBrewer PuOr).
+Those are separate on purpose — teal↔ember was measured at ΔE 0.048 under
+protanopia, i.e. indistinguishable, so the brand colour *cannot* double as the
+verdict colour. Type is Archivo (two widths off the variable width axis) with
+IBM Plex Mono for every number.
+
+Note `motion` (Framer Motion), `three` and `@react-three/fiber` are now
+dependencies, and `npm install` has been run — `node_modules/` exists.
+
+**The 3D layer**: six WebGL scenes in `components/three/`, each depicting
+something the model actually does — the log-Mel spectrogram it reads, the
+waveform of the clip you uploaded, the uncertainty around its threshold. All of
+it is ambient: every canvas is `aria-hidden`, carries no meaning the DOM doesn't
+already carry, and is absent entirely without WebGL. See **"The 3D layer"** in
+`DESIGN.md` for the six rules, and `/design` for the living reference.
+
+Three things to know before touching it:
+
+- **Reach uniforms through a ref on the material**, never through the object the
+  component built with `useMemo` and passed as a `uniforms` prop. Mutating that
+  object in `useFrame` is a **silent no-op** — the writes land somewhere the GPU
+  never reads, nothing errors, and the scene renders frozen at its initial
+  values, which looks exactly like a tuning problem. All five shader scenes
+  shipped with this bug and were static until it was found in August 2026. To
+  test whether a per-frame write is landing, set `uOpacity` to 0 every frame and
+  look: if the scene is still visible, the write is going nowhere. Details in
+  `HANDOFF.md`.
+
+- **Import scenes from `components/three/lazy.js`, not from the scene files.**
+  three.js is ~250 kB. The lazy module wraps every scene in
+  `dynamic(..., { ssr: false })`, which is what keeps First Load JS at ~108 kB
+  rather than ~350 kB. Importing a scene directly pulls three.js into the
+  initial bundle and silently triples it.
+- **Shaders read colour from the design tokens** via `usePalette()`, never from
+  hex literals, so both themes and any future palette change reach the geometry.
+- **No page wrapper may set an opaque background.** The ambient backdrop in
+  `layout.js` sits at a negative z-index — above the body's canvas colour,
+  below every panel. A `bg-canvas` on a page's outer `div` (which is what these
+  pages used to have) paints straight over it.
 
 ## Setup
 
@@ -33,8 +117,7 @@ installing it needs sudo in an interactive terminal. The sudo-free workaround:
 ```bash
 python3 -m venv --without-pip venv
 curl -sS https://bootstrap.pypa.io/get-pip.py | ./venv/bin/python -
-./venv/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-./venv/bin/pip install pandas tqdm opacus flask soundfile requests
+./venv/bin/pip install -r requirements.txt
 ```
 
 CPU wheels are deliberate: ~1.2 GB installed vs several GB for CUDA, and nothing
@@ -49,10 +132,14 @@ npm install
 npm run dev                       # http://localhost:3000
 ```
 
+Both halves must run for an analysis to work — the page posts to `/api/predict`,
+which forwards to Flask:
+
 ```bash
 cd ai_model
 ../venv/bin/python verify_setup.py       # shapes + train/serve parity
 ../venv/bin/python train_dp_avspoof.py --corpus LA
+../venv/bin/python train_dp_avspoof.py --corpus LA --no-dp   # non-private baseline
 ../venv/bin/python app.py                # http://127.0.0.1:5000
 ../venv/bin/python test_api.py           # in a second shell
 ```
@@ -96,8 +183,9 @@ change `model.py`, run `python verify_setup.py` — it asserts that the tensor
 
 ## Checkpoints
 
-`train_dp_avspoof.py` writes to `ai_model/checkpoints/`: a timestamped file each
-epoch, plus rolling `last.pth` (auto-resume) and `best.pth` (lowest dev EER).
+`train_dp_avspoof.py` writes to `ai_model/checkpoints/` (or `checkpoints/nodp/`
+under `--no-dp`): a timestamped file each epoch, plus rolling `last.pth`
+(auto-resume) and `best.pth` (lowest dev EER).
 `app.py` loads `checkpoints/best.pth`, falling back to a legacy flat
 `deepfake_audio_detector.pth` if present.
 
@@ -111,54 +199,78 @@ was untracked (the file may still be on disk locally, and is now covered by the
 
 Be honest about these rather than assuming they work:
 
-1. **The frontend is not wired to the backend.** There is no `fetch` anywhere in
-   `src/` or `components/`. `/upload` and `/result` are UI shells; nothing calls
-   `POST http://127.0.0.1:5000/predict`. This is the biggest missing piece.
-2. **No model has been trained against the current architecture.** The plumbing
-   is verified end-to-end (server loads weights, accepts a FLAC upload, returns
-   JSON — confirmed with a temporary untrained checkpoint, which predicted at
-   ~51%, i.e. chance, as expected). But no real training run has happened since
-   the architecture and preprocessing changed. Any accuracy or EER number
-   predating that change is meaningless now.
-3. **`app.py` runs with `debug=True`** and no CORS headers. Both need attention
-   before the frontend can call it from `localhost:3000`.
-4. **No tests** beyond `verify_setup.py` (a shape/parity smoke test) and
-   `test_api.py` (a manual one-shot client). No CI.
-5. **README.md's lower half is still create-next-app boilerplate** (the "Learn
-   More" / "Deploy on Vercel" sections). The setup instructions at the top are
-   current and verified.
+1. **No model has been trained against the current architecture.** This is now
+   the only thing standing between the app and being real. The plumbing is
+   verified end to end — browser upload → `/api/predict` → Flask → a reading
+   rendered on `/result`, confirmed in a real browser against a throwaway
+   untrained checkpoint that predicted at ~48%, i.e. chance, as expected. But
+   no training run has happened since the architecture and preprocessing
+   changed, and **the dataset is not downloaded** (`data/` absent,
+   `$ASVSPOOF_ROOT` unset). Any accuracy or EER number predating that change is
+   meaningless now.
+2. **No tests** beyond `verify_setup.py` (a shape/parity smoke test) and
+   `test_api.py` (a manual one-shot client). No CI. In particular there is no
+   automated check that the 3D scenes still animate — the uniform-ref bug was
+   invisible for months and would be again. The check that catches it is
+   cheap: screenshot a canvas region twice a few seconds apart and diff them; a
+   frozen scene reads exactly zero.
+3. **`app.py` is still the Werkzeug development server.** `debug=True` is gone
+   (it exposed an interactive debugger that executes code) and it binds to
+   loopback, but use `waitress` or `gunicorn` before this is hosted anywhere.
+4. **The upload limit is enforced in three places** — the page, the proxy route
+   and Flask's `MAX_CONTENT_LENGTH` — and all three say 5 MB. Changing one means
+   changing all three; they are cross-referenced by comment.
 
 ## Roadmap
 
-Nothing below has been implemented — this is the analysis, recorded so it isn't
-re-derived. Suggested order: non-DP baseline + class weights → retrain →
-threshold plumbed end to end → API returns `spoof_probability` → proxy route +
-upload wiring → then architecture work. That produces a working vertical slice
-with honest numbers early, so later changes can be measured against something.
+> **See `APPROACH.md` for the model and research plan** — decided 17 August 2026.
+> It supersedes parts of this section: the chosen architecture is **AASIST**, DP
+> is **off for the main results** (but every architecture stays DP-compatible —
+> no BatchNorm), and the comparison table with verified EERs and their sources
+> lives there. The engineering notes below are still current; where the two
+> disagree about *strategy*, `APPROACH.md` wins.
+
+Steps 1 and 2 below are **implemented but never run** (August 2026); everything
+after them is analysis, recorded so it isn't re-derived. Suggested order: non-DP
+baseline + class weights → retrain → threshold plumbed end to end → API returns
+`spoof_probability` → proxy route + upload wiring → then architecture work. That
+produces a working vertical slice with honest numbers early, so later changes can
+be measured against something.
 
 ### Model accuracy, in priority order
 
-1. **Get a non-private baseline first.** Add a `--no-dp` flag that skips
-   `make_private`, train it, record dev EER. Without it you cannot tell whether a
-   bad result comes from the architecture, the data pipeline, or DP noise — three
-   different fixes. The baseline is the ceiling; the gap to the DP run is the
-   measured cost of privacy, which is also the interesting result to report.
+1. **Get a non-private baseline first.** *Code done, not yet trained.*
+   `--no-dp` skips `make_private` and `get_epsilon`; `unwrap()` handles the model
+   being bare rather than Opacus-wrapped. Without a baseline you cannot tell
+   whether a bad result comes from the architecture, the data pipeline, or DP
+   noise — three different fixes. The baseline is the ceiling; the gap to the DP
+   run is the measured cost of privacy, which is also the interesting result to
+   report.
 
-2. **Fix the class imbalance.** ASVspoof2019 LA train is roughly 2,580 bonafide
-   vs 22,800 spoof (~1:9). Unweighted `CrossEntropyLoss` drifts toward predicting
-   "spoof" for everything while still looking accurate. Use class weights derived
-   from the actual protocol counts:
-   `nn.CrossEntropyLoss(weight=torch.tensor([9.0, 1.0], device=DEVICE))`.
+   **DP and baseline runs write to separate checkpoint directories** —
+   `checkpoints/` for DP, `checkpoints/nodp/` for the baseline. They share an
+   architecture but not a training regime, so a shared `last.pth` would let one
+   run silently auto-resume from the other's weights. `app.py` still reads
+   `checkpoints/best.pth`, i.e. the DP run.
+
+2. **Fix the class imbalance.** *Code done, not yet trained.* ASVspoof2019 LA
+   train is roughly 2,580 bonafide vs 22,800 spoof (~1:9). Unweighted
+   `CrossEntropyLoss` drifts toward predicting "spoof" for everything while still
+   looking accurate. `compute_class_weights()` derives inverse-frequency weights
+   from the actual protocol counts rather than hardcoding them (on LA train that
+   comes out to `[4.92, 0.56]`, a ratio of 8.84), prints them, and stores them in
+   the checkpoint. `--no-class-weights` turns it off for ablation.
 
    **Do not use `WeightedRandomSampler`** — Opacus's `make_private` replaces the
    DataLoader's sampler with Poisson sampling for privacy accounting, so a custom
    sampler is silently discarded. Weight the loss instead.
 
-3. **Use the EER threshold that is already computed.** `compute_eer_np` returns a
-   calibrated threshold, `save_ckpt` discards it, and `app.py` then uses
-   `torch.max(outputs)` — an implicit 0.5 cutoff. The tuned operating point never
-   reaches production. Persist `thresh` in the checkpoint and apply it when
-   serving; on imbalanced DP-trained models 0.5 is rarely right.
+3. **Use the EER threshold that is already computed.** *Done.* `save_ckpt`
+   stores `threshold` (and the full dev metrics, including a confusion matrix)
+   in every checkpoint; `app.py` loads it, applies it instead of
+   `torch.max(outputs)`, and reports it in the response along with
+   `threshold_calibrated`, which is false when the checkpoint carries none and
+   0.5 is being used. `/result` says so on screen in that case.
 
 4. **Report eval-set EER, not dev.** The dev partition uses attacks A01–A06, the
    same ones seen in training. The eval partition has unseen A07–A19. Dev EER is
@@ -176,45 +288,50 @@ with honest numbers early, so later changes can be measured against something.
 Also worth logging a confusion matrix, not just accuracy and EER. On 1:9 data,
 "90% accurate" can mean "always guesses spoof".
 
-### Bridging frontend and backend
+### Bridging frontend and backend — done, and how it fits together
 
-**There is a contract mismatch to resolve before writing any wiring code.**
-`result/page.js` has four graded tiers (unlikely → possibly → likely →
-veryLikely), which needs a continuous P(spoof). But `app.py` returns a binary
-label plus `confidence` of *whichever class won* — when it says
-`Real Audio, 90%`, P(spoof) is 10%, and the tier cannot be recovered without
-unpacking the label. Change the response to return the spoof probability
-directly:
+Wired 21 August 2026 and verified in a real browser end to end. The shape of it,
+because each piece was chosen for a reason worth not undoing:
 
-```python
-probs = F.softmax(outputs, dim=1)
-spoof_prob = probs[0][1].item()   # class 1 = spoof
-return jsonify({
-    "spoof_probability": spoof_prob,
-    "prediction": CLASS_NAMES[1 if spoof_prob >= THRESHOLD else 0],
-    "threshold": THRESHOLD,
-})
-```
+**The response is a probability, not a verdict.** `POST /predict` returns
+`spoof_probability` (class 1 = spoof), `prediction`, `threshold`,
+`threshold_calibrated`, and a `model` block read off the checkpoint. It used to
+return a label plus the confidence of *whichever class won* — `Real Audio, 90%`
+means P(spoof) = 10%, and the four graded tiers on `/result` cannot be recovered
+from that without unpacking the label. A continuous probability is the only
+thing a graduated scale can be drawn from.
 
-Then the page maps `spoof_probability` onto its buckets, and the hardcoded
-`useState('unlikely')` plus the four demo buttons come out.
+**The browser never addresses Flask.** `src/app/api/predict/route.js` forwards
+the upload to `$MODEL_API_URL` (default `http://127.0.0.1:5000`). No CORS, no
+`flask-cors`, the model port stays off the public surface, and one env var moves
+at deploy time. The route also normalises every failure to `{ error }` with a
+sensible status, so the page has one shape to handle: 400 no file, 413 too
+large, 422 undecodable, 502 upstream nonsense, 503 model server unreachable
+(with the command to start it).
 
-- **Proxy through a Next.js route** — add `src/app/api/predict/route.js` that
-  forwards the upload to `http://127.0.0.1:5000/predict`. This avoids CORS
-  entirely (no `flask-cors` needed), keeps the Flask port off the public surface,
-  and means one env var changes at deploy time. Calling `:5000` directly from the
-  browser hits CORS immediately and forces exposing the model server.
-- **`upload/page.js` has no submit path** — it stores the file in state and
-  stops. Needs a submit button, a `FormData` POST, loading and error states, and
-  navigation carrying the result (`sessionStorage` is fine here).
-- **Enforce the advertised limits.** The page says "up to 5mb" and "MP3, Wav" but
-  nothing checks either, and Flask has no default request cap. Set
-  `app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024`, add `accept="audio/*"` to
-  the file input, validate client-side too, and add FLAC to the listed formats
-  since the sample files are FLAC. libsndfile 1.2.2 does decode MP3, but that
-  path is untested — no MP3 sample exists in the repo.
-- **Turn off `debug=True`** before this is reachable from a browser; it exposes
-  an interactive debugger that executes code.
+**The clip and the reading travel together.** `src/lib/clip.js` stores both in
+`sessionStorage` under one key. `/upload` posts first and navigates second, so
+`/result` never renders before its number exists. Arriving at `/result` directly
+shows a waiting state — no fabricated reading, no model card.
+
+**The model card is built from the API response**, never written down in the
+page. A hand-maintained card describes whichever run someone last remembered to
+type in, which looks like provenance while being fiction.
+
+**Two rules that are easy to break by accident:**
+
+- **No tier description may mention which side of the threshold it falls on.**
+  The tiers are fixed quarters of the range; the threshold moves with every
+  training run. Two tier strings used to say "sits below the decision
+  threshold" / "clears the threshold", which was true only while the threshold
+  was pinned at 0.5. The first calibrated checkpoint served 0.413 and the page
+  contradicted itself on screen. The threshold relation is stated once, by the
+  page, from the value the API returned.
+- **The 5 MB limit lives in three places** — `MAX_BYTES` in `upload/page.js`,
+  `MAX_BYTES` in the proxy route, `MAX_UPLOAD_BYTES` in `app.py`. The client
+  check is a courtesy; the route is reachable directly and Flask has no default
+  cap, so all three are real. `libsndfile` does decode MP3, but that path is
+  untested — no MP3 sample exists in the repo.
 
 ### Stack review — what to change and what to leave alone
 
@@ -228,7 +345,10 @@ Meanwhile the privacy concern a user of this tool actually has is about the clip
 they upload, which DP-SGD does nothing for (that needs no logging, in-memory
 processing, immediate deletion). Two honest paths: keep DP and frame the project
 as measuring its cost (needs the baseline above), or drop it for the main model
-and state inference-time privacy properties instead. DP-SGD becomes genuinely
+and state inference-time privacy properties instead. **Resolved 17 Aug 2026 —
+both: DP off for the main results, architectures kept DP-compatible, and the
+cost-of-privacy gap measured as the research contribution. See `APPROACH.md`.**
+DP-SGD becomes genuinely
 justified the moment training uses user-contributed voice data.
 
 **Replace: Mel → LFCC features.** Cheapest real accuracy win, a one-line change
@@ -245,8 +365,9 @@ model scoring well on LA eval can still fail on a modern TTS clip. **ASVspoof 5*
 generalization test set. Even just *evaluating* the LA-trained model on
 In-the-Wild gives a far more honest number, and the gap is itself a finding.
 
-**Add: a Python dependency manifest.** There is none — dependencies exist only as
-prose in the README. `requirements.txt` at minimum. Better: **`uv`**, which
+**Add: a Python dependency manifest.** *Partly done* — `requirements.txt` now
+pins every dependency at the verified version and carries the CPU torch index,
+so `pip install -r requirements.txt` is the whole install. Still worth **`uv`**, which
 bundles its own Python/venv handling and would have entirely avoided the
 `ensurepip` problem documented in Setup (no `python3.12-venv`, no sudo, no
 `get-pip.py`). Highest practical-value item for a repo cloned onto several

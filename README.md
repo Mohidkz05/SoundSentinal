@@ -26,12 +26,13 @@ curl -sS https://bootstrap.pypa.io/get-pip.py | ./venv/bin/python -
 Then install the dependencies:
 
 ```bash
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install pandas tqdm opacus flask soundfile requests
+pip install -r requirements.txt
 ```
 
-Use the CPU wheels unless you intend to train — only training benefits from a
-GPU. For CUDA, swap the index URL for `https://download.pytorch.org/whl/cu128`.
+That pulls the CPU build of torch, which is what you want unless you intend to
+train — only training benefits from a GPU, and the CPU wheels are ~1.2 GB
+against several GB for CUDA. For CUDA, reinstall torch from the CUDA index:
+`pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128`.
 
 Check the install, then run the API:
 
@@ -53,37 +54,43 @@ until you train. See `CLAUDE.md` for project state and architecture details.
 
 ### Frontend
 
-First, lets install the Dependancies: ```npm install```
-
-Now lets, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev                       # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Running both halves together
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+The frontend talks to the model through a Next.js route at `/api/predict`,
+which forwards the upload to Flask. Nothing in the browser ever addresses port
+5000 directly — that avoids CORS entirely and keeps the model server off the
+public surface. So an analysis needs both processes running:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd ai_model && python app.py      # terminal 1 — http://127.0.0.1:5000
+npm run dev                       # terminal 2 — http://localhost:3000
+```
 
-## Learn More
+With Flask down, uploads fail with a message saying so rather than hanging. Set
+`MODEL_API_URL` if the model server is not on `http://127.0.0.1:5000`.
 
-To learn more about Next.js, take a look at the following resources:
+## Where things are
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Path | What it is |
+| --- | --- |
+| `ai_model/model.py` | The network and the preprocessing. Shared by trainer and server — don't redefine either anywhere else. |
+| `ai_model/train_dp_avspoof.py` | Training loop, DP via Opacus, dev-set EER, checkpointing. |
+| `ai_model/app.py` | The inference server. `POST /predict` returns `spoof_probability`, `prediction` and `threshold`. |
+| `src/app/` | Next.js App Router pages: `/`, `/upload`, `/result`, `/design`. |
+| `src/app/globals.css` | The design system. Tokens are defined here and nowhere else. |
+| `components/three/` | The ambient WebGL layer. Import scenes from `lazy.js`. |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project documentation
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **`CLAUDE.md`** — project state, architecture details, known gaps, roadmap.
+- **`APPROACH.md`** — the model and research plan: why AASIST, and where
+  differential privacy does and doesn't belong.
+- **`DESIGN.md`** — the design system and the reasoning behind it. `/design`
+  renders the living reference from the same CSS the product uses.
+- **`HANDOFF.md`** — notes from the frontend redesign, including the WebGL
+  uniform bug that is easy to reintroduce.
