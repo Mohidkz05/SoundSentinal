@@ -77,26 +77,57 @@ def get_corpus_paths(corpus: str = "LA"):
     }
 
 # --- Smart Checkpointing ---
+# DP and baseline runs get separate directories. They share an architecture but
+# not a training regime, so a shared last.pth would let one run auto-resume from
+# the other's weights. app.py reads checkpoints/best.pth, so DP keeps the root.
 CKPT_DIR = (SCRIPT_DIR / "checkpoints")
-CKPT_DIR.mkdir(exist_ok=True)
-LAST_CKPT = CKPT_DIR / "last.pth"
-BEST_CKPT = CKPT_DIR / "best.pth"
 
-def save_ckpt(model, optimizer, epoch, steps_done, is_best=False):
+def get_ckpt_paths(use_dp: bool):
+    ckpt_dir = CKPT_DIR if use_dp else CKPT_DIR / "nodp"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    return ckpt_dir, ckpt_dir / "last.pth", ckpt_dir / "best.pth"
+
+def unwrap(model):
+    """Opacus wraps the module in a GradSampleModule; --no-dp runs have no wrapper."""
+    return getattr(model, "_module", model)
+
+def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
+              is_best=False, metrics=None, best_eer=None):
+    """Write the rolling, best and timestamped checkpoints.
+
+    `metrics` carries the dev-set numbers for this epoch, and with them the
+    calibrated operating point. That threshold is the whole reason this
+    argument exists: compute_eer_np has always returned it and it used to be
+    printed and dropped on the floor, so the server fell back to an implicit
+    0.5 cutoff and the tuned operating point never reached production. It is
+    the EER point on P(spoof), so serving means `spoof if p >= threshold`.
+
+    `best_eer` is stored so a resumed run knows what it is trying to beat.
+    Without it best.pth was overwritten by whatever the first epoch after a
+    resume produced, however much worse it was.
+    """
+    ckpt_dir, last_ckpt, best_ckpt = paths
     payload = {
         "epoch": epoch, "steps_done": steps_done,
-        "model": model._module.state_dict(),
+        "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
+        "batch_size": BATCH_SIZE,
+        "class_weights": None if class_weights is None else class_weights.tolist(),
+        "metrics": metrics,
+        # Promoted out of `metrics` because this is the one value the server
+        # needs, and it should not have to know the shape of an eval record.
+        "threshold": None if metrics is None else metrics.get("dev_threshold"),
+        "best_eer": best_eer,
         "dp": {
             "noise_multiplier": NOISE_MULTIPLIER, "max_grad_norm": MAX_GRAD_NORM,
             "batch_size": BATCH_SIZE,
-        },
+        } if use_dp else None,
     }
-    torch.save(payload, CKPT_DIR / f"deepfake_{strftime('%Y%m%d-%H%M%S')}.pth")
-    torch.save(payload, LAST_CKPT)
+    torch.save(payload, ckpt_dir / f"deepfake_{strftime('%Y%m%d-%H%M%S')}.pth")
+    torch.save(payload, last_ckpt)
     if is_best:
-        torch.save(payload, BEST_CKPT)
-        print(f"🎉 New best model saved to {BEST_CKPT}!")
+        torch.save(payload, best_ckpt)
+        print(f"🎉 New best model saved to {best_ckpt}!")
 
 # ===================================================================
 # 1. DATASET CLASS
@@ -143,6 +174,26 @@ def compute_eer_np(labels, scores):
     eer, thresh = float((fpr[i] + fnr[i]) / 2), float(scores[i])
     return eer, thresh
 
+def compute_class_weights(dataset, device):
+    """Inverse-frequency weights from the actual protocol counts.
+
+    LA train is ~1:9 bonafide:spoof, so an unweighted loss drifts toward calling
+    everything spoof while still looking accurate. Weight the loss rather than
+    using WeightedRandomSampler: Opacus's make_private replaces the loader's
+    sampler with Poisson sampling, so a custom sampler is silently discarded.
+    """
+    counts = dataset.protocol['label'].map(LABEL_MAP).value_counts()
+    n_classes = len(LABEL_MAP)
+    total = int(counts.sum())
+    weights = torch.tensor(
+        [total / (n_classes * max(1, int(counts.get(i, 0)))) for i in range(n_classes)],
+        dtype=torch.float32, device=device,
+    )
+    counts_str = ", ".join(f"{name}={int(counts.get(i, 0))}" for i, name in
+                           enumerate(sorted(LABEL_MAP, key=LABEL_MAP.get)))
+    print(f"Class counts: {counts_str} -> weights {weights.tolist()}")
+    return weights
+
 @torch.no_grad()
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -164,7 +215,18 @@ def evaluate(model, loader, criterion, device):
     acc = correct / max(1, total)
     scores, labels = torch.cat(all_scores).numpy(), torch.cat(all_labels).numpy()
     eer, thresh = compute_eer_np(labels, scores)
-    return avg_loss, acc, eer, thresh
+
+    # Confusion matrix at the calibrated threshold, not at argmax. On 1:9 data
+    # "90% accurate" can mean "always guesses spoof", and only these four
+    # numbers show which of the two it is.
+    pred = (scores >= thresh).astype(int)
+    cm = {
+        "tn": int(((labels == 0) & (pred == 0)).sum()),
+        "fp": int(((labels == 0) & (pred == 1)).sum()),
+        "fn": int(((labels == 1) & (pred == 0)).sum()),
+        "tp": int(((labels == 1) & (pred == 1)).sum()),
+    }
+    return avg_loss, acc, eer, thresh, cm
 
 # ===================================================================
 # 3. MAIN TRAINING AND EVALUATION FUNCTION
@@ -172,6 +234,12 @@ def evaluate(model, loader, criterion, device):
 def main():
     parser = argparse.ArgumentParser(description="DP Deepfake Audio Trainer")
     parser.add_argument("--corpus", default="LA", choices=["LA", "PA"], help="ASVspoof corpus to use.")
+    parser.add_argument("--no-dp", dest="use_dp", action="store_false",
+                        help="Skip Opacus make_private and train a non-private baseline. "
+                             "The baseline is the accuracy ceiling; the gap to a DP run is "
+                             "the measured cost of privacy. Checkpoints go to checkpoints/nodp/.")
+    parser.add_argument("--no-class-weights", dest="use_class_weights", action="store_false",
+                        help="Disable inverse-frequency class weighting (for ablation).")
     args = parser.parse_args()
 
     PATHS = get_corpus_paths(args.corpus)
@@ -188,22 +256,31 @@ def main():
 
     model = AudioClassifierCNN().to(DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    criterion = nn.CrossEntropyLoss()
+    class_weights = compute_class_weights(train_dataset, DEVICE) if args.use_class_weights else None
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-    privacy_engine = PrivacyEngine()
-    model, optimizer, train_loader = privacy_engine.make_private(
-        module=model, optimizer=optimizer, data_loader=train_loader,
-        noise_multiplier=NOISE_MULTIPLIER, max_grad_norm=MAX_GRAD_NORM,
-    )
+    privacy_engine = None
+    if args.use_dp:
+        privacy_engine = PrivacyEngine()
+        model, optimizer, train_loader = privacy_engine.make_private(
+            module=model, optimizer=optimizer, data_loader=train_loader,
+            noise_multiplier=NOISE_MULTIPLIER, max_grad_norm=MAX_GRAD_NORM,
+        )
+
+    paths = get_ckpt_paths(args.use_dp)
+    _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
     if LAST_CKPT.exists():
         print(f"Resuming from checkpoint: {LAST_CKPT}")
         ckpt = torch.load(LAST_CKPT, map_location=DEVICE)
-        model._module.load_state_dict(ckpt["model"])
+        unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         start_epoch = ckpt.get("epoch", 0) + 1
         prev_steps  = ckpt.get("steps_done", 0)
+        # Older checkpoints predate this field; inf means the next epoch wins,
+        # which is the old behaviour rather than a new failure mode.
+        best_eer = ckpt.get("best_eer") or float("inf")
 
     # --- NEW: Check if training is already complete ---
     if start_epoch > EPOCHS:
@@ -211,7 +288,8 @@ def main():
         return
     # ------------------------------------------------
 
-    print("--- Starting Differentially Private Training ---")
+    mode = "Differentially Private" if args.use_dp else "Non-Private Baseline (--no-dp)"
+    print(f"--- Starting {mode} Training ---")
     steps_done = prev_steps
     for epoch in range(start_epoch, EPOCHS + 1):
         model.train()
@@ -236,20 +314,36 @@ def main():
             })
         
         train_avg_loss = total_loss / len(train_loader)
-        epsilon = privacy_engine.get_epsilon(delta=TARGET_DELTA)
+        if privacy_engine is not None:
+            epsilon = privacy_engine.get_epsilon(delta=TARGET_DELTA)
+            privacy_str = f" (ε={epsilon:.2f}, δ={TARGET_DELTA})"
+        else:
+            privacy_str = " (no DP)"
         print(
             f"Epoch {epoch}/{EPOCHS} | "
-            f"[TRAIN] loss={train_avg_loss:.4f} acc={100*correct/total:.2f}% "
-            f"(ε={epsilon:.2f}, δ={TARGET_DELTA})"
+            f"[TRAIN] loss={train_avg_loss:.4f} acc={100*correct/total:.2f}%"
+            f"{privacy_str}"
         )
 
-        dev_loss, dev_acc, dev_eer, dev_thresh = evaluate(model, dev_loader, criterion, DEVICE)
+        dev_loss, dev_acc, dev_eer, dev_thresh, dev_cm = evaluate(model, dev_loader, criterion, DEVICE)
         print(f"[DEV]   loss={dev_loss:.4f} acc={dev_acc*100:.2f}% EER={dev_eer*100:.2f}% (thr={dev_thresh:.4f})")
+        print(f"[DEV]   confusion @thr: bonafide {dev_cm['tn']} ok / {dev_cm['fp']} flagged | "
+              f"spoof {dev_cm['tp']} caught / {dev_cm['fn']} missed")
 
         is_best = dev_eer < best_eer
         if is_best:
             best_eer = dev_eer
-        save_ckpt(model, optimizer, epoch, steps_done, is_best=is_best)
+        metrics = {
+            "dev_loss": dev_loss, "dev_acc": dev_acc, "dev_eer": dev_eer,
+            "dev_threshold": dev_thresh, "dev_confusion": dev_cm,
+            "train_loss": train_avg_loss, "train_acc": correct / max(1, total),
+            "epsilon": epsilon if privacy_engine is not None else None,
+            "delta": TARGET_DELTA if privacy_engine is not None else None,
+            "corpus": args.corpus,
+        }
+        save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
+                  class_weights=class_weights, is_best=is_best,
+                  metrics=metrics, best_eer=best_eer)
 
     print("\n--- Training Finished ---")
 

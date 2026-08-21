@@ -1,5 +1,6 @@
 # app.py
 
+import soundfile as sf
 import torch
 import torch.nn.functional as F
 from flask import Flask, request, jsonify
@@ -10,6 +11,9 @@ from pathlib import Path
 from model import (
     AudioClassifierCNN,
     CLASS_NAMES,
+    MAX_LEN,
+    N_MELS,
+    SAMPLE_RATE,
     build_transform,
     load_audio,
     preprocess_waveform,
@@ -24,6 +28,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # legacy flat file is kept as a fallback for older runs.
 BEST_CKPT = SCRIPT_DIR / "checkpoints" / "best.pth"
 LEGACY_MODEL_PATH = SCRIPT_DIR / "deepfake_audio_detector.pth"
+
+
+# The fallback operating point, used only when the checkpoint carries no
+# calibrated threshold (legacy weights, or a run that predates save_ckpt
+# storing it). 0.5 is argmax, which is rarely right on 1:9 data — the response
+# reports which of the two the client got, so a UI can say so.
+DEFAULT_THRESHOLD = 0.5
 
 
 def load_model():
@@ -54,11 +65,50 @@ def load_model():
 
     # Evaluation mode disables dropout — important for consistent predictions.
     net.eval()
+
+    # The threshold the trainer calibrated from dev-set EER. It travels with the
+    # weights because it belongs to them: a different run has a different
+    # operating point, and pairing new weights with an old cutoff is silently
+    # wrong in exactly the way an implicit 0.5 was.
+    threshold = None
+    if isinstance(payload, dict):
+        threshold = payload.get("threshold")
+    calibrated = threshold is not None
+    if not calibrated:
+        threshold = DEFAULT_THRESHOLD
+
+    # What produced this reading, read off the checkpoint rather than written
+    # down anywhere. The result page shows a model card, and a hand-maintained
+    # one is worse than none: it looks like provenance while quietly describing
+    # a run that no longer exists. Anything the checkpoint does not know is
+    # omitted rather than guessed.
+    metrics = (payload.get("metrics") or {}) if isinstance(payload, dict) else {}
+    dp = payload.get("dp") if isinstance(payload, dict) else None
+    info = {
+        "input": f"Mono, {SAMPLE_RATE // 1000} kHz, {MAX_LEN // SAMPLE_RATE} s",
+        "representation": f"Log-Mel spectrogram, {N_MELS} mels",
+        "network": "2× conv, adaptive pool, 2 dense",
+        "corpus": f"ASVspoof2019 {metrics['corpus']}" if metrics.get("corpus") else None,
+        "epoch": payload.get("epoch") if isinstance(payload, dict) else None,
+        "dev_eer": metrics.get("dev_eer"),
+        "privacy": (
+            f"DP-SGD (Opacus), ε={metrics['epsilon']:.2f}, δ={metrics['delta']}"
+            if dp and metrics.get("epsilon") is not None
+            else "DP-SGD (Opacus)" if dp
+            else "None — non-private baseline"
+        ),
+        "threshold_source": "Equal error rate, dev partition" if calibrated else "Default 0.5, uncalibrated",
+    }
+
     print(f"Loaded model weights from {path}")
-    return net
+    print(
+        f"Decision threshold: {threshold:.4f} "
+        + ("(calibrated from dev EER)" if calibrated else "(default — checkpoint carries none)")
+    )
+    return net, float(threshold), calibrated, info
 
 
-model = load_model()
+model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO = load_model()
 transform_pipeline = build_transform()
 
 # ===================================================================
@@ -75,6 +125,30 @@ def preprocess_audio(audio_file):
 # ===================================================================
 app = Flask(__name__)
 
+# Matches MAX_BYTES in src/app/upload/page.js. Flask has no default cap, so
+# without this a large upload is read into memory in full before anything looks
+# at it. Werkzeug raises 413 past this point; the handler below makes that JSON
+# rather than an HTML error page the frontend cannot parse.
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return jsonify({"error": f"Audio file exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit."}), 413
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Enough for the proxy route to report the model server being down as a
+    connection problem rather than a failed analysis."""
+    return jsonify({
+        "status": "ok",
+        "threshold": THRESHOLD,
+        "threshold_calibrated": THRESHOLD_CALIBRATED,
+        "model": MODEL_INFO,
+    })
+
 @app.route("/predict", methods=["POST"])
 def predict():
     # Check if a file was sent in the request
@@ -82,31 +156,58 @@ def predict():
         return jsonify({"error": "No audio file provided"}), 400
 
     audio_file = request.files['file']
-    
+
     try:
-        # 1. Preprocess the incoming audio file
+        # 1. Preprocess the incoming audio file. It is never written to disk:
+        #    Werkzeug keeps an upload this size in memory, and the tensor is all
+        #    that survives this call.
         tensor = preprocess_audio(audio_file)
-        
+
         # 2. Make a prediction (no gradients needed)
         with torch.no_grad():
             outputs = model(tensor)
-            # Get the predicted class index (0 or 1)
-            _, predicted_idx = torch.max(outputs.data, 1)
-            predicted_label = CLASS_NAMES[predicted_idx.item()]
-            
-            # 3. Calculate the confidence score
             probabilities = F.softmax(outputs, dim=1)
-            confidence = probabilities[0][predicted_idx.item()].item()
+            spoof_probability = probabilities[0][1].item()   # class 1 = spoof
 
-        # 4. Send the result back as JSON
+        # 3. Send the result back as JSON.
+        #
+        #    P(spoof) rather than "the winning class and its confidence": the UI
+        #    grades the reading into bands and draws it on a scale, which needs a
+        #    continuous value. `Real Audio, 90%` means P(spoof)=10%, and a client
+        #    can only recover that by unpacking the label — a conversion nobody
+        #    should have to do twice. The threshold ships with it because the
+        #    label is meaningless without the line it was compared against.
         return jsonify({
-            "prediction": predicted_label,
-            "confidence": f"{confidence:.2%}"
+            "spoof_probability": spoof_probability,
+            "prediction": CLASS_NAMES[1 if spoof_probability >= THRESHOLD else 0],
+            "threshold": THRESHOLD,
+            "threshold_calibrated": THRESHOLD_CALIBRATED,
+            "model": MODEL_INFO,
         })
+    except sf.LibsndfileError as e:
+        # A file libsndfile cannot open. That is the client's problem, not a
+        # server fault, and the message is written for the person who chose the
+        # file rather than echoing the decoder — str(e) here includes the
+        # internal FileStorage repr, which is both ugly and no one's business.
+        print(f"[predict] could not decode upload: {e}")
+        return jsonify({
+            "error": "That file could not be decoded as audio. It may be corrupt, "
+                     "or in a format this server does not support."
+        }), 422
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Genuinely unexpected. Logged in full here, reported as a generic
+        # failure there: an exception string is an information leak and tells a
+        # user nothing they can act on.
+        print(f"[predict] unexpected failure: {type(e).__name__}: {e}")
+        return jsonify({"error": "The clip could not be analysed."}), 500
 
 if __name__ == "__main__":
-    # Start the server
+    # debug=False: the reloader's interactive debugger executes arbitrary code
+    # from the browser, and this port becomes reachable the moment the Next.js
+    # proxy route starts calling it. Bound to loopback for the same reason —
+    # nothing but the proxy should be able to reach the model.
+    #
+    # Still the Werkzeug development server. That is fine for a dev machine and
+    # not fine for anything else; use waitress or gunicorn when this is hosted.
     print("Starting Flask server... Visit http://127.0.0.1:5000")
-    app.run(debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=False)
