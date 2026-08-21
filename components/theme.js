@@ -1,34 +1,34 @@
 'use client';
 
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 
-// Create a context to hold the theme state and toggle function
-export const ThemeContext = createContext();
+const STORAGE_KEY = 'soundsentinal-theme';
 
-// Create the provider component that will wrap the entire app
+export const ThemeContext = createContext(null);
+
 export function Theme({ children }) {
+  // The inline script in layout.js has already put the right class on <html>
+  // before paint. Read back from that rather than guessing, so the first render
+  // agrees with what is on screen.
   const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
-    // Check for user's system preference on initial load
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setDarkMode(isDark);
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    }
+    setDarkMode(document.documentElement.classList.contains('dark'));
   }, []);
 
-  const toggleDarkMode = () => {
-    setDarkMode(prevMode => {
-      const newMode = !prevMode;
-      if (newMode) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle('dark', next);
+      try {
+        localStorage.setItem(STORAGE_KEY, next ? 'dark' : 'light');
+      } catch {
+        // Private mode or storage disabled — the toggle still works for this
+        // session, it just won't be remembered.
       }
-      return newMode;
+      return next;
     });
-  };
+  }, []);
 
   return (
     <ThemeContext.Provider value={{ darkMode, toggleDarkMode }}>
@@ -37,5 +37,4 @@ export function Theme({ children }) {
   );
 }
 
-// Custom hook to easily use the theme context
 export const useTheme = () => useContext(ThemeContext);

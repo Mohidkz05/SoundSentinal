@@ -1,26 +1,449 @@
 @import "tailwindcss";
 
+/* Dark mode is driven by a class on <html>, set by components/theme.js.
+   Tailwind v4 defaults the `dark:` variant to prefers-color-scheme, which
+   would ignore that class and leave the toggle inert. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================================
+   1. PRIMITIVES
+   Fixed scales. Never reference these directly in a component — use the
+   semantic tokens in section 2, so a component works in both themes.
+
+   Every ramp is generated in OKLCH at a fixed hue with evenly stepped
+   lightness, so "600" means the same perceived darkness in every ramp.
+   ========================================================================= */
+@theme {
+  /* -- Sentinel Teal: the brand. Hue 190.3deg, sampled from viridis at 0.50,
+        the colormap that renders the log-Mel spectrograms this model reads.
+        Used for chrome, actions and focus. Never for a verdict. ------------ */
+  --color-teal-50:  #eefaf8;
+  --color-teal-100: #daf3f1;
+  --color-teal-200: #b2e5e1;
+  --color-teal-300: #84d3ce;
+  --color-teal-400: #53bdb7;
+  --color-teal-500: #1ca5a0;
+  --color-teal-600: #078b86;
+  --color-teal-700: #056e6a;
+  --color-teal-800: #03524f;
+  --color-teal-900: #013735;
+  --color-teal-950: #012422;
+
+  /* -- Petrol: neutrals carrying the same 190.3deg hue at near-zero chroma.
+        Greys that sit under the brand instead of fighting it. -------------- */
+  --color-petrol-50:  #f7fbfb;
+  --color-petrol-100: #eff5f4;
+  --color-petrol-200: #e8eeee;
+  --color-petrol-300: #d7e0df;
+  --color-petrol-400: #bfcac9;
+  --color-petrol-500: #889594;
+  --color-petrol-600: #5f6c6b;
+  --color-petrol-700: #42504f;
+  --color-petrol-800: #2a3938;
+  --color-petrol-850: #1f2d2c;
+  --color-petrol-900: #142120;
+  --color-petrol-950: #0a1514;
+
+  /* -- Verdict scale: diverging, violet <-> orange. These are the two ends of
+        `plasma`, the other perceptually-uniform spectrogram colormap, and the
+        same axis as ColorBrewer's PuOr, which is validated colourblind-safe.
+
+        Hue says which side of the decision threshold the reading falls on.
+        Chroma says how far from it — the scale desaturates towards the
+        boundary, so "the model is unsure" is shown by the colour draining out
+        rather than by a fourth hue nobody can name.
+
+        Measured across normal vision, protanopia, deuteranopia and
+        tritanopia: separation across the threshold dE >= 0.096, between the
+        endpoints dE >= 0.207. ---------------------------------------------- */
+  --color-verdict-unlikely-d:   #9775de;
+  --color-verdict-possibly-d:   #b9afd7;
+  --color-verdict-likely-d:     #e4ae96;
+  --color-verdict-verylikely-d: #f87c3c;
+
+  --color-verdict-unlikely-l:   #683baf;
+  --color-verdict-possibly-l:   #6a549a;
+  --color-verdict-likely-l:     #ad5b32;
+  --color-verdict-verylikely-l: #bb4f05;
+
+  /* -- Danger: system failures only (upload rejected, server down). Hue 25deg,
+        held 20deg off the verdict orange so "something broke" never reads as
+        "this audio is fake". ----------------------------------------------- */
+  --color-danger-d: #f66d67;
+  --color-danger-l: #c02b2f;
+
+  /* -- Type ---------------------------------------------------------------- */
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+
+  /* Display sizes use a 1.26 ratio and tighten as they grow. Readouts and
+     body text stay on a calmer 1.2. */
+  --text-display: 4.25rem;   --text-display--line-height: 0.94;
+  --text-display--letter-spacing: -0.03em;
+  --text-h1: 3rem;           --text-h1--line-height: 1.02;
+  --text-h1--letter-spacing: -0.025em;
+  --text-h2: 2rem;           --text-h2--line-height: 1.1;
+  --text-h2--letter-spacing: -0.02em;
+  --text-h3: 1.375rem;       --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: -0.01em;
+  --text-body: 1rem;         --text-body--line-height: 1.6;
+  --text-small: 0.875rem;    --text-small--line-height: 1.5;
+  --text-readout: 3.5rem;    --text-readout--line-height: 1;
+  --text-readout--letter-spacing: -0.04em;
+  --text-tick: 0.6875rem;    --text-tick--line-height: 1.2;
+  --text-tick--letter-spacing: 0.14em;
+
+  /* -- Rounding: an instrument's radii are modest and consistent. Panels are
+        the largest thing that rounds; nothing goes past 20px except pills. -- */
+  --radius-tick: 2px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;   /* buttons, inputs */
+  --radius-lg: 14px;   /* panels */
+  --radius-xl: 20px;   /* the meter housing, modals */
+
+  /* -- Motion. Two easings do all the work:
+        `instrument` — decisive, no bounce. Every UI transition.
+        `needle`     — overshoots ~4% and settles, the way a real meter
+                       needle does. Reserved for the reading itself. -------- */
+  /* -- Gutter: the app runs full-bleed, so the only horizontal constraint is
+        how far content stays off the viewport edge. Prose inside it is held to
+        its own ch-based measure — full-bleed must never mean a 200-character
+        line. ------------------------------------------------------------- */
+  --gutter: clamp(1.25rem, 3vw, 3.5rem);
+
+  --ease-instrument: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-needle: cubic-bezier(0.34, 1.28, 0.44, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  --duration-tap: 100ms;
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --duration-slow: 420ms;
+  --duration-sweep: 900ms;  /* needle travel */
+}
+
+/* ============================================================================
+   2. SEMANTIC TOKENS
+   The only colours a component should name. Each is defined once per theme.
+   ========================================================================= */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  --canvas: var(--color-petrol-50);
+  --panel: var(--color-petrol-100);
+  --raised: #ffffff;
+  --overlay: var(--color-petrol-200);
+  --line: var(--color-petrol-300);
+  --line-strong: #bfcac9;
+
+  --text-primary: #142221;
+  --text-secondary: var(--color-petrol-700);
+  --text-muted: var(--color-petrol-600);
+  --text-faint: #7d8988;
+
+  --accent: var(--color-teal-700);
+  --accent-hover: #035854;
+  --accent-quiet: var(--color-teal-200);
+  --accent-contrast: #ffffff;
+
+  --verdict-unlikely: var(--color-verdict-unlikely-l);
+  --verdict-possibly: var(--color-verdict-possibly-l);
+  --verdict-likely: var(--color-verdict-likely-l);
+  --verdict-verylikely: var(--color-verdict-verylikely-l);
+  --danger: var(--color-danger-l);
+
+  /* Elevation on paper behaves normally: light from above, tinted with the
+     petrol hue rather than pure black so shadows don't grey out the page. */
+  --shadow-panel: 0 1px 2px rgb(20 34 33 / 0.05), 0 2px 8px rgb(20 34 33 / 0.04);
+  --shadow-raised: 0 2px 4px rgb(20 34 33 / 0.06), 0 8px 24px rgb(20 34 33 / 0.07);
+  --shadow-lifted: 0 4px 8px rgb(20 34 33 / 0.07), 0 16px 40px rgb(20 34 33 / 0.10);
+  --edge-highlight: inset 0 1px 0 rgb(255 255 255 / 0.9);
 }
 
+.dark {
+  color-scheme: dark;
+
+  --canvas: var(--color-petrol-950);
+  --panel: var(--color-petrol-900);
+  --raised: var(--color-petrol-850);
+  --overlay: var(--color-petrol-800);
+  --line: #304140;
+  --line-strong: #445755;
+
+  --text-primary: #ecf6f5;
+  --text-secondary: #b4c1c0;
+  --text-muted: var(--color-petrol-500);
+  --text-faint: #5e6c6b;
+
+  --accent: var(--color-teal-400);
+  --accent-hover: var(--color-teal-300);
+  --accent-quiet: var(--color-teal-800);
+  --accent-contrast: #04211f;
+
+  --verdict-unlikely: var(--color-verdict-unlikely-d);
+  --verdict-possibly: var(--color-verdict-possibly-d);
+  --verdict-likely: var(--color-verdict-likely-d);
+  --verdict-verylikely: var(--color-verdict-verylikely-d);
+  --danger: var(--color-danger-d);
+
+  /* On a dark panel a big black shadow reads as mud, so elevation is carried
+     by surface lightness and a 1px top edge highlight — the way light catches
+     the machined edge of a panel. The drop shadow only anchors it. */
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.30);
+  --shadow-raised: 0 2px 6px rgb(0 0 0 / 0.36), 0 12px 32px rgb(0 0 0 / 0.24);
+  --shadow-lifted: 0 4px 12px rgb(0 0 0 / 0.44), 0 24px 60px rgb(0 0 0 / 0.34);
+  --edge-highlight: inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+/* Bridge the semantic tokens into Tailwind so `bg-canvas`, `text-muted`,
+   `border-line`, `shadow-raised` etc. all exist as utilities. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-overlay: var(--overlay);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-quiet: var(--accent-quiet);
+  --color-accent-contrast: var(--accent-contrast);
+
+  --color-unlikely: var(--verdict-unlikely);
+  --color-possibly: var(--verdict-possibly);
+  --color-likely: var(--verdict-likely);
+  --color-verylikely: var(--verdict-verylikely);
+  --color-danger: var(--danger);
+
+  --shadow-panel: var(--shadow-panel);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-lifted: var(--shadow-lifted);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ============================================================================
+   3. BASE
+   ========================================================================= */
+@layer base {
+  * { border-color: var(--line); }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: 1.6;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Display type uses Archivo's width axis — expanded headlines against
+     normal-width body is what separates the two roles, rather than a second
+     typeface. */
+  h1, h2, h3 {
+    font-variation-settings: "wdth" 112;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  /* Numbers are data: tabular so a changing readout doesn't jitter. */
+  .tabular, output, [data-readout] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background: var(--accent-quiet);
+    color: var(--text-primary);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ============================================================================
+   4. UTILITIES
+   ========================================================================= */
+
+/* A panel: surface + hairline + the machined top edge. The single device that
+   makes the whole UI read as instrument rather than website. */
+@utility panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel), var(--edge-highlight);
+}
+
+@utility panel-raised {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised), var(--edge-highlight);
+}
+
+/* Eyebrow / tick labels — the small spaced mono caps used on scale markings,
+   section labels and metadata. */
+@utility tick-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-tick);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  /* --text-muted, not --text-faint: at 11px this is small text and has to
+     clear 4.5:1. `faint` measures 3.4:1 and is only valid for decoration. */
+  color: var(--text-muted);
+}
+
+/* Hairline rule that fades at both ends, like a scale engraved on a panel. */
+@utility rule-etched {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--line-strong) 15%,
+    var(--line-strong) 85%,
+    transparent
+  );
+}
+
+/* Full-bleed. There is deliberately no max-width: the app is an instrument
+   panel, and an instrument uses the whole face of the case. What keeps that
+   readable is that nothing *inside* runs the full width by default — prose
+   takes a `ch` measure, and the elements that do span the viewport are the
+   ones where width is resolution (the scale, the waveform, the spectrogram).
+
+   `edge` is the same gutter without the block padding, for full-width rules
+   and bands that must touch the same left and right margin as the content. */
+@utility shell {
+  width: 100%;
+  padding-inline: var(--gutter);
+}
+
+@utility edge {
+  padding-inline: var(--gutter);
+}
+
+/* A hairline that spans the full bleed. At this width a rule is the main
+   structural device — it does the job a container edge used to. */
+@utility rule-full {
+  border-top: 1px solid var(--line);
+}
+
+/* ---------------------------------------------------------------------------
+   The verdict scale.
+
+   `verdict-ramp` is the raw diverging colour, and **only /design renders it
+   raw**, as documentation of the palette. A reading is never drawn as a smooth
+   gradient bar: a continuous fill reads as a progress bar — a quantity
+   accumulating towards completion — which is the opposite of what a
+   probability is, and it invites the eye to read the whole bar rather than the
+   one point on it that is the measurement.
+
+   Readings render the ramp through a graduation mask instead, which turns it
+   into an engraved centesimal scale: 50 fine graduations, one per two
+   percentage points, with a full-height major every ten. The engraving is what
+   makes the scale a ruler you read a position off, and it carries both colour
+   rules intact — hue still says which side of the threshold, chroma still
+   drains to grey at the boundary, because the mask changes where the colour
+   is painted and never which colour it is.
+
+   Both masks put the tick at 0.6% of the band's width so the fine and major
+   engravings are the same weight, and both centre it in its cell. That lands
+   the fine ticks on the odd percentages (1, 3 … 99) and the majors on 5, 15 …
+   95, so every fifth fine tick is a major, the band is inset by the same 1% at
+   each end instead of running out of ticks on the right, and the tier
+   boundaries at 25/50/75 — including the threshold annotation — fall in a gap
+   rather than on top of a graduation.
+   ------------------------------------------------------------------------- */
+@utility verdict-ramp {
+  background: linear-gradient(
+    to right,
+    var(--verdict-unlikely) 0%,
+    var(--verdict-possibly) 33%,
+    var(--verdict-likely) 67%,
+    var(--verdict-verylikely) 100%
+  );
+}
+
+@utility graduation-fine {
+  --graduation: linear-gradient(
+    to right,
+    transparent 0 35%,
+    #000 35% 65%,
+    transparent 65%
+  );
+  mask-image: var(--graduation);
+  mask-size: 2% 100%;
+  mask-repeat: repeat;
+  -webkit-mask-image: var(--graduation);
+  -webkit-mask-size: 2% 100%;
+  -webkit-mask-repeat: repeat;
+}
+
+@utility graduation-major {
+  --graduation: linear-gradient(
+    to right,
+    transparent 0 47%,
+    #000 47% 53%,
+    transparent 53%
+  );
+  mask-image: var(--graduation);
+  mask-size: 10% 100%;
+  mask-repeat: repeat;
+  -webkit-mask-image: var(--graduation);
+  -webkit-mask-size: 10% 100%;
+  -webkit-mask-repeat: repeat;
+}
+
+/* ============================================================================
+   5. MOTION
+   One keyframe set, all of it opt-in. Reduced motion removes travel and keeps
+   opacity, so nothing disappears for anyone who turns animation off.
+   ========================================================================= */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes sweep {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Ambient drift for the hero spectrogram. Slow enough to read as a live
+   signal rather than a loading state. */
+@keyframes drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@utility animate-rise {
+  animation: rise var(--duration-slow) var(--ease-instrument) both;
+}
+
+@utility animate-sweep {
+  transform-origin: left center;
+  animation: sweep var(--duration-sweep) var(--ease-needle) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
