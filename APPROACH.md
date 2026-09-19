@@ -68,9 +68,9 @@ paper; taking them from one source is deliberate.
 
 | System | Params | Front-end | EER | min t-DCF | Source |
 | --- | --- | --- | --- | --- | --- |
-| CQCC-GMM | — | CQCC | 9.57% | 0.2366 | Official ASVspoof2019 baseline B1 |
-| LFCC-GMM | — | LFCC | 8.09% | 0.2116 | Official ASVspoof2019 baseline B2 |
-| **Our CNN** | 267k | log-Mel | **10.15%** | *pending* | measured here, 19 Sep 2026 |
+| CQCC-GMM | — | CQCC | 9.57% | 0.2366 | ASVspoof2019 DB paper, Table 8 |
+| LFCC-GMM | — | LFCC | 8.09% | 0.2116 | ASVspoof2019 DB paper, Table 8 |
+| **Our CNN** | 267k | log-Mel | **10.15%** | **0.2350** | measured here, 19 Sep 2026 |
 | LCNN-LSTM-sum | 276k | LFCC | 1.92% | 0.0525 | AASIST Table 2 |
 | RawGAT-ST | 437k | raw waveform | 1.19% | 0.0335 | AASIST Table 2 |
 | AASIST-L | 85k | raw waveform | 0.99% | 0.0309 | AASIST Table 2 + official repo |
@@ -169,6 +169,55 @@ figure describes a detector that does not exist. Report the breakdown.
 
 Raw numbers are in `checkpoints/nodp/eval_eval_*.json`, written by
 `evaluate.py`, so the table above can be rebuilt without rerunning anything.
+
+### Per-attack, against the official baselines
+
+The pooled numbers put our CNN between the two GMM baselines — worse than both
+on EER, marginally better than CQCC-GMM on min t-DCF. That the two metrics rank
+the systems differently is itself the argument for reporting both.
+
+Per attack, though, the story is not "slightly worse". It is "wildly uneven".
+Baseline columns are B1/B2 from Table 8 (evaluation set) of the ASVspoof2019
+database paper — the same table the pooled row comes from, so the comparison is
+like for like.
+
+| Attack | Ours | B1 CQCC-GMM | B2 LFCC-GMM | |
+| --- | --- | --- | --- | --- |
+| A07 | 0.11% | 0.00% | 12.86% | |
+| A08 | 0.83% | 0.04% | 0.37% | |
+| A09 | 0.63% | 0.14% | 0.00% | |
+| A10 | **3.70%** | 15.16% | 18.97% | we beat both, by 4–5× |
+| A11 | 2.97% | 0.08% | 0.12% | |
+| A12 | 8.10% | 4.74% | 4.92% | |
+| A13 | 15.85% | 26.15% | 9.57% | |
+| A14 | **2.12%** | 10.85% | 1.22% | |
+| A15 | 5.72% | 1.26% | 2.22% | |
+| A16 | 0.22% | 0.00% | 6.31% | |
+| A17 | **41.19%** | 19.62% | 7.71% | we are 5× worse than B2 |
+| A18 | 12.19% | 3.81% | 3.58% | |
+| A19 | **2.61%** | 0.04% | 13.94% | |
+| **Pooled** | **10.15%** | 9.57% | 8.09% | |
+
+Two things to take from this.
+
+**Our CNN is not uniformly inferior — it is differently shaped.** On A10 it beats
+both baselines by a factor of four to five, and on A19 it beats LFCC-GMM by five.
+Those are neural waveform-generation attacks, and a learned front-end sees
+something the cepstral ones do not. The pooled figure hides that entirely.
+
+**A17 is the whole deficit.** At 41.19% the model is close to useless on it,
+against 7.71% for LFCC-GMM. Remove A17 and our pooled EER would sit comfortably
+below both baselines. The database paper notes A17 is VC with waveform
+filtering and that its waveform generation method is unlike anything in the
+training set — so this is a generalisation failure on a specific synthesis
+family, not a uniformly weak detector. It is also a known-hard attack: B1 scores
+19.62% on it.
+
+That reframes the case for AASIST. The argument is not "our model is bad"; it is
+that a log-Mel front-end throws away the evidence for one attack family, exactly
+as predicted in "The model: AASIST" above — the Mel scale compresses high
+frequencies, which is where waveform-filtering artefacts live. A17 is that
+prediction showing up as a number.
 
 ### Sourcing discipline
 
