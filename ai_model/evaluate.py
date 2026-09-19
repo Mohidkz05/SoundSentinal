@@ -47,6 +47,10 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 BATCH_SIZE = 128
 
 
+def fmt_pct(v):
+    return "   n/a" if v is None else f"{v * 100:6.2f}%"
+
+
 def confusion_at(labels, scores, threshold):
     """Counts at a given operating point. `spoof if p >= threshold`, matching app.py."""
     pred = (scores >= threshold).astype(int)
@@ -166,7 +170,17 @@ def main():
     print(f"  epoch       {ckpt.get('epoch')}")
     print(f"  front-end   {frontend}")
     print(f"  regime      {'DP' if ckpt.get('dp') else 'non-private'}")
-    print(f"  dev EER     {(ckpt.get('best_eer') or float('nan')) * 100:.2f}%")
+    # This epoch's own dev EER, not the run's running best. They differ the
+    # moment an epoch is worse than its predecessor — LFCC epoch 5 scored 5.73%
+    # against a running best of 5.34% — and conflating them silently flattens
+    # the dev curve exactly where it turns, which is the part worth seeing.
+    ckpt_metrics = ckpt.get("metrics") or {}
+    dev_eer_epoch = ckpt_metrics.get("dev_eer")
+    dev_eer_best = ckpt.get("best_eer")
+    print(f"  dev EER     {fmt_pct(dev_eer_epoch)}  (this epoch)")
+    if dev_eer_best is not None and dev_eer_epoch is not None and \
+       abs(dev_eer_best - dev_eer_epoch) > 1e-9:
+        print(f"              {fmt_pct(dev_eer_best)}  (best so far in the run)")
     print(f"  threshold   {dev_threshold:.4f} "
           f"({'calibrated on dev' if calibrated else 'DEFAULT 0.5, checkpoint carries none'})")
 
@@ -252,8 +266,8 @@ def main():
         "epoch": ckpt.get("epoch"),
         "n_clips": int(len(labels)),
         "class_names": CLASS_NAMES,
-        "dev": {"eer": ckpt.get("best_eer"), "threshold": dev_threshold,
-                "threshold_calibrated": calibrated},
+        "dev": {"eer": dev_eer_epoch, "best_eer_in_run": dev_eer_best,
+                "threshold": dev_threshold, "threshold_calibrated": calibrated},
         "pooled": {
             "min_tdcf": min_tdcf, "tdcf_detail": tdcf_detail,
             "eer": pooled_eer, "eer_threshold": eer_threshold,
