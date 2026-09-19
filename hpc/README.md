@@ -231,14 +231,20 @@ stable run to run, which matters more here than usual — the UI draws that
 threshold on screen, so it is a number users see, and `/result` states the
 relation to it in prose.
 
+**Eval-partition result — job 60260737, 71,237 clips, under 3 minutes.**
+**10.15% EER**, against 0.24% on dev: a factor of 42, and the honest version of
+the dev number. It loses to both 2019 GMM baselines, which is the measured case
+for AASIST. Per-attack spread runs A07 0.11% to A17 41.19%. Full analysis in
+`APPROACH.md` under "What the baseline actually measured"; raw numbers in
+`checkpoints/nodp/eval_eval_*.json`.
+
 **Still not done:**
 
-- **An eval-partition number.** The baseline below reports *dev* EER, and dev
-  reuses the attacks seen in training. Nothing in the repo evaluates on the eval
-  partition yet, and until something does, there is no figure here comparable to
-  the table in `APPROACH.md`.
-- **AASIST is not ported.** `train.slurm` trains the current 2-conv CNN. Step 3
-  in "Order of work" in `APPROACH.md`; the job script does not change when it
-  lands, only what `train_dp_avspoof.py` builds.
+- **AASIST is not ported.** `train.slurm` trains the current 2-conv CNN, which
+  the eval run below shows losing to the 2019 GMM baselines. Step 3 in "Order of
+  work" in `APPROACH.md`; neither job script changes when it lands, only what
+  `train_dp_avspoof.py` builds.
+- **The DP arm has not been run**, so the cost-of-privacy gap — the project's
+  actual research question — is still unmeasured.
 - **DP arm untried on this hardware.** Opacus per-sample gradients cost 2–4× in
   memory; `--mem=32G` is a guess until a DP run is measured.

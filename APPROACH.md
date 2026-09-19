@@ -70,7 +70,7 @@ paper; taking them from one source is deliberate.
 | --- | --- | --- | --- | --- |
 | CQCC-GMM | — | CQCC | 9.57% | Official ASVspoof2019 baseline B1 |
 | LFCC-GMM | — | LFCC | 8.09% | Official ASVspoof2019 baseline B2 |
-| **Our CNN** | 267k | log-Mel | *not run* | — |
+| **Our CNN** | 267k | log-Mel | **10.15%** | measured here, 19 Sep 2026 |
 | LCNN-LSTM-sum | 276k | LFCC | 1.92% | AASIST Table 2 |
 | RawGAT-ST | 437k | raw waveform | 1.19% | AASIST Table 2 |
 | AASIST-L | 85k | raw waveform | 0.99% | AASIST Table 2 + official repo |
@@ -112,6 +112,54 @@ The corpus is built on VCTK, whose speakers consented to research use — so
 redistribution of the audio is not ours to grant. Cite it, do not re-host it,
 and keep the corpus on M3 and the laptop rather than in the repo (`data/` is
 already gitignored, which is the mechanism enforcing this).
+
+### What the baseline actually measured — 19 September 2026
+
+The CNN row above is now a measurement. Non-private, 5 epochs, class-weighted,
+LA eval partition. Three things came out of it, and the second is the one to
+lead with.
+
+**1. It does not beat the official baselines.** 10.15% eval EER sits *above*
+both LFCC-GMM (8.09%) and CQCC-GMM (9.57%) — worse than two systems from 2019
+that are not neural networks at all. That is not a disappointment, it is the
+argument for this project: it shows a small log-Mel CNN is the wrong tool, and
+it is the measured gap that AASIST at 0.83% is proposed to close. A comparison
+whose starting point already worked would not be worth running.
+
+**2. Dev EER was 0.24%. Eval EER is 10.15%. That is a factor of 42.** The dev
+partition reuses the six attacks seen in training, so 0.24% measured how well
+the model recognised six specific vocoders, not whether it detects synthetic
+speech. Anyone reporting the dev figure would be claiming to beat AASIST with a
+two-layer CNN. This is the concrete instance of the warning below, and it is
+worth quoting in the writeup as a methodology point rather than hiding.
+
+**3. The calibrated threshold does not survive the partition change**, and this
+one has product consequences. The dev-calibrated operating point is 0.5698; on
+eval the EER point is **0.0070**, nearly two orders of magnitude lower. Serving
+the dev threshold against unseen attacks gives:
+
+| | at eval's own threshold | at the served threshold 0.5698 |
+| --- | --- | --- |
+| accuracy | — | 70.78% |
+| spoofs passed | 10.15% | **32.51%** |
+| real clips flagged | 10.15% | 0.61% |
+
+A third of deepfakes get through. The model is not the only thing at fault —
+the threshold is, and it is a threshold this product *draws on screen* and
+describes in prose on `/result`. Calibrating on a partition that shares attacks
+with training produces an operating point that is confidently wrong in
+deployment. Whatever architecture wins, calibration needs a held-out set whose
+attacks are unseen.
+
+**Per-attack, the spread is enormous**: A07 0.11%, A16 0.22%, A09 0.63% at one
+end; **A17 41.19%**, A13 15.85%, A18 12.19% at the other. A17 being close to
+useless is consistent with the wider literature, where it is routinely the
+hardest LA attack. The pooled 10.15% is therefore an average over attacks the
+model handles completely differently, and a writeup that quotes only the pooled
+figure describes a detector that does not exist. Report the breakdown.
+
+Raw numbers are in `checkpoints/nodp/eval_eval_*.json`, written by
+`evaluate.py`, so the table above can be rebuilt without rerunning anything.
 
 ### Sourcing discipline
 
