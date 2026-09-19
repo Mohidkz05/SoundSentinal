@@ -109,6 +109,43 @@ The checkpoint carries its own calibrated threshold, dev metrics and confusion
 matrix, and `app.py` builds the model card from them — so the reading on
 `/result` describes the run that produced it with nothing typed in by hand.
 
+## Driving M3 from your laptop
+
+Key-based auth, so job submission and log reading need no password. M3 offers
+`publickey` with no MFA step — confirmed from its auth banner
+(`publickey,gssapi-keyex,gssapi-with-mic,password`) — so this works.
+
+`~/.ssh/m3_df37` is a key dedicated to this account, separate from the GitHub
+key, so revoking either leaves the other alone. It has **no passphrase**, which
+is what makes unattended use possible; the file permissions are the protection.
+If you would rather have one, add it with `ssh-keygen -p -f ~/.ssh/m3_df37` and
+unlock it once per session with `ssh-add`.
+
+Install it — the one step that needs the cluster password:
+
+```bash
+ssh-copy-id -i ~/.ssh/m3_df37.pub m3
+ssh m3 true && echo "key works"
+```
+
+`~/.ssh/config` defines `m3` (login) and `m3-dtn` (data transfer), both with
+`IdentitiesOnly yes` so ssh does not offer the GitHub key first and exhaust the
+server's retry limit before reaching the right one.
+
+After that, everything is one-liners from the repo on your laptop:
+
+```bash
+ssh m3 'squeue -u mkha0155'                       # what is queued or running
+ssh m3 'cd ~/SoundSentinal && git pull'           # ship a code change
+ssh m3 'cd ~/SoundSentinal && sbatch hpc/train.slurm --no-dp'
+ssh m3 'tail -40 ~/SoundSentinal/soundsentinal-*.out'
+ssh m3 'scancel <jobid>'
+scp m3-dtn:df37/checkpoints/nodp/best.pth ai_model/checkpoints/
+```
+
+Treat the M3 clone as **read-only**: pull, never commit. Its git identity is
+unconfigured, and a commit made there is one to reconcile later for no gain.
+
 ## No internet on the compute nodes?
 
 `get_la.slurm` checks for a route out and stops with this message if there is
