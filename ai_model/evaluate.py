@@ -31,6 +31,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from model import AudioClassifierCNN, CLASS_NAMES, LABEL_MAP, build_transform
+from tdcf import compute_min_tdcf
 from train_dp_avspoof import (
     AVSpoofDataset,
     CKPT_DIR,
@@ -185,11 +186,30 @@ def main():
 
     # Two operating points, and the distance between them is the point.
     pooled_eer, eer_threshold = compute_eer_np(labels, scores)
+
+    # min t-DCF is ASVspoof2019's PRIMARY metric; EER is the secondary one. It
+    # is computed only when the organisers' ASV scores are present, because
+    # they are what make the number comparable across systems — a t-DCF against
+    # a different ASV is not the same quantity.
+    min_tdcf, tdcf_detail = None, None
+    asv_key = f"{key}_ASV_SCORES"
+    if asv_key in paths:
+        try:
+            min_tdcf, tdcf_detail = compute_min_tdcf(
+                scores[labels == 0], scores[labels == 1], paths[asv_key])
+        except Exception as exc:                      # noqa: BLE001
+            print(f"  (min t-DCF unavailable: {type(exc).__name__}: {exc})")
+    else:
+        print(f"  (min t-DCF skipped: no ASV score file for the {args.partition} partition)")
     cm_oracle, far_oracle, frr_oracle = rates_at(labels, scores, eer_threshold)
     cm_dev, far_dev, frr_dev = rates_at(labels, scores, dev_threshold)
     acc_dev = (cm_dev["tn"] + cm_dev["tp"]) / max(1, len(labels))
 
     print(f"\n=== {args.corpus} {args.partition} ===")
+    if min_tdcf is not None:
+        print(f"min t-DCF                {min_tdcf:6.4f}  <- ASVspoof2019 PRIMARY metric")
+        print(f"                                 (1.0 = the 'accept everything' floor;")
+        print(f"                                  AASIST reports 0.0275 on this partition)")
     print(f"EER                      {pooled_eer*100:6.2f}%  (at its own threshold {eer_threshold:.4f})")
     print(f"  confusion @EER         bonafide {cm_oracle['tn']} ok / {cm_oracle['fp']} flagged | "
           f"spoof {cm_oracle['tp']} caught / {cm_oracle['fn']} missed")
@@ -227,6 +247,7 @@ def main():
         "dev": {"eer": ckpt.get("best_eer"), "threshold": dev_threshold,
                 "threshold_calibrated": calibrated},
         "pooled": {
+            "min_tdcf": min_tdcf, "tdcf_detail": tdcf_detail,
             "eer": pooled_eer, "eer_threshold": eer_threshold,
             "confusion_at_eer": cm_oracle,
             "at_served_threshold": {

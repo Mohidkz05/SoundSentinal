@@ -1,12 +1,14 @@
 # app.py
 
+import io
 import os
 
 import soundfile as sf
 import torch
 import torch.nn.functional as F
-from flask import Flask, request, jsonify
+from flask import Flask, Request, request, jsonify
 from pathlib import Path
+from werkzeug.formparser import FormDataParser
 
 # The architecture and the preprocessing come from model.py, the same module the
 # trainer uses. Never redefine them here — that is how train/serve drift starts.
@@ -140,6 +142,47 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 
+# ---------------------------------------------------------------------------
+# Keep the uploaded clip out of the filesystem. This is the project's central
+# privacy claim, and by default it was false.
+#
+# Werkzeug's default stream factory hands each uploaded file a
+# SpooledTemporaryFile with max_size = 1024 * 500. Under 500 KB the upload
+# stays in a BytesIO; over it, the spool rolls over and the bytes are written
+# to the filesystem behind $TMPDIR. Measured here: a 2 MB upload rolls over to
+# /tmp on an ext4-family filesystem — a real block device, not tmpfs — so a
+# user's voice lands on physical storage.
+#
+# The mitigations that do apply are real but partial. The file is created
+# unlinked (nlink=0), so it has no name another user can find in a directory
+# listing, and it is released when the request ends. But the bytes still reach
+# the disk, they are readable through /proc/<pid>/fd by root or the same uid
+# while the request is in flight, they can outlive the process in free blocks
+# until overwritten, and on a machine with swap they can reach swap too.
+#
+# Forcing BytesIO is safe *because* MAX_CONTENT_LENGTH above caps the request
+# at 5 MB — that cap is what makes an unconditional in-memory buffer bounded,
+# so the two settings must move together. Raise the limit and this becomes a
+# memory-exhaustion vector.
+#
+# This is the guarantee DP-SGD does not provide and cannot: differential
+# privacy protects the *training* corpus, which is public. The clip a user
+# uploads is an inference-time concern, and this is where it is answered.
+# See "Differential privacy: off now, ready later" in APPROACH.md.
+# ---------------------------------------------------------------------------
+class InMemoryFormDataParser(FormDataParser):
+    def __init__(self, *args, **kwargs):
+        kwargs["stream_factory"] = lambda *a, **k: io.BytesIO()
+        super().__init__(*args, **kwargs)
+
+
+class InMemoryRequest(Request):
+    form_data_parser_class = InMemoryFormDataParser
+
+
+app.request_class = InMemoryRequest
+
+
 @app.errorhandler(413)
 def too_large(_):
     return jsonify({"error": f"Audio file exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit."}), 413
@@ -165,9 +208,10 @@ def predict():
     audio_file = request.files['file']
 
     try:
-        # 1. Preprocess the incoming audio file. It is never written to disk:
-        #    Werkzeug keeps an upload this size in memory, and the tensor is all
-        #    that survives this call.
+        # 1. Preprocess the incoming audio file. It never reaches the
+        #    filesystem — see InMemoryRequest above, which is what makes that
+        #    true rather than merely hoped for — and the tensor is all that
+        #    survives this call.
         tensor = preprocess_audio(audio_file)
 
         # 2. Make a prediction (no gradients needed)
@@ -196,7 +240,11 @@ def predict():
         # server fault, and the message is written for the person who chose the
         # file rather than echoing the decoder — str(e) here includes the
         # internal FileStorage repr, which is both ugly and no one's business.
-        print(f"[predict] could not decode upload: {e}")
+        # Deliberately not logging `e`: libsndfile's message embeds the
+        # FileStorage repr, and with it the user's original filename. A
+        # filename is user data — "interview_with_my_doctor.wav" says plenty —
+        # and it has no place in a server log on a privacy-focused tool.
+        print("[predict] could not decode upload (LibsndfileError)")
         return jsonify({
             "error": "That file could not be decoded as audio. It may be corrupt, "
                      "or in a format this server does not support."

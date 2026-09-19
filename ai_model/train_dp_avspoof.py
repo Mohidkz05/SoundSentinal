@@ -84,6 +84,15 @@ def get_corpus_paths(corpus: str = "LA"):
     if eval_audio.exists() and eval_protos:
         paths["EVAL_AUDIO_DIR"] = eval_audio
         paths["EVAL_PROTOCOL_FILE"] = eval_protos[0]
+    # The organisers' ASV scores, needed for min t-DCF. Shipped with the corpus
+    # and deliberately not regenerated: t-DCF only compares across systems
+    # because every system is scored against the same ASV.
+    for part in ("dev", "eval"):
+        asv = sorted((DATA_ROOT / corpus / f"ASVspoof2019_{corpus}_asv_scores")
+                     .glob(f"*{part}*scores*")) if (
+                         DATA_ROOT / corpus / f"ASVspoof2019_{corpus}_asv_scores").exists() else []
+        if asv:
+            paths[f"{part.upper()}_ASV_SCORES"] = asv[0]
     return paths
 
 # --- Smart Checkpointing ---

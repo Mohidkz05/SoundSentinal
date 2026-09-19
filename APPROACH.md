@@ -66,16 +66,25 @@ Every row below is on the **ASVspoof2019 LA evaluation partition**, so they are
 directly comparable. Rows marked *AASIST Table 2* come from Table 2 of the AASIST
 paper; taking them from one source is deliberate.
 
-| System | Params | Front-end | EER | Source |
-| --- | --- | --- | --- | --- |
-| CQCC-GMM | — | CQCC | 9.57% | Official ASVspoof2019 baseline B1 |
-| LFCC-GMM | — | LFCC | 8.09% | Official ASVspoof2019 baseline B2 |
-| **Our CNN** | 267k | log-Mel | **10.15%** | measured here, 19 Sep 2026 |
-| LCNN-LSTM-sum | 276k | LFCC | 1.92% | AASIST Table 2 |
-| RawGAT-ST | 437k | raw waveform | 1.19% | AASIST Table 2 |
-| AASIST-L | 85k | raw waveform | 0.99% | AASIST Table 2 + official repo |
-| **AASIST** | 297k | raw waveform | **0.83%** | AASIST Table 2 + official repo |
-| wav2vec2 / WavLM front-end | 95M+ | raw waveform, pretrained | *unverified* | needs VM |
+| System | Params | Front-end | EER | min t-DCF | Source |
+| --- | --- | --- | --- | --- | --- |
+| CQCC-GMM | — | CQCC | 9.57% | 0.2366 | Official ASVspoof2019 baseline B1 |
+| LFCC-GMM | — | LFCC | 8.09% | 0.2116 | Official ASVspoof2019 baseline B2 |
+| **Our CNN** | 267k | log-Mel | **10.15%** | *pending* | measured here, 19 Sep 2026 |
+| LCNN-LSTM-sum | 276k | LFCC | 1.92% | 0.0525 | AASIST Table 2 |
+| RawGAT-ST | 437k | raw waveform | 1.19% | 0.0335 | AASIST Table 2 |
+| AASIST-L | 85k | raw waveform | 0.99% | 0.0309 | AASIST Table 2 + official repo |
+| **AASIST** | 297k | raw waveform | **0.83%** | **0.0275** | AASIST Table 2 + official repo |
+| wav2vec2 / WavLM front-end | 95M+ | raw waveform, pretrained | *unverified* | *unverified* | H100 via `m3h` QOS |
+
+**Two metrics, because the challenge has two.** min t-DCF is ASVspoof2019's
+*primary* metric and EER its secondary one. EER scores the countermeasure alone;
+t-DCF scores it in the position it actually occupies — in front of a speaker
+verification system — and weights each error by what it costs there. A
+countermeasure that rejects spoofs the ASV would have rejected anyway has bought
+nothing, and EER cannot see that. Normalised, 1.0 is the "accept everything"
+floor. `evaluate.py` reports both; the GMM baseline t-DCFs are from the
+ASVspoof2019 evaluation plan and the rest from AASIST Table 2.
 
 Why each row earns its place:
 
