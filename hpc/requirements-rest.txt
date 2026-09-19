@@ -1,0 +1,28 @@
+# Phase 2 of 2: everything else, from PyPI only.
+#
+#   uv pip install -r hpc/requirements-rest.txt       # after requirements-torch.txt
+#
+# No index directive at all, so this uses the default (PyPI). torch is already
+# installed by phase 1 and satisfies opacus's requirement on it, so nothing here
+# pulls a second copy — see the comment at the top of requirements-torch.txt for
+# why the two files cannot be merged.
+#
+# Versions match ../requirements.txt exactly. The only difference between the
+# cluster and the laptop is which torch build sits underneath.
+
+# soundfile, not torchaudio.load. Doubly important here: torchaudio 2.11
+# delegates that call to TorchCodec, which needs system FFmpeg libraries, and
+# on a cluster there is no sudo to install them. soundfile bundles libsndfile.
+soundfile==0.14.0
+
+numpy==2.5.1
+pandas==3.0.5
+tqdm==4.70.0
+
+opacus==1.6.0
+
+# Flask is here only because verify_setup.py imports app.py to assert that the
+# tensor the server builds is byte-identical to the training one. That parity
+# check is worth running before a long job, and Flask is ~1MB. The server
+# itself does not run on M3; `requests` (test_api.py only) is left out.
+Flask==3.1.3

@@ -1,0 +1,40 @@
+# Phase 1 of 2: torch and torchaudio only, from PyTorch's own CUDA index.
+#
+#   uv pip install -r hpc/requirements-torch.txt      # then requirements-rest.txt
+#
+# THIS FILE NAMES EXACTLY ONE INDEX, AND THAT IS THE POINT. uv's default
+# `first-index` strategy resolves a package from the first index that contains
+# its *name*, never falling through to a later index for a better version —
+# deliberately, because that fall-through is what dependency-confusion attacks
+# exploit. Mixing PyPI and the CUDA index in one file therefore breaks whichever
+# way it is ordered, and both failures were hit here before this split:
+#
+#   PyPI consulted first  -> PyPI answers for `torch`, and PyPI's torch 2.13.0
+#                            is its own CUDA build. Asked for cu129, installed
+#                            cu130, in total silence.
+#   CUDA index first      -> it also mirrors tqdm, at a version older than the
+#                            pin, and the whole resolution fails as
+#                            unsatisfiable.
+#
+# Splitting by index rather than reaching for `--index-strategy
+# unsafe-best-match` keeps each index authoritative for what it should actually
+# provide. The CUDA index carries every one of torch's transitive dependencies,
+# so phase 1 needs nothing from PyPI: verified resolving to 20 packages with no
+# extra index configured.
+#
+# The `+cu130` local version is what makes the outcome checkable rather than
+# hopeful — PyPI's plain `2.13.0` cannot match it, so a misconfiguration fails
+# loudly instead of installing a different build.
+#
+# Why CUDA 13 on M3: the GPU nodes run driver 580.126.20 and CUDA 13 wants
+# >= 580. Verified on the hardware on 19 September 2026 — a real 4096x4096
+# matmul and a MelSpectrogram both ran on an L40S and on an A100 80GB. That is
+# a one-minor-version margin, so if a job ever reports "CUDA driver version is
+# insufficient", the fix is CUDA 12, whose wheels run on any driver >= 525:
+#   torch==2.13.0+cu129  torchaudio==2.11.0+cu129
+#   --index-url https://download.pytorch.org/whl/cu129
+
+--index-url https://download.pytorch.org/whl/cu130
+
+torch==2.13.0+cu130
+torchaudio==2.11.0+cu130

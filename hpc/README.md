@@ -98,7 +98,8 @@ request needs no partition named.
 | --- | --- |
 | `env.sh` | The paths. Sourced by everything, including your own ssh sessions. |
 | `bootstrap.sh` | `uv` → venv at `~/df37/venv` → CUDA wheels. Idempotent. |
-| `requirements-cuda.txt` | The root `requirements.txt` pins, built for CUDA. |
+| `requirements-torch.txt` | torch + torchaudio, CUDA index only. |
+| `requirements-rest.txt` | Everything else, PyPI only. Split on purpose — see its header. |
 | `get_la.slurm` | ASVspoof2019 LA → `~/df37_scratch/data/LA`. Resumable. |
 | `train.slurm` | `verify_setup.py`, then training. Forwards its arguments. |
 
@@ -196,12 +197,15 @@ Detach with `Ctrl-b d`, come back with `tmux attach -t la`.
 **Two bugs this setup found in itself**, both worth knowing because the shape
 recurs:
 
-- `requirements-cuda.txt` asked for cu129 and installed cu130 in silence. uv
+- The dependency file asked for cu129 and installed cu130 in silence. uv
   consults extra indexes before `--index-url` and stops at the first index
-  holding a package *name*, so PyPI answered for torch. Fixed by pinning the
-  `+cu130` local version and making the CUDA index the extra. The lesson is that
-  an index URL is a hint, not an instruction — pin the local version and check
-  with `--dry-run`.
+  holding a package *name*, never falling through for a better version. Ordering
+  them the other way just moved the failure — the CUDA index also mirrors `tqdm`,
+  older than the pin, and the resolution died as unsatisfiable. The fix is one
+  index per file: `requirements-torch.txt` and `requirements-rest.txt`. An index
+  URL is a hint, not an instruction; pin the `+cuXXX` local version and check
+  with `--dry-run` **on a clean venv**, since a dry run against an
+  already-correct environment passes regardless.
 - `get_la.slurm` let curl write its progress meter into the job log, about two
   thousand lines of percentages burying everything else. Same defect as the
   trainer's tqdm bar, same fix.

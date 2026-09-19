@@ -51,8 +51,13 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   uv venv --python 3.12 "$VENV_DIR"
 fi
 
-echo "== Installing dependencies (CUDA build) =="
-VIRTUAL_ENV="$VENV_DIR" uv pip install -r hpc/requirements-cuda.txt
+# Two phases, one index each. See the header of requirements-torch.txt — a
+# single file naming both indexes fails whichever order they are given in.
+echo "== Installing torch/torchaudio (CUDA build) =="
+VIRTUAL_ENV="$VENV_DIR" uv pip install -r hpc/requirements-torch.txt
+
+echo "== Installing everything else (PyPI) =="
+VIRTUAL_ENV="$VENV_DIR" uv pip install -r hpc/requirements-rest.txt
 
 # --- verify -----------------------------------------------------------------
 # On a login node there is no GPU, so `cuda.is_available()` is expected to be
@@ -69,7 +74,7 @@ print(f"soundfile   {soundfile.__version__}")
 built = torch.version.cuda
 print(f"CUDA build  {built or 'NONE — this is a CPU wheel, the index URL did not take'}")
 print(f"GPU visible {torch.cuda.is_available()}  (False is correct on a login node)")
-assert built, "installed a CPU-only torch; check hpc/requirements-cuda.txt"
+assert built, "installed a CPU-only torch; check hpc/requirements-torch.txt"
 PY
 
 cat <<MSG
