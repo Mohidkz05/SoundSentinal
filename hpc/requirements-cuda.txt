@@ -5,12 +5,28 @@
 #
 #   uv pip install -r hpc/requirements-cuda.txt
 #
-# The `+cu130` local version is load-bearing, not decoration. An earlier version
-# of this file asked for cu129 by index URL and got cu130 anyway: uv gives
-# --extra-index-url priority over --index-url (the opposite of pip), so PyPI won
-# the resolution and PyPI's torch 2.13.0 is itself a CUDA 13 build. Pinning the
-# local version makes that impossible — PyPI's `2.13.0` carries no local tag and
-# simply does not match `==2.13.0+cu130`, so only this index can satisfy it.
+# Read the two index lines below together with the `+cu130` pins — the
+# combination is load-bearing, and getting it wrong fails in both directions.
+#
+# uv resolves differently from pip in two ways that compound. It consults
+# --extra-index-url *before* --index-url, and its default `first-index` strategy
+# stops at the first index that contains a package *name*, never falling through
+# to a later one for a better version (this is deliberate: it is what prevents
+# dependency-confusion attacks). So:
+#
+#   - Ask for `torch==2.13.0` with PyPI anywhere in the list and PyPI answers.
+#     That is how an earlier version of this file requested cu129 by index URL
+#     and installed cu130 without a word: PyPI's torch 2.13.0 is itself a CUDA 13
+#     build, so the file said one thing and the venv was another.
+#   - Ask for `torch==2.13.0+cu130` with PyPI as the *extra* and it hard-fails:
+#     uv finds the name on PyPI, finds no such version, and refuses to look at
+#     the CUDA index at all.
+#
+# Hence the arrangement: the CUDA index is the **extra**, so it is searched
+# first and wins on torch and torchaudio, and PyPI is the primary, picked up for
+# everything below that the CUDA index does not carry. The `+cu130` pins then
+# make the outcome checkable — `uv pip install --dry-run` either reports exactly
+# these two or says why not, instead of silently installing something else.
 #
 # Why CUDA 13 is the right target *on M3 specifically*: the GPU nodes run driver
 # 580.126.20, and CUDA 13 wants >= 580. Verified on the hardware rather than
@@ -19,14 +35,14 @@
 # "CUDA driver version is insufficient" on some other node type, the driver moved
 # or that node is older, and the fix is CUDA 12:
 #   torch==2.13.0+cu129  torchaudio==2.11.0+cu129
-#   --index-url https://download.pytorch.org/whl/cu129
+#   --extra-index-url https://download.pytorch.org/whl/cu129   (still the extra)
 # CUDA 12.x wheels run on any driver >= 525, so that is the safe fallback.
 #
 # NOTE: these pins are M3's, not a laptop's. An RTX 4070 on driver 610.62 takes
 # either; see Setup in CLAUDE.md.
 
---index-url https://download.pytorch.org/whl/cu130
---extra-index-url https://pypi.org/simple
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cu130
 
 torch==2.13.0+cu130
 torchaudio==2.11.0+cu130
