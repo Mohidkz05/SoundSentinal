@@ -1,5 +1,7 @@
 # app.py
 
+import os
+
 import soundfile as sf
 import torch
 import torch.nn.functional as F
@@ -26,7 +28,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 
 # train_dp_avspoof.py writes checkpoints/best.pth (selected by dev EER). The
 # legacy flat file is kept as a fallback for older runs.
-BEST_CKPT = SCRIPT_DIR / "checkpoints" / "best.pth"
+#
+# $CKPT_ROOT must name the same directory the trainer wrote to — it reads the
+# same variable. Set it when the checkpoint tree lives outside the repo, which
+# is the normal case for anything trained on the cluster and copied back.
+CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
+BEST_CKPT = CKPT_DIR / "best.pth"
 LEGACY_MODEL_PATH = SCRIPT_DIR / "deepfake_audio_detector.pth"
 
 

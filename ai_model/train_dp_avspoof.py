@@ -80,7 +80,10 @@ def get_corpus_paths(corpus: str = "LA"):
 # DP and baseline runs get separate directories. They share an architecture but
 # not a training regime, so a shared last.pth would let one run auto-resume from
 # the other's weights. app.py reads checkpoints/best.pth, so DP keeps the root.
-CKPT_DIR = (SCRIPT_DIR / "checkpoints")
+# $CKPT_ROOT relocates the checkpoint tree off the repo. On an HPC account the
+# clone sits in a small home quota while runs belong in project storage; app.py
+# reads the same variable so the server still finds best.pth.
+CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 
 def get_ckpt_paths(use_dp: bool):
     ckpt_dir = CKPT_DIR if use_dp else CKPT_DIR / "nodp"
@@ -240,7 +243,23 @@ def main():
                              "the measured cost of privacy. Checkpoints go to checkpoints/nodp/.")
     parser.add_argument("--no-class-weights", dest="use_class_weights", action="store_false",
                         help="Disable inverse-frequency class weighting (for ablation).")
+    parser.add_argument("--num-workers", type=int,
+                        default=int(os.getenv("SLURM_CPUS_PER_TASK", "2")),
+                        help="DataLoader workers. Defaults to $SLURM_CPUS_PER_TASK inside a "
+                             "Slurm job, else 2. At this model size the dataloader is the "
+                             "bottleneck, not the GPU — but every worker forks the process, "
+                             "so RAM caps it (keep it at 8 on the 6.7GB WSL box).")
     args = parser.parse_args()
+
+    # Announce the device. A Slurm job that fell back to CPU because --gres was
+    # missing is indistinguishable from a slow one until you read this line.
+    if DEVICE.type == "cuda":
+        print(f"Device: cuda -> {torch.cuda.get_device_name(0)} "
+              f"({torch.cuda.get_device_properties(0).total_memory / 1e9:.0f}GB), "
+              f"torch {torch.__version__}")
+    else:
+        print(f"Device: CPU (no CUDA visible), torch {torch.__version__}")
+    print(f"DataLoader workers: {args.num_workers}")
 
     PATHS = get_corpus_paths(args.corpus)
     print(f"--- Using Corpus: {args.corpus} ---")
@@ -250,9 +269,11 @@ def main():
     transform_pipeline = build_transform()
 
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"], transform_pipeline)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                              num_workers=args.num_workers, pin_memory=True)
     dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline)
-    dev_loader = DataLoader(dev_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=2, pin_memory=True)
+    dev_loader = DataLoader(dev_dataset, batch_size=BATCH_SIZE, shuffle=False,
+                            num_workers=args.num_workers, pin_memory=True)
 
     model = AudioClassifierCNN().to(DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -295,7 +316,9 @@ def main():
         model.train()
         total_loss, correct, total = 0.0, 0, 0
         
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{EPOCHS}")
+        # disable=None is tqdm's "off unless stderr is a terminal" — inside a Slurm
+        # job the bar would otherwise write one line per update into the log file.
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{EPOCHS}", disable=None)
         for batch_idx, (inputs, labels) in enumerate(progress_bar, start=1):
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()

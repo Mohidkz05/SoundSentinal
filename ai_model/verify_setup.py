@@ -8,6 +8,7 @@
 # It needs torch/torchaudio but does NOT need the ASVspoof dataset or trained
 # weights — it uses the two sample .flac files committed alongside it.
 
+import os
 import sys
 from pathlib import Path
 
@@ -57,11 +58,13 @@ def main():
     # It loads weights at import time, so if there is no usable checkpoint yet we
     # drop in a temporary one built from an untrained net — the parity check cares
     # about preprocessing, not about what the weights contain.
-    ckpt_dir = SCRIPT_DIR / "checkpoints"
+    # Same $CKPT_ROOT app.py and the trainer read, so this checks the tree that
+    # will actually be served rather than an empty one next to the script.
+    ckpt_dir = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
     best = ckpt_dir / "best.pth"
     created_ckpt = not best.exists()
     if created_ckpt:
-        ckpt_dir.mkdir(exist_ok=True)
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
         torch.save({"epoch": 0, "steps_done": 0, "model": net.state_dict()}, best)
         print("  (no trained weights found; using a temporary untrained checkpoint)")
 

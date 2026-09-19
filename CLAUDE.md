@@ -30,6 +30,8 @@ src/app/                 Next.js App Router pages: /, /upload, /result, /design.
 src/lib/                 motion.js (Motion variants), verdict.js (tiers),
                          peaks.js (browser-side audio decode + envelope),
                          clip.js (carries the measured clip /upload → /result).
+hpc/                     Training on Monash M3 (Slurm). README.md is the
+                         runbook; env.sh holds every path. Not a VM — see below.
 components/              header.js, theme.js.
   ui/                    button.js, calibration-meter.js, verdict-scale.js,
                          mark.js.
@@ -124,7 +126,19 @@ CPU wheels are deliberate: ~1.2 GB installed vs several GB for CUDA, and nothing
 except training needs a GPU. There *is* a working RTX 4070 visible from WSL
 (`/dev/dxg` present, driver 610.62), so if you start training here rather than on
 Windows, swap in the CUDA build with
-`pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128`.
+`pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu129`.
+Note **cu129, not cu128** — the cu128 index stops at torch 2.11.0, so the pinned
+2.13.0 will not resolve there. `hpc/requirements-cuda.txt` carries the same pins
+for the cluster and explains the fallback.
+
+**Training properly happens on Monash M3**, not here — project `df37`, granted
+14 September 2026. `hpc/README.md` is the runbook and opens with why "it is not
+a VM" changes the workflow. The short version is
+`bash hpc/bootstrap.sh` → `sbatch hpc/get_la.slurm` → `sbatch hpc/train.slurm
+--no-dp`. Two env vars carry the layout into the Python: `ASVSPOOF_ROOT` for the
+corpus and `CKPT_ROOT` for the checkpoint tree, the latter read by
+`train_dp_avspoof.py`, `app.py` and `verify_setup.py` alike. Unset, all three
+fall back to the in-repo paths and this machine behaves exactly as before.
 
 ```bash
 # Frontend (node v24 via nvm; node_modules is not installed yet)

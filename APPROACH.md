@@ -168,7 +168,15 @@ Log a confusion matrix throughout, not just accuracy and EER. On 1:9 data
 Local: RTX 4070 **Laptop, 8GB**, 16 cores, WSL2 with 6.7GB RAM, ~300GB free.
 Everything in the table above except the wav2vec2 row fits comfortably.
 
-A university GPU VM has been requested from the supervisor for the wav2vec2 /
-WavLM ceiling row: **≥24GB VRAM**, ~100GB disk, Python 3.11+, SSH, sudo,
-persistent storage. Nothing is blocked on it — it buys the ceiling experiment and
-a shared environment for the group, not the main results.
+**Granted, and it is better than the VM that was asked for.** The request for a
+24GB GPU VM was answered with a Monash **M3 (MASSIVE)** account instead —
+project `df37`, *Detecting Deepfakes Without Compromising User Privacy*, active
+14 September 2026, username `mkha0155`. That covers the wav2vec2 / WavLM ceiling
+row with far more headroom than the 24GB floor we asked for, and there is no
+machine to maintain.
+
+It is a **Slurm cluster, not a VM**, and the difference is not cosmetic: no
+sudo, no long-lived interactive session, jobs submitted against
+`--account=df37` and run when a GPU frees up. `hpc/README.md` is the runbook and
+`hpc/` holds the scripts. Nothing is blocked on it — the CNN baseline still
+runs locally in ~10 minutes — but the big-model rows now have somewhere to go.

@@ -1,0 +1,41 @@
+# Training dependencies for M3. Same pins as ../requirements.txt, built against
+# CUDA instead of CPU — that file's `--extra-index-url .../cpu` would otherwise
+# quietly give a compute node a CPU-only torch, and the job would run to
+# completion at a tenth of the speed with nothing in the log to explain it.
+#
+#   uv pip install -r hpc/requirements-cuda.txt
+#
+# Why cu129 and not cu128: the cu128 index stops at torch 2.11.0, so pinning
+# 2.13.0 there fails to resolve. CUDA 12.x minor-version compatibility means a
+# cu129 wheel runs on any driver that supports CUDA 12 (>= 525), so this is not
+# a bet on M3 having a brand-new driver. Check with `nvidia-smi` on a GPU node;
+# if the driver predates 525, fall back to
+#   uv pip install torch==2.11.0 torchaudio==2.11.0 \
+#     --index-url https://download.pytorch.org/whl/cu128
+# and take the version skew — the checkpoint is a state_dict and loads either way.
+#
+# cu130 is deliberately avoided: CUDA 13 requires a driver >= 580, which is
+# newer than most clusters carry.
+
+--index-url https://download.pytorch.org/whl/cu129
+--extra-index-url https://pypi.org/simple
+
+torch==2.13.0
+torchaudio==2.11.0
+
+# soundfile, not torchaudio.load. Doubly important here: torchaudio 2.11
+# delegates that call to TorchCodec, which needs system FFmpeg libraries, and
+# on a cluster there is no sudo to install them. soundfile bundles libsndfile.
+soundfile==0.14.0
+
+numpy==2.5.1
+pandas==3.0.5
+tqdm==4.70.0
+
+opacus==1.6.0
+
+# Flask is here only because verify_setup.py imports app.py to assert that the
+# tensor the server builds is byte-identical to the training one. That parity
+# check is worth running before a long job, and Flask is ~1MB. The server
+# itself does not run on M3; `requests` (test_api.py only) is left out.
+Flask==3.1.3
