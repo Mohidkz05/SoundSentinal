@@ -210,11 +210,32 @@ recurs:
   thousand lines of percentages burying everything else. Same defect as the
   trainer's tqdm bar, same fix.
 
+**First trained baseline — 19 September 2026.** Job 60256177, `--no-dp`, on an
+L40S: 5 epochs in **2m49s**, exit 0. Weights at
+`~/df37/mkha0155/checkpoints/nodp/best.pth`, carrying a calibrated threshold of
+0.5698.
+
+Dev results by epoch, EER: 6.75% → 1.49% → 0.74% → 0.48% → **0.24%**.
+
+**Do not quote that 0.24% anywhere.** It is *dev* EER, and the dev partition
+uses attacks A01–A06 — the same six the model just trained on. Every row in
+`APPROACH.md`'s comparison table is *eval* partition, A07–A19, unseen. Put
+beside each other they would say this 267k-parameter 2-conv CNN beats AASIST
+(0.83%), which is not a finding, it is a category error. `APPROACH.md` says this
+under "Sourcing discipline" and it is the exact trap this number walks into.
+
+One thing worth watching: the calibrated threshold moved 0.5030 → 0.6735 →
+0.3342 → 0.8935 → 0.5698 across five epochs. The EER operating point is not
+stable run to run, which matters more here than usual — the UI draws that
+threshold on screen, so it is a number users see, and `/result` states the
+relation to it in prose.
+
 **Still not done:**
 
-- **No training run yet.** `train.slurm` has never been submitted; it is next,
-  once the corpus finishes extracting.
-- **Still no trained weights, anywhere.** That is the point of all of this.
+- **An eval-partition number.** The baseline below reports *dev* EER, and dev
+  reuses the attacks seen in training. Nothing in the repo evaluates on the eval
+  partition yet, and until something does, there is no figure here comparable to
+  the table in `APPROACH.md`.
 - **AASIST is not ported.** `train.slurm` trains the current 2-conv CNN. Step 3
   in "Order of work" in `APPROACH.md`; the job script does not change when it
   lands, only what `train_dp_avspoof.py` builds.
