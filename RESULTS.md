@@ -38,7 +38,8 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | Our CNN, `best.pth` | log-Mel | non-private | 10.15% | 0.2350 |
 | Our CNN, epoch 5 | LFCC | non-private | 13.10% | 0.2503 |
 | Our CNN, `best.pth` | LFCC | non-private | 13.72% | 0.2463 |
-| Our CNN, `best.pth` | log-Mel | **DP, ε=0.48** | **17.80%** | **0.2696** |
+| **Our CNN, epoch 3** | log-Mel | **DP, ε=0.48** | **17.57%** | **0.2609** |
+| Our CNN, `best.pth` | log-Mel | DP, ε=0.48 | 17.80% | 0.2696 |
 | AASIST (target) | raw waveform | non-private | 0.83% | 0.0275 |
 
 ## Finding 1 — dev EER does not select the best model
@@ -64,6 +65,13 @@ competitive with both official baselines into one that loses to both.
 Epochs 3–5 are the model learning the six training attacks better and
 generalising worse — textbook overfitting, invisible to the criterion being
 used to stop.
+
+**A note on the correlation statistic**, because `summarise_results.py` prints
+one and it is the wrong summary here. Dev and eval correlate at +0.917 across
+these epochs, which sounds reassuring and is not: the coefficient is dominated
+by epoch 1, where both are simply bad. What matters is the *rank*, and the rank
+is wrong — the best dev epoch is the fourth-best eval epoch. A high correlation
+and a broken selection criterion coexist comfortably.
 
 **Consequence:** model selection needs a held-out set containing unseen attack
 types. Until it has one, every comparison in this file is between arbitrary
@@ -126,15 +134,44 @@ Jobs 60261177 (train) and 60261217 (eval). Identical to the log-Mel baseline
 except Opacus is engaged: `noise_multiplier=1.1`, `max_grad_norm=1.0`,
 δ=1e-5, reaching **ε=0.48** after 5 epochs.
 
+Comparing each regime's `best.pth`:
+
 | | non-private | DP (ε=0.48) | cost |
 | --- | --- | --- | --- |
 | eval EER | 10.15% | 17.80% | **+7.65 points** |
 | min t-DCF | 0.2350 | 0.2696 | +0.0346 |
 | dev EER | 0.24% | 24.41% | +24.17 points |
 
+Comparing each regime's best epoch on eval, which is the fairer reading:
+
+| | non-private (ep 2) | DP (ep 3) | cost |
+| --- | --- | --- | --- |
+| eval EER | 9.60% | 17.57% | **+7.97 points** |
+| min t-DCF | 0.2124 | 0.2609 | +0.0485 |
+
+Per epoch, job 60261275:
+
+| Epoch | dev EER | eval EER | min t-DCF |
+| --- | --- | --- | --- |
+| 1 | 35.48% | 22.19% | 0.4677 |
+| 2 | 31.68% | 17.70% | 0.2714 |
+| 3 | 29.99% | **17.57%** | **0.2609** |
+| 4 | 28.15% | 17.87% | 0.2651 |
+| 5 | 24.41% | 17.80% | 0.2696 |
+
+**The DP model scores better on eval than on dev** — 17.80% against 24.41% —
+which is the reverse of every non-private run here and worth explaining rather
+than glossing. Under DP noise the model never learned the six training attacks
+sharply enough to be flattered by dev, so dev stopped being an optimistic
+estimate. Its eval EER also flattens after epoch 2 while dev keeps falling: the
+same divergence as Finding 1, at a different scale.
+
 This is the project's central question getting its first number. Read it with
 three caveats, all of which understate or distort the cost:
 
+- **Only five epochs, and eval had plateaued by epoch 2** while ε kept being
+  spent. The privacy budget bought nothing after that, which is an argument
+  about schedule rather than about DP.
 - **The DP run's hyperparameters are untuned.** DP-SGD generally wants a larger
   batch and a different learning rate; running it with the non-private settings
   minus a flag measures *DP with the wrong hyperparameters*, which overstates
