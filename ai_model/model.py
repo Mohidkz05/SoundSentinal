@@ -22,6 +22,22 @@ HOP_LENGTH = 512
 N_MELS = 128
 TOP_DB = 80
 
+# --- LFCC front-end ---------------------------------------------------------
+# 20 static coefficients plus delta and delta-delta = 60 channels. That is the
+# configuration the official ASVspoof2019 LFCC-GMM baseline uses, chosen so our
+# LFCC row is comparable to theirs rather than to a variant of our own
+# invention.
+N_LFCC = 20
+N_LFCC_FILTER = 20
+
+# The front-end is a property of a trained model, not a global setting: a
+# checkpoint trained on LFCC is meaningless if served log-Mel. Every checkpoint
+# records which one it used, and app.py and evaluate.py read it back. "logmel"
+# is the default so every existing checkpoint, which predates this, keeps
+# working.
+FRONTENDS = ("logmel", "lfcc")
+DEFAULT_FRONTEND = "logmel"
+
 
 def load_audio(path_or_file):
     """
@@ -38,8 +54,50 @@ def load_audio(path_or_file):
     return waveform, sample_rate
 
 
-def build_transform():
-    """Log-Mel spectrogram pipeline. Use this everywhere audio becomes a tensor."""
+class _WithDeltas(nn.Module):
+    """Stack a feature map with its first and second time derivatives.
+
+    Cepstral features describe one frame in isolation; the deltas are how the
+    spectrum is *changing*, and synthesis artefacts often live in that motion
+    rather than in any single frame. The ASVspoof baselines use them, so we do
+    too — otherwise our LFCC row would not be measuring the same thing theirs is.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.deltas = T.ComputeDeltas()
+
+    def forward(self, x):
+        d1 = self.deltas(x)
+        d2 = self.deltas(d1)
+        return torch.cat((x, d1, d2), dim=-2)
+
+
+def build_transform(frontend=DEFAULT_FRONTEND):
+    """Waveform -> time-frequency features. Use this everywhere audio becomes a tensor.
+
+    `logmel` is the original pipeline. `lfcc` exists because the Mel scale is
+    designed to mimic human hearing and therefore compresses high frequencies —
+    which is exactly where vocoder and waveform-filtering artefacts live. Both
+    official ASVspoof2019 baselines are cepstral for that reason. Swapping only
+    this, with the model and schedule held fixed, is a controlled test of
+    whether the front-end is what limits us. See "Per-attack, against the
+    official baselines" in APPROACH.md for the A17 result that motivates it.
+    """
+    if frontend not in FRONTENDS:
+        raise ValueError(f"frontend must be one of {FRONTENDS}, got {frontend!r}")
+
+    if frontend == "lfcc":
+        return nn.Sequential(
+            T.LFCC(
+                sample_rate=SAMPLE_RATE,
+                n_filter=N_LFCC_FILTER,
+                n_lfcc=N_LFCC,
+                speckwargs={"n_fft": N_FFT, "hop_length": HOP_LENGTH},
+            ),
+            _WithDeltas(),
+        )
+
     return nn.Sequential(
         T.MelSpectrogram(
             sample_rate=SAMPLE_RATE, n_fft=N_FFT, hop_length=HOP_LENGTH, n_mels=N_MELS
@@ -50,7 +108,10 @@ def build_transform():
 
 def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_LEN):
     """
-    Waveform -> standardized log-Mel spectrogram, shape (1, N_MELS, frames).
+    Waveform -> standardized features, shape (1, C, frames).
+
+    C is 128 for the log-Mel front-end and 60 for LFCC (20 coefficients plus
+    two delta orders). The network tolerates both because it pools adaptively.
 
     Downmix to mono, resample to SAMPLE_RATE, pad/truncate to max_len, apply the
     transform, then standardize per sample.

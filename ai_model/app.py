@@ -15,6 +15,8 @@ from werkzeug.formparser import FormDataParser
 from model import (
     AudioClassifierCNN,
     CLASS_NAMES,
+    DEFAULT_FRONTEND,
+    N_LFCC,
     MAX_LEN,
     N_MELS,
     SAMPLE_RATE,
@@ -93,9 +95,19 @@ def load_model():
     # omitted rather than guessed.
     metrics = (payload.get("metrics") or {}) if isinstance(payload, dict) else {}
     dp = payload.get("dp") if isinstance(payload, dict) else None
+
+    # Which front-end these weights were trained on. Serving log-Mel features to
+    # an LFCC-trained model produces confident nonsense rather than an error —
+    # the adaptive pool accepts either shape — so this is read from the
+    # checkpoint, never assumed. Checkpoints predating the choice are log-Mel.
+    frontend = (payload.get("frontend") if isinstance(payload, dict) else None) or DEFAULT_FRONTEND
+
     info = {
         "input": f"Mono, {SAMPLE_RATE // 1000} kHz, {MAX_LEN // SAMPLE_RATE} s",
-        "representation": f"Log-Mel spectrogram, {N_MELS} mels",
+        "representation": (
+            f"Log-Mel spectrogram, {N_MELS} mels" if frontend == "logmel"
+            else f"LFCC, {N_LFCC} coefficients + Δ + ΔΔ"
+        ),
         "network": "2× conv, adaptive pool, 2 dense",
         "corpus": f"ASVspoof2019 {metrics['corpus']}" if metrics.get("corpus") else None,
         "epoch": payload.get("epoch") if isinstance(payload, dict) else None,
@@ -114,11 +126,12 @@ def load_model():
         f"Decision threshold: {threshold:.4f} "
         + ("(calibrated from dev EER)" if calibrated else "(default — checkpoint carries none)")
     )
-    return net, float(threshold), calibrated, info
+    print(f"Front-end: {frontend}")
+    return net, float(threshold), calibrated, info, frontend
 
 
-model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO = load_model()
-transform_pipeline = build_transform()
+model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO, FRONTEND = load_model()
+transform_pipeline = build_transform(FRONTEND)
 
 # ===================================================================
 # 2. PREPROCESS A SINGLE AUDIO FILE

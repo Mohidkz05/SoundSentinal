@@ -18,6 +18,8 @@ import os
 # Model + preprocessing live in model.py so app.py serves exactly what we train.
 from model import (
     AudioClassifierCNN,
+    DEFAULT_FRONTEND,
+    FRONTENDS,
     LABEL_MAP,
     MAX_LEN,
     SAMPLE_RATE,
@@ -104,8 +106,18 @@ def get_corpus_paths(corpus: str = "LA"):
 # reads the same variable so the server still finds best.pth.
 CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 
-def get_ckpt_paths(use_dp: bool):
-    ckpt_dir = CKPT_DIR if use_dp else CKPT_DIR / "nodp"
+def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND):
+    """Each (front-end, privacy regime) pair gets its own directory.
+
+    Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
+    LFCC run share an architecture but not an input space, so a shared last.pth
+    would let one silently auto-resume from the other's weights and the
+    resulting numbers would be unattributable. The default front-end keeps the
+    original layout so existing checkpoints stay where app.py looks.
+    """
+    ckpt_dir = CKPT_DIR if frontend == DEFAULT_FRONTEND else CKPT_DIR / frontend
+    if not use_dp:
+        ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     return ckpt_dir, ckpt_dir / "last.pth", ckpt_dir / "best.pth"
 
@@ -114,7 +126,7 @@ def unwrap(model):
     return getattr(model, "_module", model)
 
 def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
-              is_best=False, metrics=None, best_eer=None):
+              is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -131,6 +143,10 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
     ckpt_dir, last_ckpt, best_ckpt = paths
     payload = {
         "epoch": epoch, "steps_done": steps_done,
+        # Which features this model was trained on. app.py and evaluate.py read
+        # it back and build the matching transform; without it, serving a
+        # log-Mel pipeline to an LFCC-trained model is a silent wrong answer.
+        "frontend": frontend,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
         "batch_size": BATCH_SIZE,
@@ -262,6 +278,12 @@ def main():
                              "the measured cost of privacy. Checkpoints go to checkpoints/nodp/.")
     parser.add_argument("--no-class-weights", dest="use_class_weights", action="store_false",
                         help="Disable inverse-frequency class weighting (for ablation).")
+    parser.add_argument("--frontend", default=DEFAULT_FRONTEND, choices=list(FRONTENDS),
+                        help="Time-frequency front-end. 'lfcc' is the controlled "
+                             "ablation against 'logmel': the Mel scale compresses "
+                             "high frequencies, where vocoder artefacts live, and "
+                             "both official ASVspoof baselines are cepstral. "
+                             "Checkpoints go to checkpoints/<frontend>/.")
     parser.add_argument("--num-workers", type=int,
                         default=int(os.getenv("SLURM_CPUS_PER_TASK", "2")),
                         help="DataLoader workers. Defaults to $SLURM_CPUS_PER_TASK inside a "
@@ -285,7 +307,8 @@ def main():
     for key, val in PATHS.items(): print(f"{key}: {val}")
 
     # Log-Mel pipeline, shared with the inference server (see model.py).
-    transform_pipeline = build_transform()
+    transform_pipeline = build_transform(args.frontend)
+    print(f"Front-end: {args.frontend}")
 
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"], transform_pipeline)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
@@ -307,7 +330,7 @@ def main():
             noise_multiplier=NOISE_MULTIPLIER, max_grad_norm=MAX_GRAD_NORM,
         )
 
-    paths = get_ckpt_paths(args.use_dp)
+    paths = get_ckpt_paths(args.use_dp, args.frontend)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
@@ -328,7 +351,8 @@ def main():
         return
     # ------------------------------------------------
 
-    mode = "Differentially Private" if args.use_dp else "Non-Private Baseline (--no-dp)"
+    mode = ("Differentially Private" if args.use_dp else "Non-Private Baseline (--no-dp)")
+    mode = f"{mode}, {args.frontend} front-end"
     print(f"--- Starting {mode} Training ---")
     steps_done = prev_steps
     for epoch in range(start_epoch, EPOCHS + 1):
@@ -382,10 +406,11 @@ def main():
             "epsilon": epsilon if privacy_engine is not None else None,
             "delta": TARGET_DELTA if privacy_engine is not None else None,
             "corpus": args.corpus,
+            "frontend": args.frontend,
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
                   class_weights=class_weights, is_best=is_best,
-                  metrics=metrics, best_eer=best_eer)
+                  metrics=metrics, best_eer=best_eer, frontend=args.frontend)
 
     print("\n--- Training Finished ---")
 

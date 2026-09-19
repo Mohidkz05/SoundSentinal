@@ -30,7 +30,8 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from model import AudioClassifierCNN, CLASS_NAMES, LABEL_MAP, build_transform
+from model import (AudioClassifierCNN, CLASS_NAMES, DEFAULT_FRONTEND, LABEL_MAP,
+                   build_transform)
 from tdcf import compute_min_tdcf
 from train_dp_avspoof import (
     AVSpoofDataset,
@@ -148,6 +149,11 @@ def main():
     model = AudioClassifierCNN().to(DEVICE)
     model.load_state_dict(ckpt["model"])
 
+    # Score with the features this model was trained on, not a default. The
+    # network accepts either channel count, so a mismatch is a wrong number
+    # rather than a crash.
+    frontend = ckpt.get("frontend") or DEFAULT_FRONTEND
+
     # The threshold the checkpoint carries was calibrated on dev. It is the one
     # the server actually applies, so it is the honest deployment operating
     # point — at serving time there are no eval labels to tune against.
@@ -158,6 +164,7 @@ def main():
 
     print(f"Checkpoint    {ckpt_path}")
     print(f"  epoch       {ckpt.get('epoch')}")
+    print(f"  front-end   {frontend}")
     print(f"  regime      {'DP' if ckpt.get('dp') else 'non-private'}")
     print(f"  dev EER     {(ckpt.get('best_eer') or float('nan')) * 100:.2f}%")
     print(f"  threshold   {dev_threshold:.4f} "
@@ -171,7 +178,7 @@ def main():
             f"Expected ASVspoof2019_{args.corpus}_{args.partition}/flac and a matching protocol.")
 
     dataset = AVSpoofDataset(
-        paths[f"{key}_PROTOCOL_FILE"], paths[f"{key}_AUDIO_DIR"], build_transform())
+        paths[f"{key}_PROTOCOL_FILE"], paths[f"{key}_AUDIO_DIR"], build_transform(frontend))
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False,
                         num_workers=args.num_workers, pin_memory=True)
 
@@ -241,6 +248,7 @@ def main():
         "corpus": args.corpus,
         "partition": args.partition,
         "regime": "dp" if ckpt.get("dp") else "non-private",
+        "frontend": frontend,
         "epoch": ckpt.get("epoch"),
         "n_clips": int(len(labels)),
         "class_names": CLASS_NAMES,
