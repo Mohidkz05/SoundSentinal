@@ -53,28 +53,44 @@ sbatch hpc/train.slurm --no-dp
 Then `squeue -u mkha0155` to watch, and `tail -f soundsentinal-<jobid>.out`
 to read. `scancel <jobid>` to stop one.
 
-## Confirm these before the first train submit
+## What this account actually has
 
-Four things in `train.slurm` are written from M3's documented conventions
-rather than from this account, so check them once and fix the header if they
-differ. All four fail loudly at submit rather than silently, so this is
-five minutes, not a risk.
+Confirmed against `mkha0155` / `df37` on 19 September 2026, so these are
+measurements rather than conventions read off the docs.
 
-```bash
-user_info        # quota and current usage on the three project directories
-show_cluster     # partitions, GPU types, what df37 may actually use
-sinfo -s         # partition time limits — get_la.slurm asks for 8h
+**Storage** — more headroom than expected, and `$HOME` is not the squeeze it
+usually is:
+
+| Path | Quota | Used |
+| --- | --- | --- |
+| `/home/mkha0155` | 20 GB | 0 |
+| `~/df37` (primary) | 500 GB | 0 |
+| `~/df37_scratch` | 3072 GB | 190 GB |
+
+**GPUs** — `--partition=gpu` is the one to use: `AllowAccounts=ALL`,
+`AllowQos=ALL`, 40 nodes and 132 GPUs across A100-80G, L40S, A40 and T4, with a
+7-day ceiling and a 1-day default.
+
+**There is no `m3g` partition.** `m3g[100-119]` are the L40S *node names* inside
+`gpu`. Worth stating because "m3g" is exactly the sort of plausible-looking
+partition name that gets copied out of a half-remembered tutorial.
+
+**H100s are reachable.** `df37` holds the `m3h` QOS, and the `m3h` partition
+accepts it — four H100 nodes, 7-day limit. That is the wav2vec2 / WavLM ceiling
+row in `APPROACH.md` solved, far past the 24GB VRAM floor originally requested:
+
+```
+#SBATCH --partition=m3h
+#SBATCH --qos=m3h
+#SBATCH --gres=gpu:H100:1
 ```
 
-- **`--partition=m3g`** — M3's GPU partition. If `show_cluster` names something
-  else for df37, change it.
-- **`--gres=gpu:1`** — some GPU types need naming explicitly,
-  e.g. `--gres=gpu:V100:1`.
-- **`--time=08:00:00` in `get_la.slurm`** — if the default partition caps
-  shorter, name a longer one.
-- **The driver version**, printed by `train.slurm` at the top of every log. The
-  pinned wheels are cu129, which needs a driver supporting CUDA 12 (>= 525).
-  `requirements-cuda.txt` documents the cu128 fallback if it is older.
+Don't point the 267k CNN at it — four nodes is scarce and the model cannot use
+one. Plain `--gres=gpu:1` on `gpu` takes whatever frees first, which is right
+for everything in the table except that last row.
+
+**CPU jobs** default to `comp`, 7-day ceiling, so `get_la.slurm`'s 8-hour
+request needs no partition named.
 
 ## How the pieces fit
 

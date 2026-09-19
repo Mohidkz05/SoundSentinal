@@ -10,7 +10,7 @@
 #
 #SBATCH --job-name=soundsentinal
 #SBATCH --account=df37
-#SBATCH --partition=m3g
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -18,10 +18,23 @@
 #SBATCH --time=02:00:00
 #SBATCH --output=%x-%j.out
 #
-# --partition=m3g is M3's GPU partition, but confirm it and the GPU types
-# available to df37 with `show_cluster` before the first submit; some GPUs want
-# an explicit type, e.g. --gres=gpu:V100:1. A wrong partition name fails at
-# submit, which is the harmless way to find out.
+# --partition=gpu, confirmed against this account on 19 September 2026:
+# AllowAccounts=ALL, AllowQos=ALL, MaxTime 7 days, 40 nodes / 132 GPUs holding
+# A100-80G, L40S, A40 and T4. There is NO m3g partition — `m3g[100-119]` are the
+# L40S *node names* inside `gpu`, which is an easy and confusing thing to
+# mistake for a partition.
+#
+# Plain --gres=gpu:1 takes whichever type frees up first, which is right for a
+# 267k-parameter CNN that fits on any of them. Name a type only when a model
+# actually needs it, e.g. --gres=gpu:A100:1 for 80GB.
+#
+# For the wav2vec2 / WavLM ceiling row in APPROACH.md there is something better:
+# df37 holds the `m3h` QOS, which unlocks the H100 partition.
+#   #SBATCH --partition=m3h
+#   #SBATCH --qos=m3h
+#   #SBATCH --gres=gpu:H100:1
+# Do not use it for the small CNN — it is a scarce resource (4 nodes) and this
+# model cannot use it.
 #
 # --cpus-per-task=8 is not incidental: train_dp_avspoof.py defaults its
 # DataLoader workers to $SLURM_CPUS_PER_TASK, and at 267k parameters the
@@ -29,7 +42,8 @@
 # most effective change to wall-clock time. Raise --mem with it; workers fork.
 #
 # --time=02:00:00 is generous for the current CNN (5 epochs measured at ~10 min
-# on CPU alone). Keep it honest — a shorter request schedules sooner.
+# on CPU alone). Keep it honest — a shorter request schedules sooner, and the
+# partition would otherwise default to a full day.
 
 set -euo pipefail
 
