@@ -94,6 +94,25 @@ Why each row earns its place:
   a third the size of our current CNN — and still beats everything except full
   AASIST.
 
+### Licence and attribution — an obligation, not a formality
+
+ASVspoof2019 is released under the **Open Data Commons Attribution License
+(ODC-By)**. Free to use, share and modify, including for this project; the one
+condition is attribution, and it binds the writeup rather than the code.
+
+> Yamagishi, Junichi; Todisco, Massimiliano; Sahidullah, Md; Delgado, Héctor;
+> Wang, Xin; Evans, Nicolas; Kinnunen, Tomi; Lee, Kong Aik; Vestman, Ville;
+> Nautsch, Andreas. (2019). *ASVspoof 2019: The 3rd Automatic Speaker
+> Verification Spoofing and Countermeasures Challenge database*, [sound].
+> University of Edinburgh. The Centre for Speech Technology Research (CSTR).
+> https://doi.org/10.7488/ds/2555
+
+Note what ODC-By covers: the *database*, not necessarily each recording in it.
+The corpus is built on VCTK, whose speakers consented to research use — so
+redistribution of the audio is not ours to grant. Cite it, do not re-host it,
+and keep the corpus on M3 and the laptop rather than in the repo (`data/` is
+already gitignored, which is the mechanism enforcing this).
+
 ### Sourcing discipline
 
 **The same model name scores wildly differently across papers.** LFCC-GMM is

@@ -65,7 +65,7 @@ else
   echo "== Downloading LA.zip ($(numfmt --to=iec $LA_BYTES)) =="
   [ "$have" -gt 0 ] && echo "   resuming from $(numfmt --to=iec "$have")"
   echo "   (no progress meter by design — watch the file grow instead:"
-  echo "    ssh m3 'ls -lh ~/df37_scratch/LA.zip')"
+  echo "    ssh m3 'ls -lh $ZIP')"
   # --no-progress-meter, for the same reason tqdm gets disable=None in the
   # trainer: with no terminal attached curl writes its meter as one line per
   # update, and 25 minutes of that buries every other line in the log. -sS
