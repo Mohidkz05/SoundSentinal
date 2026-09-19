@@ -231,12 +231,11 @@ stable run to run, which matters more here than usual — the UI draws that
 threshold on screen, so it is a number users see, and `/result` states the
 relation to it in prose.
 
-**Eval-partition result — job 60260737, 71,237 clips, under 3 minutes.**
-**10.15% EER**, against 0.24% on dev: a factor of 42, and the honest version of
-the dev number. It loses to both 2019 GMM baselines, which is the measured case
-for AASIST. Per-attack spread runs A07 0.11% to A17 41.19%. Full analysis in
-`APPROACH.md` under "What the baseline actually measured"; raw numbers in
-`checkpoints/nodp/eval_eval_*.json`.
+**Results live in [`RESULTS.md`](../RESULTS.md).** Five training runs and nine
+evaluation jobs as of 20 September 2026 — log-Mel, LFCC and a DP arm, each
+scored on the eval partition with EER and min t-DCF plus a per-attack
+breakdown. Best so far: 9.60% EER / 0.2124 min t-DCF. Everything ran on
+`--partition=gpu`; nothing took more than four minutes.
 
 **Still not done:**
 
@@ -244,7 +243,9 @@ for AASIST. Per-attack spread runs A07 0.11% to A17 41.19%. Full analysis in
   the eval run below shows losing to the 2019 GMM baselines. Step 3 in "Order of
   work" in `APPROACH.md`; neither job script changes when it lands, only what
   `train_dp_avspoof.py` builds.
-- **The DP arm has not been run**, so the cost-of-privacy gap — the project's
-  actual research question — is still unmeasured.
+- **A DP sweep.** One ε is a point, not the cost-of-privacy curve the research
+  question asks for.
+- **H100s remain unused.** The `m3h` QOS is what makes the wav2vec2 / WavLM
+  ceiling row realistic; nothing has needed it yet.
 - **DP arm untried on this hardware.** Opacus per-sample gradients cost 2–4× in
   memory; `--mem=32G` is a guess until a DP run is measured.

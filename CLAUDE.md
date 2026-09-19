@@ -14,8 +14,15 @@ University project. `main` is the only branch — see "Branching" below.
 ## Layout
 
 ```
+RESULTS.md               Every measured number and what follows from it.
 ai_model/
   model.py               Model + preprocessing. SHARED by trainer and server.
+                         build_transform(frontend) picks log-Mel or LFCC; the
+                         choice is stored in the checkpoint and read back.
+  evaluate.py            Scores a checkpoint on the eval partition: EER,
+                         min t-DCF, per-attack breakdown, JSON out.
+  tdcf.py                min t-DCF, ASVspoof2019's primary metric.
+  summarise_results.py   Tabulates evaluate.py's JSON files.
   train_dp_avspoof.py    DP training loop (Opacus), dev-set eval, checkpointing.
   app.py                 Flask server, POST /predict.
   verify_setup.py        Smoke test for the model/serving contract.
@@ -213,25 +220,29 @@ was untracked (the file may still be on disk locally, and is now covered by the
 
 Be honest about these rather than assuming they work:
 
-1. **No model has been trained against the current architecture.** This is now
-   the only thing standing between the app and being real. The plumbing is
-   verified end to end — browser upload → `/api/predict` → Flask → a reading
-   rendered on `/result`, confirmed in a real browser against a throwaway
-   untrained checkpoint that predicted at ~48%, i.e. chance, as expected. But
-   no training run has happened since the architecture and preprocessing
-   changed, and **the dataset is not downloaded** (`data/` absent,
-   `$ASVSPOOF_ROOT` unset). Any accuracy or EER number predating that change is
-   meaningless now.
-2. **No tests** beyond `verify_setup.py` (a shape/parity smoke test) and
+1. **Models are trained and measured — see `RESULTS.md`.** Three runs exist on
+   M3 (log-Mel non-private, LFCC non-private, DP at ε=0.48), scored on the eval
+   partition with EER and min t-DCF. Best result 9.60% EER / 0.2124 min t-DCF,
+   which is competitive with the official 2019 GMM baselines and far off
+   AASIST's 0.83%. **No checkpoint has been copied back to this machine**, so
+   `/result` still shows the waiting state locally; `scp` one from M3 to see a
+   real reading. The corpus lives on M3, not here — `data/` is still absent and
+   `$ASVSPOOF_ROOT` unset locally.
+2. **Model selection is known-broken.** `save_ckpt` picks `best.pth` by dev
+   EER, and dev reuses the training attacks; measured, it selects a worse model
+   than an earlier epoch. Finding 1 in `RESULTS.md`. The same flaw affects the
+   calibrated threshold. Both need a held-out set with unseen attacks.
+
+3. **No tests** beyond `verify_setup.py` (a shape/parity smoke test) and
    `test_api.py` (a manual one-shot client). No CI. In particular there is no
    automated check that the 3D scenes still animate — the uniform-ref bug was
    invisible for months and would be again. The check that catches it is
    cheap: screenshot a canvas region twice a few seconds apart and diff them; a
    frozen scene reads exactly zero.
-3. **`app.py` is still the Werkzeug development server.** `debug=True` is gone
+4. **`app.py` is still the Werkzeug development server.** `debug=True` is gone
    (it exposed an interactive debugger that executes code) and it binds to
    loopback, but use `waitress` or `gunicorn` before this is hosted anywhere.
-4. **The upload limit is enforced in three places** — the page, the proxy route
+5. **The upload limit is enforced in three places** — the page, the proxy route
    and Flask's `MAX_CONTENT_LENGTH` — and all three say 5 MB. Changing one means
    changing all three; they are cross-referenced by comment.
 

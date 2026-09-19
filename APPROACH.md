@@ -70,7 +70,9 @@ paper; taking them from one source is deliberate.
 | --- | --- | --- | --- | --- | --- |
 | CQCC-GMM | — | CQCC | 9.57% | 0.2366 | ASVspoof2019 DB paper, Table 8 |
 | LFCC-GMM | — | LFCC | 8.09% | 0.2116 | ASVspoof2019 DB paper, Table 8 |
-| **Our CNN** | 267k | log-Mel | **10.15%** | **0.2350** | measured here, 19 Sep 2026 |
+| **Our CNN** | 267k | log-Mel | **9.60%** | **0.2124** | `RESULTS.md`, best epoch |
+| Our CNN | 267k | LFCC | 13.10% | 0.2503 | `RESULTS.md`, best epoch |
+| Our CNN, **DP** ε=0.48 | 267k | log-Mel | 17.80% | 0.2696 | `RESULTS.md` |
 | LCNN-LSTM-sum | 276k | LFCC | 1.92% | 0.0525 | AASIST Table 2 |
 | RawGAT-ST | 437k | raw waveform | 1.19% | 0.0335 | AASIST Table 2 |
 | AASIST-L | 85k | raw waveform | 0.99% | 0.0309 | AASIST Table 2 + official repo |
@@ -121,6 +123,11 @@ The corpus is built on VCTK, whose speakers consented to research use — so
 redistribution of the audio is not ours to grant. Cite it, do not re-host it,
 and keep the corpus on M3 and the laptop rather than in the repo (`data/` is
 already gitignored, which is the mechanism enforcing this).
+
+> **Measurements live in [`RESULTS.md`](RESULTS.md)** — every run, its numbers,
+> and what follows from them. This file stays about decisions. The sections
+> below summarise the findings that changed the plan; the detail, the per-attack
+> tables and the caveats are there.
 
 ### What the baseline actually measured — 19 September 2026
 
@@ -232,6 +239,37 @@ A01–A06, the same ones seen in training. Eval has unseen A07–A19. Dev EER is
 optimistic.
 
 ---
+
+## Three findings that change the plan — 20 September 2026
+
+Full detail in [`RESULTS.md`](RESULTS.md). In brief:
+
+**1. Selecting `best.pth` by dev EER picks the wrong model.** Dev EER improves
+monotonically across all five epochs; eval EER bottoms at epoch 2 and then gets
+worse. The dev-selected checkpoint scores 10.15% / 0.2350 where epoch 2 scores
+9.60% / 0.2124 — the difference between losing to both official baselines and
+matching them. Model selection and threshold calibration both need a held-out
+set with unseen attacks before any further comparison means much.
+
+**2. log-Mel and LFCC are complementary, and neither wins.** Swapping only the
+front-end, LFCC is better on nine of thirteen attacks — by 13× on A12, 17× on
+A15, 18× on A13 — and loses the pooled number entirely on A18 and A19. The Mel
+compression hypothesis in "The model: AASIST" above is confirmed for A10–A15 and
+falsified for A18–A19.
+
+This is now the strongest argument in the project for AASIST, and it is a
+sharper one than "AASIST scores better". There is no right handcrafted
+front-end to pick: either fuse them, or stop handcrafting and let the model
+learn its filterbank, which is what AASIST's SincNet front-end does. The
+comparison has gone from *which of these is best* to *why handcrafted features
+are the wrong question*, which is a better thing to be able to say.
+
+**3. Privacy costs 7.65 EER points at ε=0.48**, the first measurement of the
+number this project exists to report. Heavily caveated — untuned DP
+hyperparameters, an unusually strict ε, single seed — and the honest next step
+is a sweep over noise multipliers to turn one point into a curve. Notably, DP
+did not degrade the model evenly: it stayed excellent on A07–A16 and went
+blind on A17, A18 and A19.
 
 ## Differential privacy: off now, ready later
 
