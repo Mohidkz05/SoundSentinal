@@ -67,8 +67,8 @@ Next:
   sbatch hpc/get_la.slurm      # download + extract ASVspoof2019 LA (~7.6GB)
   sbatch hpc/train.slurm       # once the data is there
 
-Confirm the GPU partition and its name before the first train submit:
-  show_cluster
-  sinfo -s
+The partition and GPU names are already settled — see "What this account
+actually has" in hpc/README.md. Handy anyway:
   user_info                    # quota on the three project directories
+  squeue -u $USER              # what you have queued
 MSG

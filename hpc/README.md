@@ -177,19 +177,42 @@ bash hpc/get_la.slurm # the script is a plain bash script; the #SBATCH lines are
 
 Detach with `Ctrl-b d`, come back with `tmux attach -t la`.
 
-## What has not been done here
+## State of this, as of 19 September 2026
 
-Stated plainly so nothing below reads as working:
+**Verified on the cluster, not inferred:**
 
-- **No job has been run on M3.** Everything in this directory is written
-  against M3's documented conventions and the repo's actual entry points, and
-  the syntax is checked, but the first real submit is the first test.
-- **The download URL is verified, the extract path is verified.** The DataShare
-  bitstream returns `application/zip`, 7,640,952,520 bytes, supports byte-range
-  resume, and its first entry is `LA/ASVspoof2019_LA_asv_protocols/...` — which
-  is why extracting into `$ASVSPOOF_ROOT` lands where `get_corpus_paths()`
-  looks. Confirmed by range request, not assumed.
+- Key-based ssh works; `ssh m3 true` is silent. M3 offers `publickey` with no
+  MFA step.
+- `bootstrap.sh` runs clean on a login node. venv at `~/df37/venv`, Python
+  3.12.14, torch 2.13.0+cu130, torchaudio 2.11.0+cu130, opacus 1.6.0.
+- **The GPU path works end to end.** Driver 580.126.20; a real 4096×4096 matmul
+  and a `MelSpectrogram` both ran under `--partition=gpu --gres=gpu:1`, landing
+  on an L40S once and an A100 80GB once. The MelSpectrogram returned
+  `(1, 128, 126)` — the same shape `verify_setup.py` asserts, so the GPU path
+  and the CPU path agree on the tensor the model sees.
+- `get_la.slurm` submits and runs on the default `comp` partition, pulling at
+  roughly 5 MB/s (~25 min for the 7.6GB).
+
+**Two bugs this setup found in itself**, both worth knowing because the shape
+recurs:
+
+- `requirements-cuda.txt` asked for cu129 and installed cu130 in silence. uv
+  consults extra indexes before `--index-url` and stops at the first index
+  holding a package *name*, so PyPI answered for torch. Fixed by pinning the
+  `+cu130` local version and making the CUDA index the extra. The lesson is that
+  an index URL is a hint, not an instruction — pin the local version and check
+  with `--dry-run`.
+- `get_la.slurm` let curl write its progress meter into the job log, about two
+  thousand lines of percentages burying everything else. Same defect as the
+  trainer's tqdm bar, same fix.
+
+**Still not done:**
+
+- **No training run yet.** `train.slurm` has never been submitted; it is next,
+  once the corpus finishes extracting.
 - **Still no trained weights, anywhere.** That is the point of all of this.
-- **AASIST is not ported yet.** `train.slurm` trains the current 2-conv CNN.
-  Step 3 in "Order of work" in `APPROACH.md`; the job script does not change
-  when it lands, only what `train_dp_avspoof.py` builds.
+- **AASIST is not ported.** `train.slurm` trains the current 2-conv CNN. Step 3
+  in "Order of work" in `APPROACH.md`; the job script does not change when it
+  lands, only what `train_dp_avspoof.py` builds.
+- **DP arm untried on this hardware.** Opacus per-sample gradients cost 2–4× in
+  memory; `--mem=32G` is a guess until a DP run is measured.
