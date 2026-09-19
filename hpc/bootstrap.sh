@@ -26,7 +26,15 @@ printf '  %-14s %s\n' repo "$PWD" venv "$VENV_DIR" data "$ASVSPOOF_ROOT" \
 # without root on a shared machine.
 if ! command -v uv >/dev/null 2>&1; then
   echo "== Installing uv into $UV_BIN_DIR =="
-  curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$UV_BIN_DIR" sh
+  # INSTALLER_NO_MODIFY_PATH=1 is not optional here. Without it the installer
+  # appends `. "$UV_BIN_DIR/env"` to .bashrc, .bash_profile AND .profile. That
+  # is rude on a shared account, and it breaks loudly the moment the directory
+  # moves: every login and every non-interactive ssh command then prints
+  # "No such file or directory" before doing anything else, which is enough to
+  # corrupt the output of scripts that parse what they get back over ssh.
+  # env.sh already puts uv on PATH, so the shell config never needed touching.
+  curl -LsSf https://astral.sh/uv/install.sh \
+    | env UV_INSTALL_DIR="$UV_BIN_DIR" INSTALLER_NO_MODIFY_PATH=1 sh
   PATH="$UV_BIN_DIR:$PATH"
 fi
 echo "uv: $(uv --version)"
@@ -34,7 +42,11 @@ echo "uv: $(uv --version)"
 # --- venv -------------------------------------------------------------------
 # 3.12 matches the local venv, so a checkpoint or a pickle moves between the
 # two without a version question.
+# -x follows the symlink, so this is false for a venv whose interpreter link
+# dangles — which is what a moved venv looks like. Rebuilding is the fix; a venv
+# records absolute paths and does not survive being relocated.
 if [ ! -x "$VENV_DIR/bin/python" ]; then
+  [ -d "$VENV_DIR" ] && { echo "== Removing stale venv at $VENV_DIR =="; rm -rf "$VENV_DIR"; }
   echo "== Creating venv at $VENV_DIR =="
   uv venv --python 3.12 "$VENV_DIR"
 fi
