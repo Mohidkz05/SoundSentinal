@@ -102,6 +102,7 @@ request needs no partition named.
 | `requirements-rest.txt` | Everything else, PyPI only. Split on purpose — see its header. |
 | `get_la.slurm` | ASVspoof2019 LA → `~/df37_scratch/data/LA`. Resumable. |
 | `train.slurm` | `verify_setup.py`, then training. Forwards its arguments. |
+| `evaluate.slurm` | Scores a checkpoint on the eval partition — the quotable number. |
 
 Two environment variables carry the layout into the Python, so no path is
 written down twice:

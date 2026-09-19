@@ -70,11 +70,21 @@ def get_corpus_paths(corpus: str = "LA"):
     dev_proto   = next(proto_dir.glob(f"*{corpus}*cm*dev*.*"))
     if not train_audio.exists(): raise FileNotFoundError(train_audio)
     if not dev_audio.exists():   raise FileNotFoundError(dev_audio)
-    return {
+    paths = {
         "TRAIN_AUDIO_DIR": train_audio, "DEV_AUDIO_DIR": dev_audio,
         "TRAIN_PROTOCOL_FILE": train_proto, "DEV_PROTOCOL_FILE": dev_proto,
         "REPO_ROOT": REPO_ROOT,
     }
+    # Eval is resolved but never required. Training does not touch it — the whole
+    # point of the partition is that the model never sees A07–A19 — and a corpus
+    # copy without it must still be trainable, so a missing eval tree is absent
+    # from the dict rather than an error. evaluate.py is what insists on it.
+    eval_audio = DATA_ROOT / corpus / f"ASVspoof2019_{corpus}_eval" / "flac"
+    eval_protos = sorted(proto_dir.glob(f"*{corpus}*cm*eval*.*"))
+    if eval_audio.exists() and eval_protos:
+        paths["EVAL_AUDIO_DIR"] = eval_audio
+        paths["EVAL_PROTOCOL_FILE"] = eval_protos[0]
+    return paths
 
 # --- Smart Checkpointing ---
 # DP and baseline runs get separate directories. They share an architecture but
