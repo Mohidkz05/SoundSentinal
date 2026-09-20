@@ -1,9 +1,15 @@
 #!/bin/bash
 # Score a trained checkpoint on the ASVspoof2019 eval partition.
 #
-#   sbatch hpc/evaluate.slurm              # the --no-dp baseline
-#   sbatch hpc/evaluate.slurm --dp         # the DP run
-#   sbatch hpc/evaluate.slurm --partition dev   # reproduce a training run's own number
+#   sbatch hpc/evaluate.slurm                        # the CNN --no-dp baseline
+#   sbatch hpc/evaluate.slurm --dp                   # the CNN DP run
+#   sbatch hpc/evaluate.slurm --arch aasist          # AASIST, non-private
+#   sbatch hpc/evaluate.slurm --arch aasist --dp     # AASIST, DP
+#   sbatch hpc/evaluate.slurm --frontend lfcc        # the CNN LFCC ablation
+#   sbatch hpc/evaluate.slurm --partition dev        # reproduce a run's own number
+#
+# --arch and --frontend pick the checkpoint directory, so the path never has to
+# be typed; --ckpt still overrides both for anything else.
 #
 # Arguments are forwarded to evaluate.py. This is the number that goes in a
 # writeup: eval holds attacks A07–A19, none of them seen in training, and every
@@ -21,7 +27,9 @@
 #
 # --time=00:30:00: eval is 71,933 clips against dev's 24,986, roughly three
 # times the work of one training epoch's evaluation, and there is no backward
-# pass. Training all five epochs took 2m49s, so half an hour is generous.
+# pass. Training all five CNN epochs took 2m49s, so half an hour is generous
+# there. AASIST is a much heavier forward pass and has not been timed — if this
+# job hits the limit, resubmit with --time=02:00:00 rather than assuming a hang.
 
 set -euo pipefail
 
@@ -49,4 +57,4 @@ cd ai_model
 
 echo
 echo "== Result files =="
-ls -lt "$CKPT_ROOT"/nodp/eval_*.json "$CKPT_ROOT"/eval_*.json 2>/dev/null | head -5 || true
+find "$CKPT_ROOT" -name "eval_*.json" -newermt "-1 hour" 2>/dev/null | sort || true

@@ -58,6 +58,59 @@ pick for our constraints, not the best model in existence. If asked *"why not
 wav2vec2?"* the answer is hardware, not ignorance: those are 95–300M parameters
 and need ~24GB of VRAM. See "Hardware" below.
 
+### The port — 20 September 2026
+
+`ai_model/aasist.py`, from the official `clovaai/aasist` implementation (MIT;
+the notice travels in the file header). Nine deviations from upstream, listed
+there. Eight are mechanical. Two are worth recording here because they are
+findings rather than choices.
+
+**"No BatchNorm" was necessary and not sufficient.** The plan above costed
+DP-compatibility at exactly one constraint — substitute GroupNorm — and that
+turned out to be the first of two. With every BatchNorm replaced, Opacus's
+`ModuleValidator` passes cleanly and `make_private` still refuses the model.
+
+The reason is that Opacus computes per-sample gradients by hooking **modules**.
+Upstream AASIST holds its attention weights, its positional encoding and its
+two master nodes as bare `nn.Parameter`s used through `torch.matmul` and
+broadcasting. A parameter belonging to no module Opacus recognises simply never
+receives a per-sample gradient — and a free parameter on the *root* module is
+worse, because Opacus then classifies the whole network as a trainable layer
+and rejects it outright for owning a buffer (the sinc filterbank, several
+levels down; the check is recursive).
+
+The fix is to write each free parameter as the standard module that already
+computes it: an attention weight is a matmul against an `(out_dim, 1)` matrix,
+i.e. a bias-free `nn.Linear`; a positional encoding and a master node are
+learned vectors looked up by constant index, i.e. `nn.Embedding`. Identical
+parameter count, identical arithmetic, identical initialisation — and Opacus
+accepts all three architectures. `verify_setup.py` now takes one real DP-SGD
+step with each of them on every run, because none of this is visible by reading
+the model and it would regress silently.
+
+So **"adapting AASIST for differentially private training" is a slightly larger
+contribution than the one this document anticipated**, and the generalisable
+version of it is: *DP-compatibility is a property of how a model is written,
+not only of which layers it uses.*
+
+**The comparison is no longer schedule-controlled.** AASIST cannot train at the
+CNN's batch size — its first residual block holds a `(batch, 32, 24, 21290)`
+activation, 4.2 GB at batch 64 before the backward pass stores anything. So it
+runs at its published batch 24, and the learning rate, weight decay and cosine
+schedule follow (`TRAIN_DEFAULTS` in `train_dp_avspoof.py`). The AASIST row
+will therefore differ from the CNN rows by **architecture and schedule
+together**, and the gap is not attributable to architecture alone. This is a
+real limitation of the comparison and belongs in the writeup rather than in a
+footnote.
+
+**What is verified, and what is not.** The port reproduces the official
+implementation's output to 3e-8 on identical weights with the norm layers
+neutralised, carries its published 297,354 parameters (ours differ by exactly
+the 512 weights of upstream's dead `bn1`, whose output is computed and
+discarded), trains end to end under both regimes, and serves through `app.py`.
+**It has never seen ASVspoof2019.** Every AASIST figure in this repo is still
+quoted from the paper.
+
 ---
 
 ## The comparison table
@@ -76,7 +129,7 @@ paper; taking them from one source is deliberate.
 | LCNN-LSTM-sum | 276k | LFCC | 1.92% | 0.0525 | AASIST Table 2 |
 | RawGAT-ST | 437k | raw waveform | 1.19% | 0.0335 | AASIST Table 2 |
 | AASIST-L | 85k | raw waveform | 0.99% | 0.0309 | AASIST Table 2 + official repo |
-| **AASIST** | 297k | raw waveform | **0.83%** | **0.0275** | AASIST Table 2 + official repo |
+| **AASIST** | 297k | raw waveform | **0.83%** | **0.0275** | AASIST Table 2 + official repo — **ported, not yet trained here** |
 | wav2vec2 / WavLM front-end | 95M+ | raw waveform, pretrained | *unverified* | *unverified* | H100 via `m3h` QOS |
 
 **Two metrics, because the challenge has two.** min t-DCF is ASVspoof2019's
@@ -314,6 +367,9 @@ legal one — training on client voices needs their consent regardless.
 2. **Non-private baseline on the current CNN** (`--no-dp`). ~10 min on CPU. This
    is the floor and the first honest number to show the supervisor.
 3. **Port AASIST**, BatchNorm → GroupNorm. Train non-private.
+   *Ported and verified 20 September 2026; **not yet trained**. See "The port"
+   below. `sbatch --time=12:00:00 hpc/train.slurm --arch aasist --no-dp` is the
+   next command this project runs.*
 4. **Fill the comparison table** — LCNN-LSTM-sum and AASIST-L as time allows.
 5. **DP arm** on whichever architectures fit the timetable, for the cost-of-
    privacy measurement.

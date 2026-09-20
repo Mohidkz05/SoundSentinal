@@ -40,7 +40,7 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | Our CNN, `best.pth` | LFCC | non-private | 13.72% | 0.2463 |
 | **Our CNN, epoch 3** | log-Mel | **DP, ε=0.48** | **17.57%** | **0.2609** |
 | Our CNN, `best.pth` | log-Mel | DP, ε=0.48 | 17.80% | 0.2696 |
-| AASIST (target) | raw waveform | non-private | 0.83% | 0.0275 |
+| AASIST (target, **published — not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
 
 ## Finding 1 — dev EER does not select the best model
 
@@ -219,7 +219,19 @@ leakage and is not an option.
 
 ## What has not been measured
 
-- **AASIST**, and every other row of the comparison table in `APPROACH.md`.
+- **AASIST.** Ported and verified on 20 September 2026 — it reproduces the
+  official implementation numerically, carries its 297,354 published
+  parameters, and trains under Opacus — but it **has not been run on the
+  corpus**. The 0.83% in the table above is the paper's number on their
+  training, not a measurement of this repo's model, and it stays that way until
+  `sbatch --time=12:00:00 hpc/train.slurm --arch aasist --no-dp` has run and
+  `sbatch hpc/evaluate.slurm --arch aasist` has scored it. Every other row of
+  the comparison table in `APPROACH.md` is likewise unmeasured.
+
+  When it is measured, the comparison will not be schedule-controlled: AASIST
+  runs at batch 24 where the CNN runs at 64, because at 64 a single one of its
+  activations is 4.2 GB. Architecture and schedule move together, so the gap is
+  not attributable to architecture alone. See "The port" in `APPROACH.md`.
 - **A DP sweep.** One ε is a point, not the cost-of-privacy curve.
 - **In-the-Wild** (Müller et al.). LA's attacks predate modern voice cloning;
   this is the generalisation test that matters for a tool people would upload to.

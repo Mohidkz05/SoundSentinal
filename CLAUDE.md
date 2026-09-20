@@ -16,9 +16,13 @@ University project. `main` is the only branch — see "Branching" below.
 ```
 RESULTS.md               Every measured number and what follows from it.
 ai_model/
-  model.py               Model + preprocessing. SHARED by trainer and server.
-                         build_transform(frontend) picks log-Mel or LFCC; the
-                         choice is stored in the checkpoint and read back.
+  model.py               Models + preprocessing. SHARED by trainer and server.
+                         build_transform(frontend) picks log-Mel, LFCC or raw;
+                         build_model(arch) picks the CNN or AASIST. Both
+                         choices are stored in the checkpoint and read back.
+  aasist.py              AASIST, ported from the official implementation with
+                         BatchNorm swapped for GroupNorm. Its header lists nine
+                         deviations from upstream; read them before editing.
   evaluate.py            Scores a checkpoint on the eval partition: EER,
                          min t-DCF, per-attack breakdown, JSON out.
   tdcf.py                min t-DCF, ASVspoof2019's primary metric.
@@ -161,14 +165,26 @@ cd ai_model
 ../venv/bin/python verify_setup.py       # shapes + train/serve parity
 ../venv/bin/python train_dp_avspoof.py --corpus LA
 ../venv/bin/python train_dp_avspoof.py --corpus LA --no-dp   # non-private baseline
+../venv/bin/python train_dp_avspoof.py --arch aasist --no-dp # AASIST (slow on CPU)
+../venv/bin/python evaluate.py --arch aasist                 # score it on eval
 ../venv/bin/python app.py                # http://127.0.0.1:5000
 ../venv/bin/python test_api.py           # in a second shell
 ```
 
 ## The one rule: model.py is the single source of truth
 
-`train_dp_avspoof.py` and `app.py` both import `AudioClassifierCNN`,
+`train_dp_avspoof.py`, `evaluate.py` and `app.py` all import `build_model()`,
 `build_transform()`, and `preprocess_waveform()` from `ai_model/model.py`.
+`aasist.py` defines a network and nothing else — it is imported *by* model.py,
+never around it, so there is still exactly one place that decides what a
+checkpoint means.
+
+**Never construct a network directly.** `build_model(arch)` exists because a
+checkpoint records which architecture produced it, and the loader has to honour
+that rather than build whatever is currently the default. The same goes for
+`build_transform(frontend)`. Pairing the two wrongly — AASIST on a spectrogram,
+the CNN on a waveform — is caught by `check_pairing()`, because it would not
+crash: it would train on nonsense and report a number.
 
 This is not stylistic. Those two files each used to carry their own copy of the
 architecture and the preprocessing, and they silently diverged — the trainer
@@ -190,10 +206,23 @@ change `model.py`, run `python verify_setup.py` — it asserts that the tensor
 - **Input**: mono, 16 kHz, padded/truncated to 64000 samples (4 s) → log-Mel
   spectrogram (`n_fft=1024`, `hop=512`, `n_mels=128`, `top_db=80`) → per-sample
   standardization. Shape `(1, 128, 126)`.
-- **Network**: 2× (Conv2d → ReLU → MaxPool) → `AdaptiveAvgPool2d((8,8))` →
-  `Linear(2048, 128)` → dropout → `Linear(128, 2)`. The adaptive pool is what
-  makes the model tolerate different spectrogram widths; an earlier version
-  hardcoded a flattened size of 31744 derived from a dummy forward pass.
+- **Networks**: two, chosen with `--arch`.
+  - `cnn` (default, 267k params) — 2× (Conv2d → ReLU → MaxPool) →
+    `AdaptiveAvgPool2d((8,8))` → `Linear(2048, 128)` → dropout → `Linear(128, 2)`.
+    The adaptive pool is what makes the model tolerate different spectrogram
+    widths; an earlier version hardcoded a flattened size of 31744 derived from
+    a dummy forward pass.
+  - `aasist` (297k params) and `aasist-l` (85k) — raw waveform through a
+    learnable sinc filterbank, six residual blocks, then a spectro-temporal
+    graph attention network. Input is `(batch, 1, 64000)`, not a spectrogram.
+    See `ai_model/aasist.py`.
+- **Per-architecture training recipe**: `TRAIN_DEFAULTS` in
+  `train_dp_avspoof.py`. The CNN trains 5 epochs at batch 64, lr 1e-3; AASIST
+  100 epochs at batch 24, lr 1e-4 with weight decay and cosine annealing, which
+  is its published recipe. Neither number is a free choice for AASIST — at
+  batch 64 its first residual block alone holds a 4.2 GB activation. **So the
+  AASIST row differs from the CNN rows by schedule as well as architecture**,
+  and any writeup comparing them has to say so.
 - **Labels**: `bonafide=0`, `spoof=1`. The API reports these as
   `"Real Audio"` / `"Deepfake Audio"` (`CLASS_NAMES` in `model.py`).
 - **DP**: `noise_multiplier=1.1`, `max_grad_norm=1.0`, `delta=1e-5`. Epsilon is
@@ -204,9 +233,17 @@ change `model.py`, run `python verify_setup.py` — it asserts that the tensor
 
 ## Checkpoints
 
-`train_dp_avspoof.py` writes to `ai_model/checkpoints/` (or `checkpoints/nodp/`
-under `--no-dp`): a timestamped file each epoch, plus rolling `last.pth`
-(auto-resume) and `best.pth` (lowest dev EER).
+`train_dp_avspoof.py` writes to
+`ai_model/checkpoints/<arch>/[<frontend>/][nodp/]`, where the default
+architecture and front-end are omitted — so the CNN log-Mel DP run is still
+plain `checkpoints/` and its baseline still `checkpoints/nodp/`, exactly as
+before, while AASIST lands in `checkpoints/aasist/nodp/`. Each directory gets a
+timestamped file per epoch, plus rolling `last.pth` (auto-resume) and
+`best.pth` (lowest dev EER). Separate directories are what stop one run
+auto-resuming from another's weights; a mismatch is caught and named on resume.
+
+`evaluate.py --arch aasist` resolves that path for you, so the directory layout
+only has to be typed when using `--ckpt` for something unusual.
 `app.py` loads `checkpoints/best.pth`, falling back to a legacy flat
 `deepfake_audio_detector.pth` if present.
 
@@ -228,6 +265,14 @@ Be honest about these rather than assuming they work:
    `/result` still shows the waiting state locally; `scp` one from M3 to see a
    real reading. The corpus lives on M3, not here — `data/` is still absent and
    `$ASVSPOOF_ROOT` unset locally.
+
+   **AASIST is ported but not trained (20 September 2026).** The code is
+   verified — it reproduces the official implementation's output to float32
+   rounding, carries its published 297,354 parameters, and trains under Opacus
+   — but it has never seen the corpus. **Every AASIST number in this repo is
+   still someone else's**, quoted from the paper. Until `sbatch --time=12:00:00
+   hpc/train.slurm --arch aasist --no-dp` has run and been scored, there is no
+   measured AASIST row.
 2. **Model selection is known-broken.** `save_ckpt` picks `best.pth` by dev
    EER, and dev reuses the training attacks; measured, it selects a worse model
    than an earlier epoch. Finding 1 in `RESULTS.md`. The same flaw affects the
@@ -301,10 +346,15 @@ be measured against something.
    same ones seen in training. The eval partition has unseen A07–A19. Dev EER is
    optimistic; quote eval in any writeup.
 
-5. **Then increase capacity.** Two conv layers is small; 4–6 blocks with more
-   channels is the next step. **Critical: do not add BatchNorm.** It mixes
-   statistics across a batch, breaking DP-SGD's per-sample gradient guarantee —
-   Opacus rejects such models. Use `GroupNorm`.
+5. **Then increase capacity.** *Superseded by the AASIST port — see
+   `APPROACH.md`.* Growing the CNN to 4–6 blocks is no longer the plan, because
+   `--arch aasist` is a better-evidenced 297k-parameter model that is already
+   wired in. Keep the rule that motivated this step: **do not add BatchNorm**,
+   anywhere, in any architecture. It mixes statistics across a batch, breaking
+   DP-SGD's per-sample gradient guarantee, and Opacus rejects such models. Use
+   `GroupNorm`. `verify_setup.py` asserts this for every architecture and also
+   takes one real DP-SGD step with each, because "no BatchNorm" turned out to
+   be necessary and not sufficient — see the AASIST notes in `APPROACH.md`.
 
 6. **Cheap wins after that:** random 4-second crops instead of always truncating
    from the start; SpecAugment (`torchaudio.transforms.TimeMasking` /

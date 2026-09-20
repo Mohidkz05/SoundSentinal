@@ -14,6 +14,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio.transforms as T
 
+from aasist import AASIST, AASISTLight
+
 # --- Audio constants (shared by training and inference) ---
 SAMPLE_RATE = 16000
 MAX_LEN = 64000          # 4 seconds at 16 kHz
@@ -35,8 +37,29 @@ N_LFCC_FILTER = 20
 # records which one it used, and app.py and evaluate.py read it back. "logmel"
 # is the default so every existing checkpoint, which predates this, keeps
 # working.
-FRONTENDS = ("logmel", "lfcc")
+FRONTENDS = ("logmel", "lfcc", "raw")
 DEFAULT_FRONTEND = "logmel"
+
+# --- Architectures ----------------------------------------------------------
+# Same reasoning as the front-end registry above, one level out: a checkpoint is
+# meaningless unless you know which network it came from, so the architecture
+# travels in the checkpoint and app.py and evaluate.py read it back. "cnn" is
+# the default so every checkpoint predating this keeps loading.
+#
+# The front-end is not a free choice per architecture. The CNN reads a
+# time-frequency picture and cannot read a waveform; AASIST reads the waveform
+# and learns its own filterbank, which is the entire reason it is here (see
+# RESULTS.md Finding 2 — log-Mel and LFCC each win on attacks the other misses,
+# so no handcrafted picture is the right one). Pairing them the wrong way round
+# would not crash, it would train on noise, so the pairing is enforced.
+ARCHITECTURES = ("cnn", "aasist", "aasist-l")
+DEFAULT_ARCH = "cnn"
+
+ARCH_FRONTENDS = {
+    "cnn": ("logmel", "lfcc"),
+    "aasist": ("raw",),
+    "aasist-l": ("raw",),
+}
 
 
 def load_audio(path_or_file):
@@ -87,6 +110,14 @@ def build_transform(frontend=DEFAULT_FRONTEND):
     if frontend not in FRONTENDS:
         raise ValueError(f"frontend must be one of {FRONTENDS}, got {frontend!r}")
 
+    if frontend == "raw":
+        # No transform at all: AASIST's SincConv front-end IS the transform, and
+        # it is made of weights rather than of our assumptions. Identity here
+        # rather than a special case in preprocess_waveform, so the raw path
+        # goes through exactly the same resample/pad/standardize code as the
+        # other two and cannot drift from them.
+        return nn.Identity()
+
     if frontend == "lfcc":
         return nn.Sequential(
             T.LFCC(
@@ -112,6 +143,17 @@ def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_L
 
     C is 128 for the log-Mel front-end and 60 for LFCC (20 coefficients plus
     two delta orders). The network tolerates both because it pools adaptively.
+    Under the "raw" front-end there is no transform, so the result is the
+    padded waveform itself: (1, MAX_LEN), which is the (batch, 1, samples)
+    AASIST wants once the DataLoader adds the batch axis.
+
+    Note what the final standardization means on a raw waveform. A waveform is
+    already centred on zero, so subtracting the mean does nothing and dividing
+    by the standard deviation is dividing by RMS — i.e. loudness normalization.
+    That is a deliberate deviation from upstream AASIST, which trains on
+    unnormalised audio. It is kept because every front-end sharing one
+    preprocessing path is this file's whole reason for existing, and because a
+    detector should not care how loud the clip is.
 
     Downmix to mono, resample to SAMPLE_RATE, pad/truncate to max_len, apply the
     transform, then standardize per sample.
@@ -166,6 +208,50 @@ class AudioClassifierCNN(nn.Module):
         x = self.dropout(x)
         x = self.fc2(x)
         return x
+
+
+def default_frontend_for(arch):
+    """The front-end an architecture is built to read."""
+    if arch not in ARCHITECTURES:
+        raise ValueError(f"arch must be one of {ARCHITECTURES}, got {arch!r}")
+    return ARCH_FRONTENDS[arch][0]
+
+
+def check_pairing(arch, frontend):
+    """Raise unless this architecture can read this front-end.
+
+    Worth an exception rather than a warning: feeding AASIST a log-Mel
+    spectrogram gives it a (1, 128, 126) tensor where it expects (1, 64000)
+    samples. It would run — conv1d does not care what the numbers mean — and
+    produce a trained model that had learned from 126 "samples" of nonsense.
+    That is the same class of silent wrongness that the train/serve split in
+    this file's header was written to prevent.
+    """
+    if arch not in ARCHITECTURES:
+        raise ValueError(f"arch must be one of {ARCHITECTURES}, got {arch!r}")
+    allowed = ARCH_FRONTENDS[arch]
+    if frontend not in allowed:
+        raise ValueError(
+            f"architecture {arch!r} reads {' or '.join(allowed)}, not {frontend!r}. "
+            f"The CNN reads a time-frequency picture; AASIST reads the waveform."
+        )
+
+
+def build_model(arch=DEFAULT_ARCH):
+    """Architecture name -> a fresh, untrained network.
+
+    Use this everywhere a model is constructed, for the same reason
+    build_transform exists: the trainer, the evaluator and the server must
+    agree, and a name stored in a checkpoint is the only thing that survives
+    the trip between them.
+    """
+    if arch not in ARCHITECTURES:
+        raise ValueError(f"arch must be one of {ARCHITECTURES}, got {arch!r}")
+    if arch == "aasist":
+        return AASIST()
+    if arch == "aasist-l":
+        return AASISTLight()
+    return AudioClassifierCNN()
 
 
 # Label order is fixed by the training protocol: bonafide=0, spoof=1.

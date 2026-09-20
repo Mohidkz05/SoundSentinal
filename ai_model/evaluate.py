@@ -30,13 +30,15 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from model import (AudioClassifierCNN, CLASS_NAMES, DEFAULT_FRONTEND, LABEL_MAP,
-                   build_transform)
+from model import (ARCHITECTURES, CLASS_NAMES, DEFAULT_ARCH, DEFAULT_FRONTEND,
+                   FRONTENDS, LABEL_MAP, build_model, build_transform,
+                   default_frontend_for)
 from tdcf import compute_min_tdcf
 from train_dp_avspoof import (
     AVSpoofDataset,
     CKPT_DIR,
     compute_eer_np,
+    get_ckpt_paths,
     get_corpus_paths,
 )
 
@@ -125,8 +127,17 @@ def main():
     parser.add_argument("--dp", action="store_true",
                         help="Score the DP run (checkpoints/) instead of the "
                              "--no-dp baseline (checkpoints/nodp/).")
+    parser.add_argument("--arch", default=DEFAULT_ARCH, choices=list(ARCHITECTURES),
+                        help="Which architecture's run to score. Each one has its "
+                             "own checkpoint directory, so this is how you reach "
+                             "checkpoints/aasist/nodp/best.pth without naming it.")
+    parser.add_argument("--frontend", default=None, choices=list(FRONTENDS),
+                        help="Which front-end's run to score, defaulting to the "
+                             "architecture's own. This is how you reach the LFCC "
+                             "ablation at checkpoints/lfcc/nodp/best.pth.")
     parser.add_argument("--ckpt", type=Path, default=None,
-                        help="An explicit checkpoint path, overriding --dp.")
+                        help="An explicit checkpoint path, overriding --arch, "
+                             "--frontend and --dp.")
     parser.add_argument("--partition", default="eval", choices=["eval", "dev"],
                         help="Which partition to score. Defaults to eval, which "
                              "is the only one worth quoting; dev is offered to "
@@ -138,11 +149,18 @@ def main():
                              "<checkpoint dir>/eval_<partition>_<timestamp>.json")
     args = parser.parse_args()
 
-    ckpt_path = args.ckpt or (CKPT_DIR if args.dp else CKPT_DIR / "nodp") / "best.pth"
+    # The directory layout is get_ckpt_paths' business, not ours — it is
+    # imported rather than reimplemented so the two cannot drift apart.
+    if args.ckpt:
+        ckpt_path = args.ckpt
+    else:
+        frontend_sel = args.frontend or default_frontend_for(args.arch)
+        _, _, ckpt_path = get_ckpt_paths(args.dp, frontend_sel, args.arch)
     if not ckpt_path.exists():
         raise FileNotFoundError(
             f"No checkpoint at {ckpt_path}.\n"
-            f"Train one first:  python train_dp_avspoof.py --corpus {args.corpus} --no-dp")
+            f"Train one first:  python train_dp_avspoof.py --corpus {args.corpus} "
+            f"--arch {args.arch} --no-dp")
 
     if DEVICE.type == "cuda":
         print(f"Device: cuda -> {torch.cuda.get_device_name(0)}, torch {torch.__version__}")
@@ -150,7 +168,12 @@ def main():
         print(f"Device: CPU (no CUDA visible), torch {torch.__version__}")
 
     ckpt = torch.load(ckpt_path, map_location=DEVICE, weights_only=False)
-    model = AudioClassifierCNN().to(DEVICE)
+
+    # Build the network this checkpoint came from, not whichever one is
+    # currently the default. Checkpoints predating the architecture field are
+    # the CNN, which is what DEFAULT_ARCH is.
+    arch = ckpt.get("arch") or DEFAULT_ARCH
+    model = build_model(arch).to(DEVICE)
     model.load_state_dict(ckpt["model"])
 
     # Score with the features this model was trained on, not a default. The
@@ -168,6 +191,8 @@ def main():
 
     print(f"Checkpoint    {ckpt_path}")
     print(f"  epoch       {ckpt.get('epoch')}")
+    print(f"  arch        {arch} "
+          f"({sum(p.numel() for p in model.parameters()):,} parameters)")
     print(f"  front-end   {frontend}")
     print(f"  regime      {'DP' if ckpt.get('dp') else 'non-private'}")
     # This epoch's own dev EER, not the run's running best. They differ the
@@ -262,6 +287,7 @@ def main():
         "corpus": args.corpus,
         "partition": args.partition,
         "regime": "dp" if ckpt.get("dp") else "non-private",
+        "arch": arch,
         "frontend": frontend,
         "epoch": ckpt.get("epoch"),
         "n_clips": int(len(labels)),

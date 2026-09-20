@@ -17,22 +17,42 @@ import os
 
 # Model + preprocessing live in model.py so app.py serves exactly what we train.
 from model import (
-    AudioClassifierCNN,
+    ARCHITECTURES,
+    DEFAULT_ARCH,
     DEFAULT_FRONTEND,
     FRONTENDS,
     LABEL_MAP,
     MAX_LEN,
     SAMPLE_RATE,
+    build_model,
     build_transform,
+    check_pairing,
+    default_frontend_for,
     load_audio,
     preprocess_waveform,
 )
 
 # --- Hyperparameters & Constants ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BATCH_SIZE = 64
-EPOCHS = 5
-LEARNING_RATE = 0.001
+
+# Each architecture trains under its own published recipe, overridable from the
+# command line. Holding the schedule fixed across architectures would be the
+# cleaner experiment and it is not available to us: AASIST cannot run at batch
+# 64. Its first residual block produces a (batch, 32, 24, 21290) activation,
+# which is 4.2 GB at batch 64 before the backward pass stores anything — so the
+# batch size is a hardware fact, not a choice, and the published 24 is used.
+# The learning rate follows for the same reason: 1e-3 is tuned for the CNN and
+# the AASIST authors use 1e-4 with weight decay and cosine annealing.
+#
+# The consequence must be stated wherever these rows are compared: the AASIST
+# row differs from the CNN rows by architecture AND schedule, so the gap is not
+# attributable to architecture alone. See RESULTS.md.
+TRAIN_DEFAULTS = {
+    #          epochs  batch  lr      weight decay  cosine floor
+    "cnn":      {"epochs": 5,   "batch_size": 64, "lr": 1e-3, "weight_decay": 0.0,  "lr_min": None},
+    "aasist":   {"epochs": 100, "batch_size": 24, "lr": 1e-4, "weight_decay": 1e-4, "lr_min": 5e-6},
+    "aasist-l": {"epochs": 100, "batch_size": 24, "lr": 1e-4, "weight_decay": 1e-4, "lr_min": 5e-6},
+}
 
 # --- NEW: Reproducibility ---
 SEED = 42
@@ -106,16 +126,20 @@ def get_corpus_paths(corpus: str = "LA"):
 # reads the same variable so the server still finds best.pth.
 CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 
-def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND):
-    """Each (front-end, privacy regime) pair gets its own directory.
+def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH):
+    """Each (architecture, front-end, privacy regime) triple gets its own directory.
 
     Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
     LFCC run share an architecture but not an input space, so a shared last.pth
     would let one silently auto-resume from the other's weights and the
-    resulting numbers would be unattributable. The default front-end keeps the
-    original layout so existing checkpoints stay where app.py looks.
+    resulting numbers would be unattributable. Two architectures do not even
+    share a state_dict, so mixing those would fail loudly rather than quietly —
+    but it would still cost a run. The default architecture and front-end keep
+    the original layout so existing checkpoints stay where app.py looks.
     """
-    ckpt_dir = CKPT_DIR if frontend == DEFAULT_FRONTEND else CKPT_DIR / frontend
+    ckpt_dir = CKPT_DIR if arch == DEFAULT_ARCH else CKPT_DIR / arch
+    if frontend != default_frontend_for(arch):
+        ckpt_dir = ckpt_dir / frontend
     if not use_dp:
         ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -126,7 +150,8 @@ def unwrap(model):
     return getattr(model, "_module", model)
 
 def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
-              is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND):
+              is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND,
+              arch=DEFAULT_ARCH, batch_size=None, scheduler=None):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -147,9 +172,16 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         # it back and build the matching transform; without it, serving a
         # log-Mel pipeline to an LFCC-trained model is a silent wrong answer.
         "frontend": frontend,
+        # And which network. Loading AASIST weights into the CNN raises, so this
+        # one fails loudly rather than silently — but only if something knows to
+        # build the right class first, which is what this field is for.
+        "arch": arch,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
-        "batch_size": BATCH_SIZE,
+        # Restored on resume so a cosine schedule survives a job hitting its
+        # Slurm time limit, which at 100 epochs it is expected to.
+        "scheduler": None if scheduler is None else scheduler.state_dict(),
+        "batch_size": batch_size,
         "class_weights": None if class_weights is None else class_weights.tolist(),
         "metrics": metrics,
         # Promoted out of `metrics` because this is the one value the server
@@ -158,7 +190,7 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         "best_eer": best_eer,
         "dp": {
             "noise_multiplier": NOISE_MULTIPLIER, "max_grad_norm": MAX_GRAD_NORM,
-            "batch_size": BATCH_SIZE,
+            "batch_size": batch_size,
         } if use_dp else None,
     }
     torch.save(payload, ckpt_dir / f"deepfake_{strftime('%Y%m%d-%H%M%S')}.pth")
@@ -278,12 +310,30 @@ def main():
                              "the measured cost of privacy. Checkpoints go to checkpoints/nodp/.")
     parser.add_argument("--no-class-weights", dest="use_class_weights", action="store_false",
                         help="Disable inverse-frequency class weighting (for ablation).")
-    parser.add_argument("--frontend", default=DEFAULT_FRONTEND, choices=list(FRONTENDS),
-                        help="Time-frequency front-end. 'lfcc' is the controlled "
-                             "ablation against 'logmel': the Mel scale compresses "
-                             "high frequencies, where vocoder artefacts live, and "
-                             "both official ASVspoof baselines are cepstral. "
-                             "Checkpoints go to checkpoints/<frontend>/.")
+    parser.add_argument("--arch", default=DEFAULT_ARCH, choices=list(ARCHITECTURES),
+                        help="Network. 'cnn' is the 2-conv baseline reading a "
+                             "spectrogram. 'aasist' reads the raw waveform through "
+                             "learnable band-pass filters and relates distant parts "
+                             "of the clip through a spectro-temporal graph; it is "
+                             "the answer to RESULTS.md Finding 2, where log-Mel and "
+                             "LFCC each won on attacks the other missed, so no "
+                             "handcrafted front-end was the right one. 'aasist-l' is "
+                             "the 85k-parameter variant, the fallback if memory is "
+                             "tight. Checkpoints go to checkpoints/<arch>/.")
+    parser.add_argument("--frontend", default=None, choices=list(FRONTENDS),
+                        help="Front-end, defaulting to the one the architecture is "
+                             "built to read (raw for AASIST, log-Mel for the CNN). "
+                             "For the CNN, 'lfcc' is the controlled ablation against "
+                             "'logmel': the Mel scale compresses high frequencies, "
+                             "where vocoder artefacts live, and both official "
+                             "ASVspoof baselines are cepstral.")
+    parser.add_argument("--epochs", type=int, default=None,
+                        help="Override the architecture's default epoch count.")
+    parser.add_argument("--batch-size", type=int, default=None,
+                        help="Override the architecture's default batch size. Raising "
+                             "it for AASIST is how you run out of GPU memory.")
+    parser.add_argument("--lr", type=float, default=None,
+                        help="Override the architecture's default learning rate.")
     parser.add_argument("--num-workers", type=int,
                         default=int(os.getenv("SLURM_CPUS_PER_TASK", "2")),
                         help="DataLoader workers. Defaults to $SLURM_CPUS_PER_TASK inside a "
@@ -291,6 +341,21 @@ def main():
                              "bottleneck, not the GPU — but every worker forks the process, "
                              "so RAM caps it (keep it at 8 on the 6.7GB WSL box).")
     args = parser.parse_args()
+
+    # The front-end follows the architecture unless it is named explicitly, and
+    # an impossible pairing stops the run here rather than training on nonsense
+    # for an hour — see check_pairing in model.py.
+    frontend = args.frontend or default_frontend_for(args.arch)
+    check_pairing(args.arch, frontend)
+
+    recipe = dict(TRAIN_DEFAULTS[args.arch])
+    if args.epochs is not None:
+        recipe["epochs"] = args.epochs
+    if args.batch_size is not None:
+        recipe["batch_size"] = args.batch_size
+    if args.lr is not None:
+        recipe["lr"] = args.lr
+    epochs, batch_size = recipe["epochs"], recipe["batch_size"]
 
     # Announce the device. A Slurm job that fell back to CPU because --gres was
     # missing is indistinguishable from a slow one until you read this line.
@@ -306,19 +371,35 @@ def main():
     print(f"--- Using Corpus: {args.corpus} ---")
     for key, val in PATHS.items(): print(f"{key}: {val}")
 
-    # Log-Mel pipeline, shared with the inference server (see model.py).
-    transform_pipeline = build_transform(args.frontend)
-    print(f"Front-end: {args.frontend}")
+    # Preprocessing shared with the inference server (see model.py). For the
+    # raw front-end this is Identity — AASIST's SincConv is the transform.
+    transform_pipeline = build_transform(frontend)
+    print(f"Architecture: {args.arch}, front-end: {frontend}")
+    print(f"Recipe: {epochs} epochs, batch {batch_size}, lr {recipe['lr']}, "
+          f"weight decay {recipe['weight_decay']}, "
+          f"cosine floor {recipe['lr_min'] or 'none (constant lr)'}")
 
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"], transform_pipeline)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True)
     dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline)
-    dev_loader = DataLoader(dev_dataset, batch_size=BATCH_SIZE, shuffle=False,
+    dev_loader = DataLoader(dev_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True)
 
-    model = AudioClassifierCNN().to(DEVICE)
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    model = build_model(args.arch).to(DEVICE)
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Parameters: {n_params:,}")
+    optimizer = optim.Adam(model.parameters(), lr=recipe["lr"],
+                           weight_decay=recipe["weight_decay"])
+    # Cosine annealing is part of AASIST's published recipe and the CNN rows
+    # never had it, so it is per-architecture rather than global. Its state is
+    # checkpointed: at 100 epochs a job WILL hit its Slurm time limit, and a
+    # resume that restarted the schedule at its peak would undo the anneal.
+    scheduler = (
+        optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs,
+                                             eta_min=recipe["lr_min"])
+        if recipe["lr_min"] else None
+    )
     class_weights = compute_class_weights(train_dataset, DEVICE) if args.use_class_weights else None
     criterion = nn.CrossEntropyLoss(weight=class_weights)
 
@@ -330,13 +411,25 @@ def main():
             noise_multiplier=NOISE_MULTIPLIER, max_grad_norm=MAX_GRAD_NORM,
         )
 
-    paths = get_ckpt_paths(args.use_dp, args.frontend)
+    paths = get_ckpt_paths(args.use_dp, frontend, args.arch)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
     if LAST_CKPT.exists():
         print(f"Resuming from checkpoint: {LAST_CKPT}")
         ckpt = torch.load(LAST_CKPT, map_location=DEVICE)
+        # Before load_state_dict, not after: loading the wrong architecture does
+        # fail, but with two hundred lines of missing and unexpected keys, which
+        # buries the one fact that explains it. get_ckpt_paths keeps the
+        # architectures apart, so reaching this means $CKPT_ROOT points
+        # somewhere it should not.
+        ckpt_arch = ckpt.get("arch", DEFAULT_ARCH)
+        if ckpt_arch != args.arch:
+            raise SystemExit(
+                f"ERROR: {LAST_CKPT} holds a {ckpt_arch!r} model, but this run is "
+                f"{args.arch!r}. Architectures get their own checkpoint directory — "
+                f"check $CKPT_ROOT, which is currently {CKPT_DIR}."
+            )
         unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         start_epoch = ckpt.get("epoch", 0) + 1
@@ -344,24 +437,26 @@ def main():
         # Older checkpoints predate this field; inf means the next epoch wins,
         # which is the old behaviour rather than a new failure mode.
         best_eer = ckpt.get("best_eer") or float("inf")
+        if scheduler is not None and ckpt.get("scheduler"):
+            scheduler.load_state_dict(ckpt["scheduler"])
 
     # --- NEW: Check if training is already complete ---
-    if start_epoch > EPOCHS:
-        print(f"✅ Training already completed for {EPOCHS}/{EPOCHS} epochs. Exiting.")
+    if start_epoch > epochs:
+        print(f"✅ Training already completed for {epochs}/{epochs} epochs. Exiting.")
         return
     # ------------------------------------------------
 
     mode = ("Differentially Private" if args.use_dp else "Non-Private Baseline (--no-dp)")
-    mode = f"{mode}, {args.frontend} front-end"
+    mode = f"{mode}, {args.arch} on {frontend}"
     print(f"--- Starting {mode} Training ---")
     steps_done = prev_steps
-    for epoch in range(start_epoch, EPOCHS + 1):
+    for epoch in range(start_epoch, epochs + 1):
         model.train()
         total_loss, correct, total = 0.0, 0, 0
         
         # disable=None is tqdm's "off unless stderr is a terminal" — inside a Slurm
         # job the bar would otherwise write one line per update into the log file.
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{EPOCHS}", disable=None)
+        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{epochs}", disable=None)
         for batch_idx, (inputs, labels) in enumerate(progress_bar, start=1):
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
@@ -386,7 +481,7 @@ def main():
         else:
             privacy_str = " (no DP)"
         print(
-            f"Epoch {epoch}/{EPOCHS} | "
+            f"Epoch {epoch}/{epochs} | "
             f"[TRAIN] loss={train_avg_loss:.4f} acc={100*correct/total:.2f}%"
             f"{privacy_str}"
         )
@@ -406,11 +501,16 @@ def main():
             "epsilon": epsilon if privacy_engine is not None else None,
             "delta": TARGET_DELTA if privacy_engine is not None else None,
             "corpus": args.corpus,
-            "frontend": args.frontend,
+            "frontend": frontend,
+            "arch": args.arch,
+            "lr": optimizer.param_groups[0]["lr"],
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
                   class_weights=class_weights, is_best=is_best,
-                  metrics=metrics, best_eer=best_eer, frontend=args.frontend)
+                  metrics=metrics, best_eer=best_eer, frontend=frontend,
+                  arch=args.arch, batch_size=batch_size, scheduler=scheduler)
+        if scheduler is not None:
+            scheduler.step()
 
     print("\n--- Training Finished ---")
 
