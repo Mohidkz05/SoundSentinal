@@ -244,6 +244,16 @@ auto-resuming from another's weights; a mismatch is caught and named on resume.
 
 `evaluate.py --arch aasist` resolves that path for you, so the directory layout
 only has to be typed when using `--ckpt` for something unusual.
+
+**Every `torch.load` of a checkpoint must pass `weights_only=False`.** torch 2.6
+changed that default to `True`, which refuses any checkpoint containing a
+non-tensor object — and ours do: Opacus's `get_epsilon()` returns a numpy
+scalar, so every DP checkpoint carries one inside `metrics`. `app.py` failed
+this way at import time on M3 while passing locally, because locally there is no
+real checkpoint and `verify_setup.py`'s stand-in held only plain tensors. That
+stand-in now carries a numpy scalar on purpose — a fixture easier to load than
+the real thing tests nothing. New checkpoints also store `float(epsilon)`, so
+they do not depend on the flag.
 `app.py` loads `checkpoints/best.pth`, falling back to a legacy flat
 `deepfake_audio_detector.pth` if present.
 

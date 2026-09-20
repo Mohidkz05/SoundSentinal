@@ -13,6 +13,7 @@ import os
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -178,9 +179,17 @@ def main():
     created_ckpt = not best.exists()
     if created_ckpt:
         ckpt_dir.mkdir(parents=True, exist_ok=True)
+        # The metrics carry a numpy scalar on purpose. A real DP checkpoint
+        # always does — Opacus's get_epsilon() returns one — and torch 2.6
+        # changed torch.load's default to weights_only=True, which refuses any
+        # checkpoint containing one. That broke app.py at import time on M3
+        # while passing here, because a temporary checkpoint of plain tensors
+        # is exactly the case the new default still allows. A stand-in that is
+        # easier to load than the real thing tests nothing.
         torch.save({"epoch": 0, "steps_done": 0, "arch": DEFAULT_ARCH,
                     "frontend": DEFAULT_FRONTEND,
-                    "model": build_model(DEFAULT_ARCH).state_dict()}, best)
+                    "model": build_model(DEFAULT_ARCH).state_dict(),
+                    "metrics": {"epsilon": np.float64(0.48)}}, best)
         print("  (no trained weights found; using a temporary untrained checkpoint)")
 
     try:

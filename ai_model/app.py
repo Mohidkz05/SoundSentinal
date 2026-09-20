@@ -60,7 +60,18 @@ def load_model():
             f"Run:  python train_dp_avspoof.py --corpus LA"
         )
 
-    payload = torch.load(path, map_location=torch.device("cpu"))
+    # weights_only=False, matching evaluate.py and the trainer's resume path.
+    # torch 2.6 flipped this default to True, which refuses any checkpoint
+    # containing a non-tensor object — and ours do: Opacus's get_epsilon()
+    # returns a numpy scalar, so every DP checkpoint carries one inside
+    # `metrics`. The failure is a raised UnpicklingError at import time, i.e.
+    # the server will not start at all rather than serve something wrong.
+    #
+    # The flag does mean the pickle may execute code, so it is safe exactly to
+    # the extent that best.pth is. That is an operator-placed deployment
+    # artifact from our own training, not user input — the upload path never
+    # reaches this call.
+    payload = torch.load(path, map_location=torch.device("cpu"), weights_only=False)
     # Checkpoints from save_ckpt() are a dict with a "model" key; a bare
     # state_dict (the legacy file) is used as-is.
     state_dict = payload["model"] if isinstance(payload, dict) and "model" in payload else payload

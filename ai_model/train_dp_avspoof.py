@@ -417,7 +417,12 @@ def main():
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
     if LAST_CKPT.exists():
         print(f"Resuming from checkpoint: {LAST_CKPT}")
-        ckpt = torch.load(LAST_CKPT, map_location=DEVICE)
+        # weights_only=False for the same reason as app.py and evaluate.py: a
+        # DP checkpoint carries a numpy scalar from get_epsilon(), and torch
+        # 2.6+ refuses those by default. Without this, auto-resume — which a
+        # 100-epoch AASIST run depends on to survive its Slurm time limit —
+        # dies on its own last.pth.
+        ckpt = torch.load(LAST_CKPT, map_location=DEVICE, weights_only=False)
         # Before load_state_dict, not after: loading the wrong architecture does
         # fail, but with two hundred lines of missing and unexpected keys, which
         # buries the one fact that explains it. get_ckpt_paths keeps the
@@ -498,7 +503,11 @@ def main():
             "dev_loss": dev_loss, "dev_acc": dev_acc, "dev_eer": dev_eer,
             "dev_threshold": dev_thresh, "dev_confusion": dev_cm,
             "train_loss": train_avg_loss, "train_acc": correct / max(1, total),
-            "epsilon": epsilon if privacy_engine is not None else None,
+            # float(), because Opacus returns a numpy scalar and a checkpoint
+            # holding one cannot be read back under torch's weights_only
+            # default. The loaders pass weights_only=False regardless, but new
+            # checkpoints should not need them to.
+            "epsilon": float(epsilon) if privacy_engine is not None else None,
             "delta": TARGET_DELTA if privacy_engine is not None else None,
             "corpus": args.corpus,
             "frontend": frontend,
