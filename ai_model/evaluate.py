@@ -33,6 +33,7 @@ from torch.utils.data import DataLoader
 from model import (ARCHITECTURES, CLASS_NAMES, DEFAULT_ARCH, DEFAULT_FRONTEND,
                    FRONTENDS, LABEL_MAP, build_model, build_transform,
                    default_frontend_for)
+from in_the_wild import get_itw_root, load_protocol as load_itw_protocol
 from tdcf import compute_min_tdcf
 from train_dp_avspoof import (
     AVSpoofDataset,
@@ -138,6 +139,13 @@ def main():
     parser.add_argument("--ckpt", type=Path, default=None,
                         help="An explicit checkpoint path, overriding --arch, "
                              "--frontend and --dp.")
+    parser.add_argument("--dataset", default="asvspoof", choices=["asvspoof", "itw"],
+                        help="'itw' scores In-the-Wild instead: 31,779 real-world "
+                             "clips from 58 public figures. ASVspoof2019's attacks "
+                             "are from 2019 and predate current voice cloning, so "
+                             "the gap between the two is the generalisation result. "
+                             "EER only — see in_the_wild.py for what it cannot "
+                             "measure. --corpus and --partition are ignored.")
     parser.add_argument("--partition", default="eval", choices=["eval", "dev"],
                         help="Which partition to score. Defaults to eval, which "
                              "is the only one worth quoting; dev is offered to "
@@ -209,22 +217,36 @@ def main():
     print(f"  threshold   {dev_threshold:.4f} "
           f"({'calibrated on dev' if calibrated else 'DEFAULT 0.5, checkpoint carries none'})")
 
-    paths = get_corpus_paths(args.corpus)
-    key = args.partition.upper()
-    if f"{key}_AUDIO_DIR" not in paths:
-        raise FileNotFoundError(
-            f"No {args.partition} partition under $ASVSPOOF_ROOT for {args.corpus}. "
-            f"Expected ASVspoof2019_{args.corpus}_{args.partition}/flac and a matching protocol.")
+    if args.dataset == "itw":
+        itw_root = get_itw_root()
+        dataset = AVSpoofDataset(None, itw_root, build_transform(frontend),
+                                 protocol=load_itw_protocol(itw_root), suffix="")
+        paths, key = {}, None
+        corpus_label, partition_label = "In-the-Wild", "all"
+    else:
+        paths = get_corpus_paths(args.corpus)
+        key = args.partition.upper()
+        if f"{key}_AUDIO_DIR" not in paths:
+            raise FileNotFoundError(
+                f"No {args.partition} partition under $ASVSPOOF_ROOT for {args.corpus}. "
+                f"Expected ASVspoof2019_{args.corpus}_{args.partition}/flac and a matching protocol.")
+        dataset = AVSpoofDataset(
+            paths[f"{key}_PROTOCOL_FILE"], paths[f"{key}_AUDIO_DIR"], build_transform(frontend))
+        corpus_label, partition_label = args.corpus, args.partition
 
-    dataset = AVSpoofDataset(
-        paths[f"{key}_PROTOCOL_FILE"], paths[f"{key}_AUDIO_DIR"], build_transform(frontend))
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False,
                         num_workers=args.num_workers, pin_memory=True)
 
     counts = dataset.protocol["label"].map(LABEL_MAP).value_counts()
-    print(f"\nPartition     {args.partition} ({len(dataset)} clips: "
+    print(f"\nDataset       {corpus_label} / {partition_label} ({len(dataset)} clips: "
           f"{int(counts.get(0, 0))} bonafide, {int(counts.get(1, 0))} spoof)")
-    print(f"Attacks       {', '.join(sorted(set(dataset.protocol['system_id'])))}")
+    if args.dataset == "itw":
+        print(f"Speakers      {dataset.protocol['speaker_id'].nunique()} public figures, "
+              f"no attack taxonomy")
+        print(f"NOTE          These are real-world deepfakes, not 2019 lab attacks.")
+        print(f"              Expect a far worse number than LA eval — that is the finding.")
+    else:
+        print(f"Attacks       {', '.join(sorted(set(dataset.protocol['system_id'])))}")
     print(f"\nScoring with {args.num_workers} workers...")
 
     scores, labels = score_dataset(model, loader)
@@ -238,8 +260,12 @@ def main():
     # they are what make the number comparable across systems — a t-DCF against
     # a different ASV is not the same quantity.
     min_tdcf, tdcf_detail = None, None
-    asv_key = f"{key}_ASV_SCORES"
-    if asv_key in paths:
+    asv_key = f"{key}_ASV_SCORES" if key else None
+    if args.dataset == "itw":
+        print("  (min t-DCF not defined here: it needs the organisers' ASV scores,")
+        print("   which ship only with ASVspoof. A t-DCF against a different ASV is")
+        print("   not the same quantity, so EER is the whole result.)")
+    elif asv_key in paths:
         try:
             min_tdcf, tdcf_detail = compute_min_tdcf(
                 scores[labels == 0], scores[labels == 1], paths[asv_key])
@@ -251,7 +277,7 @@ def main():
     cm_dev, far_dev, frr_dev = rates_at(labels, scores, dev_threshold)
     acc_dev = (cm_dev["tn"] + cm_dev["tp"]) / max(1, len(labels))
 
-    print(f"\n=== {args.corpus} {args.partition} ===")
+    print(f"\n=== {corpus_label} {partition_label} ===")
     if min_tdcf is not None:
         print(f"min t-DCF                {min_tdcf:6.4f}  <- ASVspoof2019 PRIMARY metric")
         print(f"                                 (1.0 = the 'accept everything' floor;")
@@ -269,7 +295,12 @@ def main():
     print("  and deploying against unseen attacks. The EER line is what compares to")
     print("  published numbers; the threshold block is what a user would experience.")
 
+    # In-the-Wild carries no attack taxonomy, so every spoof row is "-" and the
+    # per-attack table would just restate the pooled EER under a heading that
+    # implies a breakdown exists. Suppress it rather than print a fake one.
     by_attack = per_attack_eer(labels, scores, system_ids)
+    if set(by_attack) == {"-"}:
+        by_attack = {}
     if by_attack:
         print(f"\n=== EER by attack (each against all bonafide) ===")
         worst = max(by_attack.items(), key=lambda kv: kv[1]["eer"])
@@ -284,8 +315,13 @@ def main():
     result = {
         "timestamp": strftime("%Y-%m-%dT%H:%M:%S"),
         "checkpoint": str(ckpt_path),
-        "corpus": args.corpus,
-        "partition": args.partition,
+        "dataset": args.dataset,
+        "corpus": corpus_label,
+        "partition": partition_label,
+        # Kept so a per-speaker analysis of In-the-Wild needs no re-run: it is
+        # the only grouping this dataset has, standing in for the attack IDs.
+        "speakers": (dataset.protocol["speaker_id"].tolist()
+                     if args.dataset == "itw" else None),
         "regime": "dp" if ckpt.get("dp") else "non-private",
         "arch": arch,
         "frontend": frontend,
@@ -311,7 +347,8 @@ def main():
     # Slurm log, and APPROACH.md's comparison table has to be assembled from
     # several runs. A JSON per run is the smallest thing that makes that
     # mechanical rather than a matter of scrolling back.
-    out = args.out or ckpt_path.parent / f"eval_{args.partition}_{strftime('%Y%m%d-%H%M%S')}.json"
+    tag = "itw" if args.dataset == "itw" else args.partition
+    out = args.out or ckpt_path.parent / f"eval_{tag}_{strftime('%Y%m%d-%H%M%S')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2))
     print(f"\nWrote {out}")

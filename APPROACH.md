@@ -376,6 +376,11 @@ legal one — training on client voices needs their consent regardless.
 6. **Evaluate on In-the-Wild** (Müller et al.) with no retraining. LA's attacks
    predate modern voice cloning, so the gap between LA-eval and In-the-Wild is a
    finding in itself and costs one evaluation pass.
+   *Downloaded and wired 21 September 2026 — `sbatch hpc/get_in_the_wild.slurm`
+   then `sbatch hpc/evaluate.slurm --dataset itw --arch aasist`. Not yet scored.
+   Evaluation only: training on it would invalidate every LA row above, and its
+   CC-BY-SA licence and scraped source clips are a separate problem for anything
+   commercial. See `ai_model/in_the_wild.py`.*
 
 Log a confusion matrix throughout, not just accuracy and EER. On 1:9 data
 "90% accurate" can mean "always guesses spoof".

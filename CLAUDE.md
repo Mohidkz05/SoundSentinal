@@ -25,6 +25,10 @@ ai_model/
                          deviations from upstream; read them before editing.
   evaluate.py            Scores a checkpoint on the eval partition: EER,
                          min t-DCF, per-attack breakdown, JSON out.
+                         `--dataset itw` scores In-the-Wild instead.
+  in_the_wild.py         Adapter for In-the-Wild (Müller et al.) — the
+                         generalisation test set. EVALUATION ONLY; read its
+                         header before using it for anything else.
   tdcf.py                min t-DCF, ASVspoof2019's primary metric.
   summarise_results.py   Tabulates evaluate.py's JSON files.
   train_dp_avspoof.py    DP training loop (Opacus), dev-set eval, checkpointing.
@@ -275,6 +279,14 @@ Be honest about these rather than assuming they work:
    `/result` still shows the waiting state locally; `scp` one from M3 to see a
    real reading. The corpus lives on M3, not here — `data/` is still absent and
    `$ASVSPOOF_ROOT` unset locally.
+
+   **In-the-Wild is downloaded but not yet scored (21 September 2026).**
+   31,779 clips at `$ITW_ROOT` on M3, wired into `evaluate.py --dataset itw`
+   and smoke-tested on a miniature copy, but no real number exists yet.
+   It is an **evaluation set only** — never train or select on it, or every LA
+   row in `APPROACH.md` stops being comparable to published work and the
+   CC-BY-SA licence reaches a model artifact. Expect roughly 30–40% EER; the
+   literature reports detectors collapsing from ~1% on ASVspoof2019.
 
    **AASIST is ported but not trained (20 September 2026).** The code is
    verified — it reproduces the official implementation's output to float32

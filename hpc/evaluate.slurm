@@ -7,6 +7,13 @@
 #   sbatch hpc/evaluate.slurm --arch aasist --dp     # AASIST, DP
 #   sbatch hpc/evaluate.slurm --frontend lfcc        # the CNN LFCC ablation
 #   sbatch hpc/evaluate.slurm --partition dev        # reproduce a run's own number
+#   sbatch hpc/evaluate.slurm --dataset itw --arch aasist   # In-the-Wild
+#
+# --dataset itw scores In-the-Wild instead of ASVspoof: 31,779 real-world clips
+# from 58 public figures, deepfakes people actually posted rather than lab
+# attacks generated to a protocol. Needs hpc/get_in_the_wild.slurm first. EER
+# only — min t-DCF needs the organisers' ASV scores, which ship only with
+# ASVspoof. Expect a far worse number than LA eval; that gap is the result.
 #
 # --arch and --frontend pick the checkpoint directory, so the path never has to
 # be typed; --ckpt still overrides both for anything else.
@@ -47,10 +54,23 @@ if [ ! -x "$VENV_DIR/bin/python" ]; then
   echo "ERROR: no venv at $VENV_DIR. Run: bash hpc/bootstrap.sh" >&2
   exit 1
 fi
-if [ ! -d "$ASVSPOOF_ROOT/LA/ASVspoof2019_LA_eval/flac" ]; then
-  echo "ERROR: no eval partition at $ASVSPOOF_ROOT/LA. Run: sbatch hpc/get_la.slurm" >&2
-  exit 1
-fi
+# Which corpus this run needs depends on --dataset, and In-the-Wild needs no
+# ASVspoof at all — checking for the LA eval partition regardless would block a
+# perfectly valid job on a machine that only has In-the-Wild.
+case " $* " in
+  *" --dataset itw "*)
+    if [ ! -f "$ITW_ROOT/release_in_the_wild/meta.csv" ]; then
+      echo "ERROR: no In-the-Wild at $ITW_ROOT. Run: sbatch hpc/get_in_the_wild.slurm" >&2
+      exit 1
+    fi
+    ;;
+  *)
+    if [ ! -d "$ASVSPOOF_ROOT/LA/ASVspoof2019_LA_eval/flac" ]; then
+      echo "ERROR: no eval partition at $ASVSPOOF_ROOT/LA. Run: sbatch hpc/get_la.slurm" >&2
+      exit 1
+    fi
+    ;;
+esac
 
 cd ai_model
 "$VENV_DIR/bin/python" evaluate.py --corpus LA "$@"

@@ -203,9 +203,24 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
 # 1. DATASET CLASS
 # ===================================================================
 class AVSpoofDataset(Dataset):
-    def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE, max_len=MAX_LEN):
-        self.protocol = pd.read_csv(protocol_file, sep=r'\s+', header=None, engine='python')
-        self.protocol.columns = ['speaker_id', 'audio_file_name', '_', 'system_id', 'label']
+    """Clips named by a protocol, preprocessed exactly as the server does.
+
+    `protocol` and `suffix` exist so a dataset that is not ASVspoof can reuse
+    this class rather than copy it. In-the-Wild ships a meta.csv and .wav files,
+    so in_the_wild.py builds the same five-column frame and passes it here with
+    suffix="" (its filenames already carry .wav). Duplicating the class to
+    change two lines is how the preprocessing drift described in model.py's
+    header started; see "The one rule" in CLAUDE.md.
+    """
+
+    def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE,
+                 max_len=MAX_LEN, protocol=None, suffix=".flac"):
+        if protocol is not None:
+            self.protocol = protocol.reset_index(drop=True)
+        else:
+            self.protocol = pd.read_csv(protocol_file, sep=r'\s+', header=None, engine='python')
+            self.protocol.columns = ['speaker_id', 'audio_file_name', '_', 'system_id', 'label']
+        self.suffix = suffix
         self.audio_dir = audio_dir
         self.transform_pipeline = transform_pipeline
         self.max_len = max_len
@@ -220,7 +235,7 @@ class AVSpoofDataset(Dataset):
         label_str = self.protocol.iloc[idx]['label']
         label = self.label_map[label_str]
 
-        waveform, sample_rate = load_audio(str(self.audio_dir / f"{audio_name}.flac"))
+        waveform, sample_rate = load_audio(str(self.audio_dir / f"{audio_name}{self.suffix}"))
 
         # Same preprocessing the Flask server applies at inference time.
         spectrogram = preprocess_waveform(
