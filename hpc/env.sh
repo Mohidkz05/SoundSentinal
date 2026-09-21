@@ -38,10 +38,22 @@ export ASVSPOOF_ROOT="$SCRATCH_DIR/data"
 # primary storage. train_dp_avspoof.py and app.py both read this variable.
 export CKPT_ROOT="$PROJECT_DIR/checkpoints"
 
+# In-the-Wild (Müller et al.): 58 celebrities and politicians, real clips and
+# deepfakes scraped from social media and video platforms. It is a GENERALISATION
+# TEST SET and nothing else — never trained on, never selected on. ASVspoof2019's
+# attacks are from 2019 and predate current voice cloning, so a good LA number
+# says nothing about a clip someone would actually upload; the gap between the
+# two is the finding. Regenerable from a URL, so it belongs in scratch.
+#
+# Licence: CC-BY-SA-4.0, and the clips underneath are scraped recordings of real
+# named people. Fine for research and a citation; see the licence discussion in
+# APPROACH.md before it goes anywhere near a product.
+export ITW_ROOT="$SCRATCH_DIR/in_the_wild"
+
 # Slurm logs. Created here so a job never fails because its --output path
 # does not exist yet, which Slurm reports as a bare "Batch job submit failed".
 export LOG_DIR="$PROJECT_DIR/logs"
-mkdir -p "$LOG_DIR" "$CKPT_ROOT" "$ASVSPOOF_ROOT"
+mkdir -p "$LOG_DIR" "$CKPT_ROOT" "$ASVSPOOF_ROOT" "$ITW_ROOT"
 
 # Put uv and the venv on PATH if they exist yet (they will not on first run).
 [ -d "$UV_BIN_DIR" ] && PATH="$UV_BIN_DIR:$PATH"
