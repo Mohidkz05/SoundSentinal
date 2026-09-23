@@ -34,7 +34,7 @@
 #SBATCH --account=df37
 #SBATCH --time=12:00:00
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
 #SBATCH --output=%x-%j.out
 
@@ -74,32 +74,46 @@ fi
 # ---------------------------------------------------------------------------
 # 1. Download and verify
 # ---------------------------------------------------------------------------
+# Measured 24 September 2026: Zenodo serves ~0.43 MB/s PER CONNECTION and
+# scales linearly with parallel connections, and it drops a connection after
+# about 50 minutes ("curl: (18) transfer closed"). So every tar downloads in
+# parallel, and each one is resumed in a loop until it reaches the size Zenodo
+# reports — only a complete file is md5-checked. (The first version of this
+# script md5-checked the partial file after a drop, called it corrupt and
+# deleted 2 GB. A size mismatch means "resume", never "discard".)
+fetch() {
+  local name=$1 md5=$2 f="$TARS/$1" url="$RECORD/$1?download=1" want have
+  [ -f "$f.ok" ] && { echo "== $name: verified earlier, skipping =="; return 0; }
+  want=$(curl -sSIL --max-time 60 "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:" {n=$2} END {print n}')
+  [ -n "$want" ] || { echo "ERROR: $name: no Content-Length from Zenodo" >&2; return 1; }
+  for attempt in $(seq 1 40); do
+    have=$(stat -c %s "$f" 2>/dev/null || echo 0)
+    [ "$have" -eq "$want" ] && break
+    [ "$have" -gt "$want" ] && { echo "   $name larger than expected; restarting"; rm -f "$f"; }
+    curl -sSL -C - --retry 5 --retry-delay 30 --retry-connrefused -o "$f" "$url" 2>/dev/null || sleep 30
+  done
+  have=$(stat -c %s "$f" 2>/dev/null || echo 0)
+  [ "$have" -eq "$want" ] || { echo "ERROR: $name stuck at $have of $want bytes" >&2; return 1; }
+  if [ "$(md5sum "$f" | cut -d' ' -f1)" = "$md5" ]; then
+    touch "$f.ok"; echo "== $name: $(du -h "$f" | cut -f1), md5 ok =="
+  else
+    # Complete but wrong: this one really is corrupt. Remove it so a re-run refetches.
+    echo "ERROR: $name md5 mismatch on a complete file; deleted, re-submit to refetch" >&2
+    rm -f "$f"; return 1
+  fi
+}
+
+pids=()
 while read -r name md5; do
   [ -z "$name" ] && continue
-  f="$TARS/$name"
-  if [ -f "$f.ok" ]; then
-    echo "== $name: verified earlier, skipping =="
-    continue
-  fi
-  echo "== $name =="
-  for attempt in 1 2; do
-    curl -L -C - --no-progress-meter --retry 10 --retry-delay 30 --retry-connrefused \
-         -o "$f" "$RECORD/$name?download=1" || true
-    got=$(md5sum "$f" | cut -d' ' -f1)
-    if [ "$got" = "$md5" ]; then
-      echo "   md5 ok ($(du -h "$f" | cut -f1))"
-      touch "$f.ok"
-      break
-    fi
-    # A resumed download onto a corrupt partial never converges; start over once.
-    echo "   md5 MISMATCH ($got, expected $md5) — discarding and retrying"
-    rm -f "$f"
-    if [ "$attempt" -eq 2 ]; then
-      echo "ERROR: $name failed verification twice." >&2
-      exit 1
-    fi
-  done
+  fetch "$name" "$md5" & pids+=($!)
 done <<< "$PARTS"
+failed=0
+for p in "${pids[@]}"; do wait "$p" || failed=1; done
+if [ "$failed" -ne 0 ]; then
+  echo "ERROR: at least one tar did not verify. Re-submit; finished tars are kept." >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 2. Extract
