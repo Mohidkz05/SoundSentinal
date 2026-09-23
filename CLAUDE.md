@@ -277,9 +277,11 @@ Be honest about these rather than assuming they work:
    Best result is **AASIST at 3.17% EER / 0.0909 min t-DCF** (`best.pth`,
    epoch 42). That beats every CNN run (best 9.60% / 0.2124) and both official
    GMM baselines, but is about 3.3× off the paper's 0.83%, probably partly
-   because of the GroupNorm swap. **No checkpoint has been copied back to
-   this machine**, so `/result` still shows the waiting state locally; `scp`
-   one from M3 to see a real reading. The corpus lives on M3, not here —
+   because of the GroupNorm swap. **AASIST's `best.pth` was copied to
+   `ai_model/checkpoints/best.pth` on 23 September 2026**, so `app.py` serves
+   it locally (gitignored — a fresh clone has no weights; `scp` it from M3's
+   `checkpoints/aasist/nodp/`). Use host `m3`, not `m3-dtn`: the latter's host
+   key isn't in `known_hosts` on this laptop. The corpus lives on M3, not here —
    `data/` is still absent and `$ASVSPOOF_ROOT` unset locally.
 
    **In-the-Wild is scored (21 September 2026): the models collapse.** 31,779
