@@ -13,6 +13,7 @@
 #   sbatch --time=12:00:00 hpc/train.slurm --arch aasist --no-dp
 #   sbatch --time=12:00:00 hpc/train.slurm --arch aasist            # DP arm
 #   sbatch --time=12:00:00 hpc/train.slurm --arch aasist-l --no-dp  # if memory is tight
+#   sbatch --time=14:00:00 hpc/train.slurm --arch aasist --no-dp --rawboost 5  # augmented
 #
 # A command-line --time overrides the #SBATCH directive, so the default stays
 # honest for the CNN rather than every small job asking for half a day.

@@ -136,6 +136,10 @@ def main():
                         help="Which front-end's run to score, defaulting to the "
                              "architecture's own. This is how you reach the LFCC "
                              "ablation at checkpoints/lfcc/nodp/best.pth.")
+    parser.add_argument("--rawboost", type=int, default=None,
+                        help="Score the run trained with this RawBoost algo — it lives "
+                             "in its own checkpoint directory. Picks the checkpoint "
+                             "only; no augmentation is applied while scoring.")
     parser.add_argument("--ckpt", type=Path, default=None,
                         help="An explicit checkpoint path, overriding --arch, "
                              "--frontend and --dp.")
@@ -163,7 +167,7 @@ def main():
         ckpt_path = args.ckpt
     else:
         frontend_sel = args.frontend or default_frontend_for(args.arch)
-        _, _, ckpt_path = get_ckpt_paths(args.dp, frontend_sel, args.arch)
+        _, _, ckpt_path = get_ckpt_paths(args.dp, frontend_sel, args.arch, args.rawboost)
     if not ckpt_path.exists():
         raise FileNotFoundError(
             f"No checkpoint at {ckpt_path}.\n"

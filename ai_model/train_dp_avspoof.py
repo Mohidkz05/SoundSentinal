@@ -31,6 +31,7 @@ from model import (
     load_audio,
     preprocess_waveform,
 )
+from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
 
 # --- Hyperparameters & Constants ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -126,7 +127,8 @@ def get_corpus_paths(corpus: str = "LA"):
 # reads the same variable so the server still finds best.pth.
 CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 
-def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH):
+def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH,
+                   rawboost: int | None = None):
     """Each (architecture, front-end, privacy regime) triple gets its own directory.
 
     Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
@@ -136,10 +138,17 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
     share a state_dict, so mixing those would fail loudly rather than quietly —
     but it would still cost a run. The default architecture and front-end keep
     the original layout so existing checkpoints stay where app.py looks.
+
+    Augmentation gets its own level for the same reason: an augmented AASIST
+    run sharing aasist/nodp/ with the unaugmented one would auto-resume from
+    its last.pth — epoch 100, so it would announce "already completed" and
+    exit, or worse, continue someone else's weights.
     """
     ckpt_dir = CKPT_DIR if arch == DEFAULT_ARCH else CKPT_DIR / arch
     if frontend != default_frontend_for(arch):
         ckpt_dir = ckpt_dir / frontend
+    if rawboost:
+        ckpt_dir = ckpt_dir / f"rawboost{rawboost}"
     if not use_dp:
         ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -151,7 +160,7 @@ def unwrap(model):
 
 def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
               is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND,
-              arch=DEFAULT_ARCH, batch_size=None, scheduler=None):
+              arch=DEFAULT_ARCH, batch_size=None, scheduler=None, rawboost=None):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -176,6 +185,9 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         # one fails loudly rather than silently — but only if something knows to
         # build the right class first, which is what this field is for.
         "arch": arch,
+        # Training-time augmentation, recorded for provenance only: nothing at
+        # inference reads it, because augmentation never runs at inference.
+        "rawboost": rawboost,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
         # Restored on resume so a cosine schedule survives a job hitting its
@@ -214,7 +226,7 @@ class AVSpoofDataset(Dataset):
     """
 
     def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE,
-                 max_len=MAX_LEN, protocol=None, suffix=".flac"):
+                 max_len=MAX_LEN, protocol=None, suffix=".flac", augment=None):
         if protocol is not None:
             self.protocol = protocol.reset_index(drop=True)
         else:
@@ -226,6 +238,10 @@ class AVSpoofDataset(Dataset):
         self.max_len = max_len
         self.target_sample_rate = target_sample_rate
         self.label_map = LABEL_MAP
+        # Training-only waveform augmentation (rawboost.py). Applied before
+        # preprocess_waveform so the shared, deterministic preprocessing still
+        # runs last — the dev set, evaluate.py and app.py never pass one.
+        self.augment = augment
 
     def __len__(self):
         return len(self.protocol)
@@ -236,6 +252,8 @@ class AVSpoofDataset(Dataset):
         label = self.label_map[label_str]
 
         waveform, sample_rate = load_audio(str(self.audio_dir / f"{audio_name}{self.suffix}"))
+        if self.augment is not None:
+            waveform = self.augment(waveform, sample_rate)
 
         # Same preprocessing the Flask server applies at inference time.
         spectrogram = preprocess_waveform(
@@ -342,6 +360,12 @@ def main():
                              "'logmel': the Mel scale compresses high frequencies, "
                              "where vocoder artefacts live, and both official "
                              "ASVspoof baselines are cepstral.")
+    parser.add_argument("--rawboost", type=int, default=None, choices=sorted(RAWBOOST_ALGOS),
+                        help="Distort training clips with RawBoost (rawboost.py) so the "
+                             "model cannot rely on ASVspoof2019's clean channel — the "
+                             "In-the-Wild collapse in RESULTS.md Finding 6. 5 is upstream's "
+                             "choice for LA, 3 for codec-compressed DF. Training set only; "
+                             "checkpoints go to <arch dir>/rawboost<N>/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
     parser.add_argument("--batch-size", type=int, default=None,
@@ -394,7 +418,10 @@ def main():
           f"weight decay {recipe['weight_decay']}, "
           f"cosine floor {recipe['lr_min'] or 'none (constant lr)'}")
 
-    train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"], transform_pipeline)
+    augment = RawBoost(args.rawboost) if args.rawboost else None
+    print(f"Augmentation: {augment or 'none'}")
+    train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
+                                   transform_pipeline, augment=augment)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True)
     dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline)
@@ -426,7 +453,7 @@ def main():
             noise_multiplier=NOISE_MULTIPLIER, max_grad_norm=MAX_GRAD_NORM,
         )
 
-    paths = get_ckpt_paths(args.use_dp, frontend, args.arch)
+    paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
@@ -449,6 +476,12 @@ def main():
                 f"ERROR: {LAST_CKPT} holds a {ckpt_arch!r} model, but this run is "
                 f"{args.arch!r}. Architectures get their own checkpoint directory — "
                 f"check $CKPT_ROOT, which is currently {CKPT_DIR}."
+            )
+        if ckpt.get("rawboost") != args.rawboost:
+            raise SystemExit(
+                f"ERROR: {LAST_CKPT} was trained with rawboost={ckpt.get('rawboost')}, "
+                f"but this run has rawboost={args.rawboost}. Augmented runs get "
+                f"their own directory; check $CKPT_ROOT, currently {CKPT_DIR}."
             )
         unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
@@ -527,12 +560,14 @@ def main():
             "corpus": args.corpus,
             "frontend": frontend,
             "arch": args.arch,
+            "rawboost": args.rawboost,
             "lr": optimizer.param_groups[0]["lr"],
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
                   class_weights=class_weights, is_best=is_best,
                   metrics=metrics, best_eer=best_eer, frontend=frontend,
-                  arch=args.arch, batch_size=batch_size, scheduler=scheduler)
+                  arch=args.arch, batch_size=batch_size, scheduler=scheduler,
+                  rawboost=args.rawboost)
         if scheduler is not None:
             scheduler.step()
 

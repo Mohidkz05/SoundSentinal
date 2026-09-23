@@ -23,6 +23,9 @@ ai_model/
   aasist.py              AASIST, ported from the official implementation with
                          BatchNorm swapped for GroupNorm. Its header lists nine
                          deviations from upstream; read them before editing.
+  rawboost.py            RawBoost waveform augmentation, TRAINING ONLY
+                         (`--rawboost N`). Never imported by app.py or
+                         evaluate.py. Bit-identical to upstream.
   evaluate.py            Scores a checkpoint on the eval partition: EER,
                          min t-DCF, per-attack breakdown, JSON out.
                          `--dataset itw` scores In-the-Wild instead.

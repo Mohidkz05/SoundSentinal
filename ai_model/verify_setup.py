@@ -22,6 +22,8 @@ from model import (ARCH_FRONTENDS, ARCHITECTURES, DEFAULT_ARCH,
                    build_model, build_transform, check_pairing,
                    default_frontend_for, load_audio, preprocess_waveform)
 
+from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 SAMPLE = SCRIPT_DIR / "LA_T_1000137.flac"
 
@@ -38,6 +40,19 @@ def check(name, condition, extra=""):
     print(f"  [{status}] {name} {extra}")
     if not condition:
         failures.append(name)
+
+
+class _AugmentedCopies(torch.utils.data.Dataset):
+    """The same clip, augmented on every read. Module-level so workers can pickle it."""
+
+    def __init__(self, waveform, sample_rate, augment, n=4):
+        self.waveform, self.sample_rate, self.augment, self.n = waveform, sample_rate, augment, n
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, idx):
+        return self.augment(self.waveform, self.sample_rate)
 
 
 def main():
@@ -164,6 +179,26 @@ def main():
         with torch.no_grad():
             o = aasist(torch.randn(1, 1, samples))
         check(f"handles {samples} samples", tuple(o.shape) == (1, 2), tuple(o.shape))
+
+    print("--- RawBoost augmentation ---")
+    # Training-only (rawboost.py). Every algo must hand preprocess_waveform a
+    # mono waveform of the same length, finite, and actually changed.
+    for algo in sorted(RAWBOOST_ALGOS):
+        out = RawBoost(algo)(waveform, sample_rate)
+        same_len = tuple(out.shape) == (1, waveform.shape[1])
+        ok = same_len and bool(torch.isfinite(out).all()) and not torch.equal(out, waveform[:1])
+        check(f"algo {algo} ({RAWBOOST_ALGOS[algo]}) keeps shape, finite, changes the clip",
+              ok, tuple(out.shape))
+    # The claim rawboost.py's header rests on: numpy's global generator is
+    # reseeded per DataLoader worker and per epoch. If it were not, every worker
+    # would apply the same "random" distortion in lockstep and the augmentation
+    # would be a fraction as varied as it looks.
+    loader = torch.utils.data.DataLoader(
+        _AugmentedCopies(waveform, sample_rate, RawBoost(5)), batch_size=1, num_workers=2)
+    draws = [b[0] for _ in range(2) for b in loader]
+    distinct = len({d.numpy().tobytes() for d in draws})
+    check("workers and epochs draw different distortions", distinct == len(draws),
+          f"{distinct}/{len(draws)} distinct")
 
     spec = specs[DEFAULT_FRONTEND]
 
