@@ -140,6 +140,9 @@ def main():
                         help="Score the run trained with this RawBoost algo — it lives "
                              "in its own checkpoint directory. Picks the checkpoint "
                              "only; no augmentation is applied while scoring.")
+    parser.add_argument("--extra-train", default=None, choices=["asvspoof5"],
+                        help="Score the run trained with this extra corpus (its own "
+                             "checkpoint directory, plus-<name>/). Picks the checkpoint only.")
     parser.add_argument("--ckpt", type=Path, default=None,
                         help="An explicit checkpoint path, overriding --arch, "
                              "--frontend and --dp.")
@@ -167,7 +170,8 @@ def main():
         ckpt_path = args.ckpt
     else:
         frontend_sel = args.frontend or default_frontend_for(args.arch)
-        _, _, ckpt_path = get_ckpt_paths(args.dp, frontend_sel, args.arch, args.rawboost)
+        _, _, ckpt_path = get_ckpt_paths(args.dp, frontend_sel, args.arch, args.rawboost,
+                                         args.extra_train)
     if not ckpt_path.exists():
         raise FileNotFoundError(
             f"No checkpoint at {ckpt_path}.\n"

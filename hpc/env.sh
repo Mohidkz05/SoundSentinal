@@ -50,6 +50,11 @@ export CKPT_ROOT="$PROJECT_DIR/checkpoints"
 # APPROACH.md before it goes anywhere near a product.
 export ITW_ROOT="$SCRATCH_DIR/in_the_wild"
 
+# ASVspoof 5 train + dev (~58GB of tars, fetched by hpc/get_asvspoof5.slurm).
+# Unlike In-the-Wild this IS training data, for `--extra-train asvspoof5` — same
+# ODC-By licence as ASVspoof2019. Regenerable from Zenodo, so scratch.
+export ASV5_ROOT="$SCRATCH_DIR/asvspoof5"
+
 # Slurm logs. Created here so a job never fails because its --output path
 # does not exist yet, which Slurm reports as a bare "Batch job submit failed".
 export LOG_DIR="$PROJECT_DIR/logs"

@@ -3,7 +3,7 @@
 import torch
 import torchaudio
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import ConcatDataset, Dataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -32,6 +32,7 @@ from model import (
     preprocess_waveform,
 )
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
+import asvspoof5
 
 # --- Hyperparameters & Constants ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -128,7 +129,7 @@ def get_corpus_paths(corpus: str = "LA"):
 CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 
 def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH,
-                   rawboost: int | None = None):
+                   rawboost: int | None = None, extra_train: str | None = None):
     """Each (architecture, front-end, privacy regime) triple gets its own directory.
 
     Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
@@ -143,12 +144,18 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
     run sharing aasist/nodp/ with the unaugmented one would auto-resume from
     its last.pth — epoch 100, so it would announce "already completed" and
     exit, or worse, continue someone else's weights.
+
+    Extra training data gets one more level, for the same reason again: a run
+    on LA + ASVspoof 5 is a different model from the LA-only one, and the two
+    must never share a last.pth.
     """
     ckpt_dir = CKPT_DIR if arch == DEFAULT_ARCH else CKPT_DIR / arch
     if frontend != default_frontend_for(arch):
         ckpt_dir = ckpt_dir / frontend
     if rawboost:
         ckpt_dir = ckpt_dir / f"rawboost{rawboost}"
+    if extra_train:
+        ckpt_dir = ckpt_dir / f"plus-{extra_train}"
     if not use_dp:
         ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -160,7 +167,8 @@ def unwrap(model):
 
 def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
               is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND,
-              arch=DEFAULT_ARCH, batch_size=None, scheduler=None, rawboost=None):
+              arch=DEFAULT_ARCH, batch_size=None, scheduler=None, rawboost=None,
+              extra_train=None):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -188,6 +196,9 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         # Training-time augmentation, recorded for provenance only: nothing at
         # inference reads it, because augmentation never runs at inference.
         "rawboost": rawboost,
+        # Training data beyond the corpus, e.g. "asvspoof5". Provenance only,
+        # like rawboost: nothing at inference depends on it.
+        "extra_train": extra_train,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
         # Restored on resume so a cosine schedule survives a job hitting its
@@ -366,6 +377,15 @@ def main():
                              "In-the-Wild collapse in RESULTS.md Finding 6. 5 is upstream's "
                              "choice for LA, 3 for codec-compressed DF. Training set only; "
                              "checkpoints go to <arch dir>/rawboost<N>/.")
+    parser.add_argument("--extra-train", default=None, choices=["asvspoof5"],
+                        help="Add another corpus's training partition to LA train. "
+                             "'asvspoof5' adds 182k crowdsourced clips with newer attacks "
+                             "(asvspoof5.py; fetch with hpc/get_asvspoof5.slurm) — the "
+                             "response to the In-the-Wild collapse in RESULTS.md Finding 6. "
+                             "Selection and calibration still use LA dev. About 8x the "
+                             "data, so pass --epochs: 12 is roughly the optimiser steps "
+                             "of the 100-epoch LA recipe. Checkpoints go to "
+                             "<arch dir>/plus-<name>/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
     parser.add_argument("--batch-size", type=int, default=None,
@@ -422,6 +442,17 @@ def main():
     print(f"Augmentation: {augment or 'none'}")
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
                                    transform_pipeline, augment=augment)
+    if args.extra_train == "asvspoof5":
+        extra_protocol, extra_dir = asvspoof5.load_protocol("train")
+        print(f"Extra training data: ASVspoof 5 train, {len(extra_protocol)} clips from {extra_dir}")
+        extra_dataset = AVSpoofDataset(None, extra_dir, transform_pipeline,
+                                       protocol=extra_protocol, augment=augment)
+        parts = [train_dataset, extra_dataset]
+        train_dataset = ConcatDataset(parts)
+        # compute_class_weights reads .protocol; ConcatDataset has none, so give
+        # it the union. The weights must come from the data actually trained on,
+        # not from LA alone — the two corpora have different class ratios.
+        train_dataset.protocol = pd.concat([p.protocol for p in parts], ignore_index=True)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True)
     dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline)
@@ -453,7 +484,7 @@ def main():
             noise_multiplier=NOISE_MULTIPLIER, max_grad_norm=MAX_GRAD_NORM,
         )
 
-    paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost)
+    paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost, args.extra_train)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
@@ -482,6 +513,12 @@ def main():
                 f"ERROR: {LAST_CKPT} was trained with rawboost={ckpt.get('rawboost')}, "
                 f"but this run has rawboost={args.rawboost}. Augmented runs get "
                 f"their own directory; check $CKPT_ROOT, currently {CKPT_DIR}."
+            )
+        if ckpt.get("extra_train") != args.extra_train:
+            raise SystemExit(
+                f"ERROR: {LAST_CKPT} was trained with extra_train={ckpt.get('extra_train')}, "
+                f"but this run has extra_train={args.extra_train}. Check $CKPT_ROOT, "
+                f"currently {CKPT_DIR}."
             )
         unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
@@ -561,13 +598,14 @@ def main():
             "frontend": frontend,
             "arch": args.arch,
             "rawboost": args.rawboost,
+            "extra_train": args.extra_train,
             "lr": optimizer.param_groups[0]["lr"],
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
                   class_weights=class_weights, is_best=is_best,
                   metrics=metrics, best_eer=best_eer, frontend=frontend,
                   arch=args.arch, batch_size=batch_size, scheduler=scheduler,
-                  rawboost=args.rawboost)
+                  rawboost=args.rawboost, extra_train=args.extra_train)
         if scheduler is not None:
             scheduler.step()
 

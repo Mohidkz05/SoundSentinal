@@ -200,6 +200,40 @@ def main():
     check("workers and epochs draw different distortions", distinct == len(draws),
           f"{distinct}/{len(draws)} distinct")
 
+    print("--- ASVspoof 5 adapter (--extra-train asvspoof5) ---")
+    # A two-clip corpus laid out as hpc/get_asvspoof5.slurm leaves it, with a
+    # protocol in the README's ten-column format. The adapter has to hand the
+    # shared dataset class the same labels and the same tensors LA does — the
+    # clips here ARE the LA samples, so any difference is the adapter's fault.
+    import shutil
+    import tempfile
+
+    import pandas as pd
+
+    import asvspoof5
+    from train_dp_avspoof import AVSpoofDataset, compute_class_weights
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "flac_T").mkdir()
+        shutil.copy(SCRIPT_DIR / "LA_T_1000406.flac", root / "flac_T" / "T_0000000001.flac")
+        shutil.copy(SAMPLE, root / "flac_T" / "T_0000000002.flac")
+        (root / "ASVspoof5.train.tsv").write_text(
+            "T_4850 T_0000000001 F - - - - bonafide bonafide -\n"
+            "T_4851 T_0000000002 M - - - AC3 A05 spoof -\n")
+        proto, audio_dir = asvspoof5.load_protocol("train", root=root)
+        check("protocol maps keys and attacks",
+              list(proto["label"]) == ["bonafide", "spoof"]
+              and list(proto["system_id"]) == ["-", "A05"], list(proto["system_id"]))
+        ds5 = AVSpoofDataset(None, audio_dir, build_transform(DEFAULT_FRONTEND), protocol=proto)
+        x5, y5 = ds5[1]
+        check("spoof clip yields the LA tensor and label 1",
+              torch.equal(x5, specs[DEFAULT_FRONTEND]) and int(y5) == 1)
+        concat = torch.utils.data.ConcatDataset([ds5, ds5])
+        concat.protocol = pd.concat([ds5.protocol, ds5.protocol], ignore_index=True)
+        w = compute_class_weights(concat, torch.device("cpu"))
+        check("class weights computed over the concatenated corpus",
+              len(concat) == 4 and torch.allclose(w, torch.tensor([1.0, 1.0])), w.tolist())
+
     spec = specs[DEFAULT_FRONTEND]
 
     print("--- Train/serve parity ---")
