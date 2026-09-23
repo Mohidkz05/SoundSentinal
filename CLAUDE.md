@@ -271,34 +271,35 @@ was untracked (the file may still be on disk locally, and is now covered by the
 
 Be honest about these rather than assuming they work:
 
-1. **Models are trained and measured — see `RESULTS.md`.** Three runs exist on
-   M3 (log-Mel non-private, LFCC non-private, DP at ε=0.48), scored on the eval
-   partition with EER and min t-DCF. Best result 9.60% EER / 0.2124 min t-DCF,
-   which is competitive with the official 2019 GMM baselines and far off
-   AASIST's 0.83%. **No checkpoint has been copied back to this machine**, so
-   `/result` still shows the waiting state locally; `scp` one from M3 to see a
-   real reading. The corpus lives on M3, not here — `data/` is still absent and
-   `$ASVSPOOF_ROOT` unset locally.
+1. **Models are trained and measured — see `RESULTS.md`.** Four runs exist on
+   M3 (CNN log-Mel non-private, CNN LFCC non-private, CNN DP at ε=0.48, and
+   AASIST non-private), scored on the eval partition with EER and min t-DCF.
+   Best result is **AASIST at 3.17% EER / 0.0909 min t-DCF** (`best.pth`,
+   epoch 42). That beats every CNN run (best 9.60% / 0.2124) and both official
+   GMM baselines, but is about 3.3× off the paper's 0.83%, probably partly
+   because of the GroupNorm swap. **No checkpoint has been copied back to
+   this machine**, so `/result` still shows the waiting state locally; `scp`
+   one from M3 to see a real reading. The corpus lives on M3, not here —
+   `data/` is still absent and `$ASVSPOOF_ROOT` unset locally.
 
-   **In-the-Wild is downloaded but not yet scored (21 September 2026).**
-   31,779 clips at `$ITW_ROOT` on M3, wired into `evaluate.py --dataset itw`
-   and smoke-tested on a miniature copy, but no real number exists yet.
-   It is an **evaluation set only** — never train or select on it, or every LA
-   row in `APPROACH.md` stops being comparable to published work and the
-   CC-BY-SA licence reaches a model artifact. Expect roughly 30–40% EER; the
-   literature reports detectors collapsing from ~1% on ASVspoof2019.
+   **In-the-Wild is scored (21 September 2026): the models collapse.** 31,779
+   clips at `$ITW_ROOT` on M3. AASIST goes from 3.17% to **37.15% EER**; the
+   log-Mel CNN scores **58.54%**, i.e. worse than chance. At the dev-calibrated
+   thresholds both models flag most *real* clips as fake (AASIST 73%, CNN
+   97%), so the product as it stands would mislabel most genuine modern audio.
+   Finding 6 in `RESULTS.md`. It is an **evaluation set only** — never train,
+   select or calibrate on it, or every LA row in `APPROACH.md` stops being
+   comparable to published work and the CC-BY-SA licence reaches a model
+   artifact.
 
-   **AASIST is ported but not trained (20 September 2026).** The code is
-   verified — it reproduces the official implementation's output to float32
-   rounding, carries its published 297,354 parameters, and trains under Opacus
-   — but it has never seen the corpus. **Every AASIST number in this repo is
-   still someone else's**, quoted from the paper. Until `sbatch --time=12:00:00
-   hpc/train.slurm --arch aasist --no-dp` has run and been scored, there is no
-   measured AASIST row.
+   **AASIST is trained (20–21 September 2026)**, non-private only. There is no
+   DP AASIST run yet, so the cost of privacy has only been measured on the CNN.
 2. **Model selection is known-broken.** `save_ckpt` picks `best.pth` by dev
    EER, and dev reuses the training attacks; measured, it selects a worse model
-   than an earlier epoch. Finding 1 in `RESULTS.md`. The same flaw affects the
-   calibrated threshold. Both need a held-out set with unseen attacks.
+   than an earlier epoch. Finding 1 in `RESULTS.md`. AASIST suffers less —
+   its `best.pth` is 0.19 points of eval EER off the best epoch (Finding 5) —
+   but ranks only 23rd of 100. The same flaw affects the calibrated
+   threshold. Both need a held-out set with unseen attacks.
 
 3. **No tests** beyond `verify_setup.py` (a shape/parity smoke test) and
    `test_api.py` (a manual one-shot client). No CI. In particular there is no

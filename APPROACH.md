@@ -129,7 +129,8 @@ paper; taking them from one source is deliberate.
 | LCNN-LSTM-sum | 276k | LFCC | 1.92% | 0.0525 | AASIST Table 2 |
 | RawGAT-ST | 437k | raw waveform | 1.19% | 0.0335 | AASIST Table 2 |
 | AASIST-L | 85k | raw waveform | 0.99% | 0.0309 | AASIST Table 2 + official repo |
-| **AASIST** | 297k | raw waveform | **0.83%** | **0.0275** | AASIST Table 2 + official repo — **ported, not yet trained here** |
+| AASIST (published) | 297k | raw waveform | 0.83% | 0.0275 | AASIST Table 2 + official repo |
+| **Our AASIST** | 297k | raw waveform | **3.17%** | **0.0909** | `RESULTS.md` Finding 5, `best.pth` (epoch 42), GroupNorm |
 | wav2vec2 / WavLM front-end | 95M+ | raw waveform, pretrained | *unverified* | *unverified* | H100 via `m3h` QOS |
 
 **Two metrics, because the challenge has two.** min t-DCF is ASVspoof2019's
@@ -367,9 +368,10 @@ legal one — training on client voices needs their consent regardless.
 2. **Non-private baseline on the current CNN** (`--no-dp`). ~10 min on CPU. This
    is the floor and the first honest number to show the supervisor.
 3. **Port AASIST**, BatchNorm → GroupNorm. Train non-private.
-   *Ported and verified 20 September 2026; **not yet trained**. See "The port"
-   below. `sbatch --time=12:00:00 hpc/train.slurm --arch aasist --no-dp` is the
-   next command this project runs.*
+   *Ported 20 September 2026 and trained 20–21 September (100 epochs, about
+   11h45m on an L40S). Eval: **3.17% EER, 0.0909 min t-DCF** — beats every
+   CNN run and both GMM baselines, about 3.3× off the paper. See Finding 5 in
+   `RESULTS.md`.*
 4. **Fill the comparison table** — LCNN-LSTM-sum and AASIST-L as time allows.
 5. **DP arm** on whichever architectures fit the timetable, for the cost-of-
    privacy measurement.
@@ -377,7 +379,9 @@ legal one — training on client voices needs their consent regardless.
    predate modern voice cloning, so the gap between LA-eval and In-the-Wild is a
    finding in itself and costs one evaluation pass.
    *Downloaded and wired 21 September 2026 — `sbatch hpc/get_in_the_wild.slurm`
-   then `sbatch hpc/evaluate.slurm --dataset itw --arch aasist`. Not yet scored.
+   then `sbatch hpc/evaluate.slurm --dataset itw --arch aasist`. Scored 21
+   September: **AASIST 37.15% EER** (from 3.17% on LA eval), and the log-Mel
+   CNN 58.54%, i.e. worse than chance. See Finding 6 in `RESULTS.md`.
    Evaluation only: training on it would invalidate every LA row above, and its
    CC-BY-SA licence and scraped source clips are a separate problem for anything
    commercial. See `ai_model/in_the_wild.py`.*

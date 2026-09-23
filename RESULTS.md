@@ -4,9 +4,12 @@ Every number produced against the current architecture, with the run that
 produced it. `APPROACH.md` records *what we chose and why*; this file records
 *what happened*. When the two disagree about a number, this file is newer.
 
-**All runs: 20 September 2026, Monash M3 (project `df37`), ASVspoof2019 LA.**
-Non-private runs are 5 epochs, batch 64, Adam at 1e-3, inverse-frequency class
-weights `[4.919, 0.557]`, seed 42.
+**All runs: 20–21 September 2026, Monash M3 (project `df37`), trained on
+ASVspoof2019 LA.** CNN runs are 5 epochs, batch 64, Adam at 1e-3,
+inverse-frequency class weights `[4.919, 0.557]`, seed 42. The AASIST run uses
+its published recipe instead — 100 epochs, batch 24, Adam at 1e-4 with weight
+decay and cosine annealing — so it differs from the CNN rows by schedule as
+well as architecture (Finding 5).
 
 ## How to read these numbers
 
@@ -32,6 +35,8 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 
 | System | Front-end | Regime | eval EER | min t-DCF |
 | --- | --- | --- | --- | --- |
+| AASIST (published, **not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
+| **Our AASIST, `best.pth` (epoch 42)** | raw waveform | non-private | **3.17%** | **0.0909** |
 | LFCC-GMM (official B2) | LFCC | non-private | 8.09% | 0.2116 |
 | **Our CNN, epoch 2** | log-Mel | non-private | **9.60%** | **0.2124** |
 | CQCC-GMM (official B1) | CQCC | non-private | 9.57% | 0.2366 |
@@ -40,7 +45,10 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | Our CNN, `best.pth` | LFCC | non-private | 13.72% | 0.2463 |
 | **Our CNN, epoch 3** | log-Mel | **DP, ε=0.48** | **17.57%** | **0.2609** |
 | Our CNN, `best.pth` | log-Mel | DP, ε=0.48 | 17.80% | 0.2696 |
-| AASIST (target, **published — not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
+
+Our AASIST's best single epoch on eval reaches 2.98% EER (epochs 59, 64) and
+0.0807 min t-DCF (epochs 85, 95), but those are picked by looking at eval, so
+the `best.pth` row is the one to quote. See Finding 5.
 
 ## Finding 1 — dev EER does not select the best model
 
@@ -217,24 +225,124 @@ The threshold also moved erratically during training — 0.5030, 0.6735, 0.3342,
 the same reason model selection does. Calibrating on eval would be test-set
 leakage and is not an option.
 
+## Finding 5 — AASIST, measured: three times better than the CNN, four times worse than the paper
+
+Jobs 60271182 (train, 100 epochs, about 11h45m on one L40S), 60287185 (eval of
+`best.pth`) and 60287251 (every epoch scored on eval). Non-private, AASIST's
+published recipe: batch 24, Adam at 1e-4, weight decay, cosine annealing.
+
+| | eval EER | min t-DCF |
+| --- | --- | --- |
+| Our best CNN (log-Mel, epoch 2) | 9.60% | 0.2124 |
+| **Our AASIST, `best.pth` (epoch 42)** | **3.17%** | **0.0909** |
+| AASIST as published | 0.83% | 0.0275 |
+
+**It beats both official GMM baselines and every CNN run by a wide margin**:
+min t-DCF 0.0909 against 0.2116 for LFCC-GMM, less than half. It is still about
+3.3× off the paper on both metrics. Likely reasons, none tested yet:
+
+- **GroupNorm instead of BatchNorm** — the change that keeps the model
+  DP-compatible (see "The port" in `APPROACH.md`). The paper's number comes
+  from BatchNorm.
+- **One seed.** Adjacent epochs here already swing by nearly 2 points of eval
+  EER, so a single run cannot say how much of the gap is luck. Before quoting
+  the paper's 0.83% as a target, check whether it is a best-of-several-runs
+  figure.
+- **The epoch was chosen by dev EER**, which Finding 1 showed to be unreliable.
+
+**Model selection hurts less here than on the CNN, but it still picks
+imperfectly.** Dev EER bottomed out at 0.98% on epoch 42, so that became
+`best.pth`. On eval, epoch 42 ranks 23rd of 100 by EER and 29th by min t-DCF.
+The best epoch is only 0.19 points better on EER (2.98%) and 0.010 better on
+t-DCF (0.0807). After about epoch 40 eval EER stays within a narrow band
+(2.98%–5.00%, mean 3.30%), so here the choice of epoch matters much less than
+it did for the CNN.
+
+The summariser prints a dev/eval correlation of +0.985 for this sweep. As in
+Finding 1, that number flatters the selection rule, because epochs 1–9 are
+bad on both partitions. Measured from epoch 10 onward, the rank correlation
+drops to +0.62: dev tells you roughly where you are, not which epoch is best.
+
+**Per attack, AASIST closes the gaps the two handcrafted front-ends left** (see
+Finding 2):
+
+| Attack | log-Mel CNN | LFCC CNN | AASIST |
+| --- | --- | --- | --- |
+| A07 | 0.11% | 0.53% | 0.61% |
+| A08 | 0.83% | 6.47% | 1.69% |
+| A09 | 0.63% | 0.22% | 0.39% |
+| A10 | 3.70% | 0.61% | 0.91% |
+| A11 | 2.97% | 0.43% | 0.55% |
+| A12 | 8.10% | 0.61% | 0.55% |
+| A13 | 15.85% | 0.87% | 0.55% |
+| A14 | 2.12% | 0.53% | 0.55% |
+| A15 | 5.72% | 0.34% | 2.23% |
+| A16 | 0.22% | 1.10% | 1.71% |
+| A17 | 41.19% | 33.76% | **3.90%** |
+| A18 | 12.19% | 41.29% | **10.48%** |
+| A19 | 2.61% | 25.03% | **2.09%** |
+| **Pooled** | 10.15% | 13.72% | **3.17%** |
+
+A17, which defeated both CNNs, falls from over 33% to 3.90%. A18 is still the
+hardest attack by far, at 10.48%, and alone accounts for most of the pooled
+figure. AASIST does not win every row, so it has not learned a strictly better
+version of either front-end, but it has no near-chance attack left, which
+neither CNN managed. That is the argument Finding 2 made for learning the
+filterbank, now measured.
+
+**The threshold transfers much better.** At the dev-calibrated threshold of
+0.9985, eval accuracy is 92.75%, with 7.97% of spoofs passed and 0.99% of real
+clips flagged. The log-Mel CNN passed 32.51% of spoofs (Finding 4). Still,
+eval's own EER point sits at 0.7333, so the served threshold is not where eval
+would put it.
+
+## Finding 6 — In-the-Wild: both models collapse on real-world deepfakes
+
+Jobs 60300909, 60301093 and 60301094, 21 September 2026. In-the-Wild (Müller
+et al.) contains 31,779 clips of 54 public figures (19,963 real, 11,816 fake),
+collected from the internet rather than generated in a lab. It is used **for
+evaluation only**: no model here was trained, selected or calibrated on it.
+No min t-DCF is reported, because that metric needs the ASVspoof organisers'
+speaker-verification scores, which only exist for ASVspoof.
+
+| Model | LA eval EER | In-the-Wild EER | At the served threshold |
+| --- | --- | --- | --- |
+| **AASIST, `best.pth` (epoch 42)** | 3.17% | **37.15%** | 50.87% accuracy; 72.79% of real clips flagged, 9.16% of fakes passed |
+| AASIST, epoch 85 | 3.02% | 35.17% | 48.22% accuracy; 79.84% flagged, 4.38% passed |
+| CNN log-Mel, `best.pth` (epoch 5) | 10.15% | **58.54%** | 35.22% accuracy; 97.47% flagged, 9.55% passed |
+
+**AASIST goes from 3.17% to 37.15% EER, about twelve times worse.** That falls
+in the 30–40% range the literature led us to expect: detectors trained on
+ASVspoof2019 LA generalise poorly to modern, real-world fakes. This gap, not
+the LA number, is the fairer answer to "would this work on a clip someone
+uploads today?", and the honest answer is no.
+
+**The CNN is worse than chance.** An EER above 50% means its scores rank the
+two classes the wrong way round: on this data it rates real clips as *more*
+spoof-like than fakes. At its served threshold it flags 97.47% of real clips.
+Flipping its output would give 41.46%, but that would mean choosing the model's
+direction by looking at the test set, so it is not a legitimate result.
+
+**In practice, the product would call most real audio fake.** Both models'
+dev-calibrated thresholds sit at 0.998 or above, and In-the-Wild's real clips
+score above them. Finding 4's warning about thresholds calibrated on dev is
+much stronger here: at AASIST's served threshold nearly three in four real
+clips get flagged.
+
+The epoch 85 row is there for comparison, not as a headline. It was chosen
+because it had the best LA-eval min t-DCF, which means it was chosen by
+looking at a test set. Its 2-point improvement on In-the-Wild is also within
+what a single seed could produce by chance.
+
 ## What has not been measured
 
-- **AASIST.** Ported and verified on 20 September 2026 — it reproduces the
-  official implementation numerically, carries its 297,354 published
-  parameters, and trains under Opacus — but it **has not been run on the
-  corpus**. The 0.83% in the table above is the paper's number on their
-  training, not a measurement of this repo's model, and it stays that way until
-  `sbatch --time=12:00:00 hpc/train.slurm --arch aasist --no-dp` has run and
-  `sbatch hpc/evaluate.slurm --arch aasist` has scored it. Every other row of
-  the comparison table in `APPROACH.md` is likewise unmeasured.
-
-  When it is measured, the comparison will not be schedule-controlled: AASIST
-  runs at batch 24 where the CNN runs at 64, because at 64 a single one of its
-  activations is 4.2 GB. Architecture and schedule move together, so the gap is
-  not attributable to architecture alone. See "The port" in `APPROACH.md`.
+- **AASIST under DP.** The port trains under Opacus, but the private AASIST
+  run has not been done, so the cost of privacy exists only for the CNN.
+- **AASIST with BatchNorm, or over several seeds** — the two cheapest ways to
+  find out how much of the 3.17%-vs-0.83% gap comes from the GroupNorm swap.
+- **The rest of the comparison table** in `APPROACH.md`: LCNN-LSTM-sum,
+  AASIST-L and an SSL front-end.
 - **A DP sweep.** One ε is a point, not the cost-of-privacy curve.
-- **In-the-Wild** (Müller et al.). LA's attacks predate modern voice cloning;
-  this is the generalisation test that matters for a tool people would upload to.
 - **Any tuned run.** Five epochs, one learning rate, one batch size, throughout.
 - **Variance.** Every result is a single seed. None of the gaps here have error
   bars, and the differences between adjacent epochs may not survive a reseed.
@@ -247,5 +355,8 @@ sbatch hpc/train.slurm --no-dp --frontend lfcc      # LFCC ablation
 sbatch hpc/train.slurm                              # DP arm
 sbatch hpc/evaluate.slurm                           # score best.pth on eval
 sbatch hpc/sweep_epochs.slurm <run-dir>             # score every epoch
+sbatch --time=12:00:00 hpc/train.slurm --arch aasist --no-dp   # AASIST
+sbatch hpc/evaluate.slurm --arch aasist                        # score it on LA eval
+sbatch hpc/evaluate.slurm --dataset itw --arch aasist          # and on In-the-Wild
 cd ai_model && python summarise_results.py <run-dir>
 ```
