@@ -17,7 +17,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from model import (ARCH_FRONTENDS, ARCHITECTURES, DEFAULT_ARCH,
+from model import (ARCH_FRONTENDS, ARCHITECTURES, DEFAULT_ARCH, DP_ARCHITECTURES,
                    DEFAULT_FRONTEND, FRONTENDS, MAX_LEN, N_LFCC, N_MELS,
                    build_model, build_transform, check_pairing,
                    default_frontend_for, load_audio, preprocess_waveform)
@@ -30,7 +30,10 @@ SAMPLE = SCRIPT_DIR / "LA_T_1000137.flac"
 # Published parameter counts, from Table 2 of the AASIST paper and the official
 # repo. Ours differ by exactly the 512 dead bn1 weights that deviation 2 in
 # aasist.py removes, so these are the numbers to expect rather than 297k/85k.
-EXPECTED_PARAMS = {"cnn": 267_330, "aasist": 297_354, "aasist-l": 85_034}
+EXPECTED_PARAMS = {"cnn": 267_330, "aasist": 297_354, "aasist-l": 85_034,
+                   # XLS-R 300M as transformers counts it (315,437,696) plus the
+                   # 446,730-parameter AASIST head of ssl_aasist.py.
+                   "ssl-aasist": 315_884_426}
 
 failures = []
 
@@ -126,7 +129,8 @@ def main():
         from torch.utils.data import DataLoader, TensorDataset
         from opacus import PrivacyEngine
 
-        for arch in ARCHITECTURES:
+        # SSL-AASIST is excluded by design (DP_ARCHITECTURES in model.py).
+        for arch in DP_ARCHITECTURES:
             frontend = default_frontend_for(arch)
             # A short clip: this is a wiring test, and AASIST's activations are
             # large enough that a full 4 seconds would dominate the runtime.

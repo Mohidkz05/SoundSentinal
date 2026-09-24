@@ -36,6 +36,10 @@ tqdm==4.70.0
 # tighter epsilon bound — older guides tell you to opt in.
 opacus==1.6.0
 
+# SSL-AASIST only (ai_model/ssl_aasist.py): loads the pretrained XLS-R model.
+# Imported lazily, so the CNN and AASIST paths run without it.
+transformers==5.17.0
+
 # The inference server. requests is used only by test_api.py.
 Flask==3.1.3
 requests==2.34.2

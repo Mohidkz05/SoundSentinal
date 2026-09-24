@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torchaudio.transforms as T
 
 from aasist import AASIST, AASISTLight
+from ssl_aasist import SSLAASIST
 
 # --- Audio constants (shared by training and inference) ---
 SAMPLE_RATE = 16000
@@ -52,14 +53,26 @@ DEFAULT_FRONTEND = "logmel"
 # RESULTS.md Finding 2 — log-Mel and LFCC each win on attacks the other misses,
 # so no handcrafted picture is the right one). Pairing them the wrong way round
 # would not crash, it would train on noise, so the pairing is enforced.
-ARCHITECTURES = ("cnn", "aasist", "aasist-l")
+#
+# "ssl-aasist" is AASIST's graph fed by a pretrained speech model (XLS-R, 300M
+# parameters) instead of the sinc filterbank — the answer to RESULTS.md
+# Finding 7, where neither augmentation nor more lab data moved In-the-Wild.
+# See ssl_aasist.py. It needs `transformers`, imported only when it is built.
+ARCHITECTURES = ("cnn", "aasist", "aasist-l", "ssl-aasist")
 DEFAULT_ARCH = "cnn"
 
 ARCH_FRONTENDS = {
     "cnn": ("logmel", "lfcc"),
     "aasist": ("raw",),
     "aasist-l": ("raw",),
+    "ssl-aasist": ("raw",),
 }
+
+# Architectures DP-SGD can train. SSL-AASIST is excluded on purpose: per-sample
+# gradients for 316M parameters are far beyond what DP-SGD can afford, and
+# APPROACH.md already says an SSL front-end comes only after dropping DP. It
+# still contains no BatchNorm, so the invariant verify_setup.py checks holds.
+DP_ARCHITECTURES = ("cnn", "aasist", "aasist-l")
 
 
 def load_audio(path_or_file):
@@ -237,13 +250,18 @@ def check_pairing(arch, frontend):
         )
 
 
-def build_model(arch=DEFAULT_ARCH):
-    """Architecture name -> a fresh, untrained network.
+def build_model(arch=DEFAULT_ARCH, pretrained=False):
+    """Architecture name -> a fresh network.
 
     Use this everywhere a model is constructed, for the same reason
     build_transform exists: the trainer, the evaluator and the server must
     agree, and a name stored in a checkpoint is the only thing that survives
     the trip between them.
+
+    `pretrained` matters only for ssl-aasist: True downloads XLS-R's weights to
+    start training from. Loaders leave it False — they build the architecture
+    and load a checkpoint over it, which already holds the fine-tuned XLS-R,
+    so serving needs no download.
     """
     if arch not in ARCHITECTURES:
         raise ValueError(f"arch must be one of {ARCHITECTURES}, got {arch!r}")
@@ -251,6 +269,8 @@ def build_model(arch=DEFAULT_ARCH):
         return AASIST()
     if arch == "aasist-l":
         return AASISTLight()
+    if arch == "ssl-aasist":
+        return SSLAASIST(pretrained=pretrained)
     return AudioClassifierCNN()
 
 

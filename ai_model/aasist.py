@@ -486,7 +486,7 @@ class ResidualBlock(nn.Module):
     preserved all the way to the graph, because a band IS a node there.
     """
 
-    def __init__(self, nb_filts, first=False):
+    def __init__(self, nb_filts, first=False, pool=True):
         super().__init__()
         self.first = first
         # Deviation 2: no bn1. Upstream computes it and discards the result.
@@ -503,7 +503,10 @@ class ResidualBlock(nn.Module):
                 in_channels=nb_filts[0], out_channels=nb_filts[1],
                 padding=(0, 1), kernel_size=(1, 3), stride=1)
 
-        self.mp = nn.MaxPool2d((1, 3))
+        # `pool=False` is the SSL-AASIST variant (ssl_aasist.py), whose upstream
+        # block has no time pooling. Neither choice holds parameters, so the
+        # state_dict is the same either way.
+        self.mp = nn.MaxPool2d((1, 3)) if pool else nn.Identity()
 
     def forward(self, x):
         identity = x
@@ -517,65 +520,26 @@ class ResidualBlock(nn.Module):
         return self.mp(out)
 
 
-class AASIST(nn.Module):
-    """The full network. `Model` upstream.
+class GraphBackend(nn.Module):
+    """Everything in AASIST after the encoder: two GATs, two heterogeneous
+    graph paths, the readout and the classifier.
 
-    Input is (batch, 1, samples) — the raw waveform, exactly as
-    preprocess_waveform produces it under the "raw" front-end. Output is
-    (batch, 2) logits, in this repo's fixed label order: bonafide=0, spoof=1.
-
-    The path through it:
-
-      waveform -> SincConv          learnable band-pass filters
-               -> |.|, max-pool     magnitude, downsampled 3x in both axes
-               -> 6 ResidualBlocks  a (batch, 64, 23, time) feature map
-               -> two GATs          23 frequency nodes, ~29 time nodes
-               -> two HtrgGAT paths both node types in one graph, twice, and
-                                    the two readings maxed together
-               -> 5 vectors         time max/avg, freq max/avg, master node
-               -> Linear -> 2 logits
-
-    Length independence: the 23 frequency nodes come from 70 sinc filters
-    max-pooled by 3, so they do not depend on clip length. The time nodes do,
-    and attention does not care how many nodes it is given. At this repo's
-    MAX_LEN of 64000 samples the time axis reduces to 29 nodes — the same 29
-    the official 64600-sample setting produces, so the 600-sample difference
-    costs us nothing.
+    Shared with SSL-AASIST (ssl_aasist.py), which feeds the same graph from a
+    pretrained speech model instead of the sinc filterbank. Factored out rather
+    than copied, for the reason in "The one rule" in CLAUDE.md. Attribute names
+    are upstream's, so checkpoints predating the split load unchanged.
     """
 
-    def __init__(self, config=None):
-        super().__init__()
-        config = dict(AASIST_CONFIG if config is None else config)
-        filts = config["filts"]
-        gat_dims = config["gat_dims"]
-        pool_ratios = config["pool_ratios"]
-        temperatures = config["temperatures"]
-        self.config = config
-
-        self.conv_time = SincConv(out_channels=filts[0],
-                                  kernel_size=config["first_conv"],
-                                  in_channels=1)
-        self.first_norm = group_norm(1)
-
+    def _build_graph(self, filts, gat_dims, pool_ratios, temperatures, n_spectral_nodes):
         self.drop = nn.Dropout(0.5)
         self.drop_way = nn.Dropout(0.2)
         self.selu = nn.SELU()
 
-        self.encoder = nn.Sequential(
-            ResidualBlock(nb_filts=filts[1], first=True),
-            ResidualBlock(nb_filts=filts[2]),
-            ResidualBlock(nb_filts=filts[3]),
-            ResidualBlock(nb_filts=filts[4]),
-            ResidualBlock(nb_filts=filts[4]),
-            ResidualBlock(nb_filts=filts[4]),
-        )
-
-        # 23 is the frequency-node count out of the encoder, fixed by the 70
-        # sinc filters and the 3x pool. A positional encoding is needed because
-        # graph attention is permutation-invariant — without it the model could
-        # not tell a low band from a high one.
-        self.n_spectral_nodes = 23
-        self.pos_S = learned_vectors(self.n_spectral_nodes, filts[-1][-1])
+        # A positional encoding is needed because graph attention is
+        # permutation-invariant — without it the model could not tell a low
+        # band from a high one.
+        self.n_spectral_nodes = n_spectral_nodes
+        self.pos_S = learned_vectors(n_spectral_nodes, filts[-1][-1])
         self.master1 = learned_vectors(1, gat_dims[0])
         self.master2 = learned_vectors(1, gat_dims[0])
 
@@ -602,33 +566,12 @@ class AASIST(nn.Module):
 
         self.out_layer = nn.Linear(5 * gat_dims[1], 2)
 
-    def forward(self, x, freq_aug=False):
-        """x: (batch, 1, samples) -> (batch, 2) logits.
+    def _graph_readout(self, e_S, e_T):
+        """e_S: (batch, spectral nodes, dim), e_T: (batch, temporal nodes, dim) -> logits."""
+        batch, device = e_S.size(0), e_S.device
 
-        `freq_aug` blanks a random run of sinc filters per batch, upstream's
-        frequency augmentation. The training loop does not pass it — the first
-        AASIST run is the plain architecture, so its number is attributable to
-        the architecture rather than to an augmentation the CNN rows never had.
-        """
-        x = self.conv_time(x, mask=freq_aug)       # (batch, 70, samples')
-        x = x.unsqueeze(dim=1)                      # (batch, 1, 70, samples')
-        x = F.max_pool2d(torch.abs(x), (3, 3))      # magnitude, 3x down both axes
-        x = self.first_norm(x)
-        x = self.selu(x)
-
-        e = self.encoder(x)                         # (batch, 64, 23, time)
-
-        batch, device = x.size(0), x.device
-
-        # Spectral nodes: one per frequency band, summarised over time.
-        e_S, _ = torch.max(torch.abs(e), dim=3)
-        e_S = e_S.transpose(1, 2) + _lookup(
-            self.pos_S, batch, self.n_spectral_nodes, device)
+        e_S = e_S + _lookup(self.pos_S, batch, self.n_spectral_nodes, device)
         out_S = self.pool_S(self.GAT_layer_S(e_S))
-
-        # Temporal nodes: one per time segment, summarised over frequency.
-        e_T, _ = torch.max(torch.abs(e), dim=2)
-        e_T = e_T.transpose(1, 2)
         out_T = self.pool_T(self.GAT_layer_T(e_T))
 
         # Two independent readings of the same heterogeneous graph, each with
@@ -673,6 +616,82 @@ class AASIST(nn.Module):
             [T_max, T_avg, S_max, S_avg, master.squeeze(1)], dim=1)
         # Deviation 4: the embedding is dropped, only the logits are returned.
         return self.out_layer(self.drop(last_hidden))
+
+
+class AASIST(GraphBackend):
+    """The full network. `Model` upstream.
+
+    Input is (batch, 1, samples) — the raw waveform, exactly as
+    preprocess_waveform produces it under the "raw" front-end. Output is
+    (batch, 2) logits, in this repo's fixed label order: bonafide=0, spoof=1.
+
+    The path through it:
+
+      waveform -> SincConv          learnable band-pass filters
+               -> |.|, max-pool     magnitude, downsampled 3x in both axes
+               -> 6 ResidualBlocks  a (batch, 64, 23, time) feature map
+               -> two GATs          23 frequency nodes, ~29 time nodes
+               -> two HtrgGAT paths both node types in one graph, twice, and
+                                    the two readings maxed together
+               -> 5 vectors         time max/avg, freq max/avg, master node
+               -> Linear -> 2 logits
+
+    Length independence: the 23 frequency nodes come from 70 sinc filters
+    max-pooled by 3, so they do not depend on clip length. The time nodes do,
+    and attention does not care how many nodes it is given. At this repo's
+    MAX_LEN of 64000 samples the time axis reduces to 29 nodes — the same 29
+    the official 64600-sample setting produces, so the 600-sample difference
+    costs us nothing.
+    """
+
+    def __init__(self, config=None):
+        super().__init__()
+        config = dict(AASIST_CONFIG if config is None else config)
+        filts = config["filts"]
+        gat_dims = config["gat_dims"]
+        pool_ratios = config["pool_ratios"]
+        temperatures = config["temperatures"]
+        self.config = config
+
+        self.conv_time = SincConv(out_channels=filts[0],
+                                  kernel_size=config["first_conv"],
+                                  in_channels=1)
+        self.first_norm = group_norm(1)
+
+        self.encoder = nn.Sequential(
+            ResidualBlock(nb_filts=filts[1], first=True),
+            ResidualBlock(nb_filts=filts[2]),
+            ResidualBlock(nb_filts=filts[3]),
+            ResidualBlock(nb_filts=filts[4]),
+            ResidualBlock(nb_filts=filts[4]),
+            ResidualBlock(nb_filts=filts[4]),
+        )
+
+        # 23 is the frequency-node count out of the encoder, fixed by the 70
+        # sinc filters and the 3x pool.
+        self._build_graph(filts, gat_dims, pool_ratios, temperatures, n_spectral_nodes=23)
+
+    def forward(self, x, freq_aug=False):
+        """x: (batch, 1, samples) -> (batch, 2) logits.
+
+        `freq_aug` blanks a random run of sinc filters per batch, upstream's
+        frequency augmentation. The training loop does not pass it — the first
+        AASIST run is the plain architecture, so its number is attributable to
+        the architecture rather than to an augmentation the CNN rows never had.
+        """
+        x = self.conv_time(x, mask=freq_aug)       # (batch, 70, samples')
+        x = x.unsqueeze(dim=1)                      # (batch, 1, 70, samples')
+        x = F.max_pool2d(torch.abs(x), (3, 3))      # magnitude, 3x down both axes
+        x = self.first_norm(x)
+        x = self.selu(x)
+
+        e = self.encoder(x)                         # (batch, 64, 23, time)
+
+        # Spectral nodes: one per frequency band, summarised over time.
+        e_S, _ = torch.max(torch.abs(e), dim=3)
+        # Temporal nodes: one per time segment, summarised over frequency.
+        e_T, _ = torch.max(torch.abs(e), dim=2)
+        return self._graph_readout(e_S.transpose(1, 2), e_T.transpose(1, 2))
 
 
 class AASISTLight(AASIST):

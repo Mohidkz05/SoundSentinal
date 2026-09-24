@@ -18,6 +18,7 @@ import os
 # Model + preprocessing live in model.py so app.py serves exactly what we train.
 from model import (
     ARCHITECTURES,
+    DP_ARCHITECTURES,
     DEFAULT_ARCH,
     DEFAULT_FRONTEND,
     FRONTENDS,
@@ -54,6 +55,13 @@ TRAIN_DEFAULTS = {
     "cnn":      {"epochs": 5,   "batch_size": 64, "lr": 1e-3, "weight_decay": 0.0,  "lr_min": None},
     "aasist":   {"epochs": 100, "batch_size": 24, "lr": 1e-4, "weight_decay": 1e-4, "lr_min": 5e-6},
     "aasist-l": {"epochs": 100, "batch_size": 24, "lr": 1e-4, "weight_decay": 1e-4, "lr_min": 5e-6},
+    # main_SSL_LA.py in TakHemlata/SSL_Anti-spoofing: Adam at 1e-6 with weight
+    # decay 1e-4, batch 14, 100 epochs, and NO scheduler — the learning rate is
+    # constant, because it is fine-tuning a pretrained model rather than
+    # training one, and 1e-6 is already small enough not to wreck XLS-R. A
+    # constant rate also means --epochs can be extended by a resumed run without
+    # changing the schedule the earlier epochs had.
+    "ssl-aasist": {"epochs": 100, "batch_size": 14, "lr": 1e-6, "weight_decay": 1e-4, "lr_min": None},
 }
 
 # --- NEW: Reproducibility ---
@@ -406,6 +414,10 @@ def main():
     # for an hour — see check_pairing in model.py.
     frontend = args.frontend or default_frontend_for(args.arch)
     check_pairing(args.arch, frontend)
+    if args.use_dp and args.arch not in DP_ARCHITECTURES:
+        raise SystemExit(
+            f"ERROR: {args.arch!r} does not train under DP (see DP_ARCHITECTURES in "
+            f"model.py). Pass --no-dp.")
 
     recipe = dict(TRAIN_DEFAULTS[args.arch])
     if args.epochs is not None:
@@ -459,7 +471,9 @@ def main():
     dev_loader = DataLoader(dev_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True)
 
-    model = build_model(args.arch).to(DEVICE)
+    # pretrained=True only changes ssl-aasist, which starts from XLS-R's weights.
+    # A resumed run loads last.pth over them straight afterwards.
+    model = build_model(args.arch, pretrained=True).to(DEVICE)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Parameters: {n_params:,}")
     optimizer = optim.Adam(model.parameters(), lr=recipe["lr"],

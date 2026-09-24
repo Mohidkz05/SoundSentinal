@@ -55,6 +55,10 @@ export ITW_ROOT="$SCRATCH_DIR/in_the_wild"
 # ODC-By licence as ASVspoof2019. Regenerable from Zenodo, so scratch.
 export ASV5_ROOT="$SCRATCH_DIR/asvspoof5"
 
+# Hugging Face cache: XLS-R's 1.27 GB of pretrained weights for ssl-aasist,
+# downloaded on first use. Project storage, not the 20 GB home quota.
+export HF_HOME="$PROJECT_DIR/.hf-cache"
+
 # Slurm logs. Created here so a job never fails because its --output path
 # does not exist yet, which Slurm reports as a bare "Batch job submit failed".
 export LOG_DIR="$PROJECT_DIR/logs"

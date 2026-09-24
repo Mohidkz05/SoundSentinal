@@ -21,6 +21,10 @@ tqdm==4.70.0
 
 opacus==1.6.0
 
+# SSL-AASIST only (ai_model/ssl_aasist.py): loads the pretrained XLS-R model.
+# Imported lazily, so the CNN and AASIST paths run without it.
+transformers==5.17.0
+
 # Flask is here only because verify_setup.py imports app.py to assert that the
 # tensor the server builds is byte-identical to the training one. That parity
 # check is worth running before a long job, and Flask is ~1MB. The server
