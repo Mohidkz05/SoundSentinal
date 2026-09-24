@@ -5,7 +5,8 @@ produced it. `APPROACH.md` records *what we chose and why*; this file records
 *what happened*. When the two disagree about a number, this file is newer.
 
 **All runs: 20–21 September 2026, Monash M3 (project `df37`), trained on
-ASVspoof2019 LA.** CNN runs are 5 epochs, batch 64, Adam at 1e-3,
+ASVspoof2019 LA** — except the two AASIST variants of 24 September in Finding 7,
+one with RawBoost augmentation and one with ASVspoof 5 added to training. CNN runs are 5 epochs, batch 64, Adam at 1e-3,
 inverse-frequency class weights `[4.919, 0.557]`, seed 42. The AASIST run uses
 its published recipe instead — 100 epochs, batch 24, Adam at 1e-4 with weight
 decay and cosine annealing — so it differs from the CNN rows by schedule as
@@ -36,7 +37,9 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | System | Front-end | Regime | eval EER | min t-DCF |
 | --- | --- | --- | --- | --- |
 | AASIST (published, **not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
+| **Our AASIST + RawBoost, `best.pth` (epoch 51)** | raw waveform | non-private | **1.74%** | **0.0531** |
 | **Our AASIST, `best.pth` (epoch 42)** | raw waveform | non-private | **3.17%** | **0.0909** |
+| Our AASIST, LA + ASVspoof 5 train (epoch 12) | raw waveform | non-private | 5.47% | 0.1425 |
 | LFCC-GMM (official B2) | LFCC | non-private | 8.09% | 0.2116 |
 | **Our CNN, epoch 2** | log-Mel | non-private | **9.60%** | **0.2124** |
 | CQCC-GMM (official B1) | CQCC | non-private | 9.57% | 0.2366 |
@@ -334,6 +337,57 @@ because it had the best LA-eval min t-DCF, which means it was chosen by
 looking at a test set. Its 2-point improvement on In-the-Wild is also within
 what a single seed could produce by chance.
 
+## Finding 7 — RawBoost helps LA and hurts In-the-Wild; extra data does neither
+
+Jobs 60380832 (AASIST + RawBoost algo 5, 100 epochs, 11h56m on an L40S) and
+60383146 (AASIST on LA train + ASVspoof 5 train, 12 epochs, 5h22m on an A100),
+24 September 2026. Scored by jobs 60386933/60386934 and 60384452/60386932.
+Both are aimed at Finding 6, and each changes one thing against the AASIST
+baseline: RawBoost distorts every training clip (convolutive + impulsive
+noise, re-drawn each read); `--extra-train asvspoof5` adds 182,357 clips from
+~2,000 crowdsourced speakers and newer TTS/VC attacks (ODC-By, same terms as
+LA). Selection and calibration stay on LA dev for both, In-the-Wild is still
+evaluation only, and neither run uses the other's change.
+
+| Model | LA eval EER | min t-DCF | In-the-Wild EER | ITW at served threshold |
+| --- | --- | --- | --- | --- |
+| AASIST baseline (epoch 42) | 3.17% | 0.0909 | 37.15% | 72.79% of real flagged, 9.16% of fakes passed |
+| **+ RawBoost** (epoch 51) | **1.74%** | **0.0531** | **48.78%** | 84.86% flagged, 10.96% passed |
+| + ASVspoof 5 train (epoch 12) | 5.47% | 0.1425 | 38.14% | 29.43% flagged, 52.04% passed |
+
+**RawBoost is the best LA model we have, and the worst on real-world audio.**
+LA eval EER falls from 3.17% to 1.74% and min t-DCF from 0.0909 to 0.0531,
+about 1.9× off the paper instead of 3.3×. The hardest attack improves most,
+A18 from 10.48% to 4.25%; A17 barely moves (3.90% → 3.42%). On In-the-Wild, the same checkpoint
+scores 48.78%, i.e. its scores barely separate real from fake. This is not
+an evaluation bug: the scoring code is the one that produced 37.15% for the
+baseline and 38.14% for the other run on the same day, and the LA number
+comes from the same `best.pth`.
+
+**Adding ASVspoof 5 changed where the threshold falls, not how well the model
+ranks clips.** In-the-Wild EER is 38.14% against 37.15%, within what one seed
+could produce. At the served threshold it flags 29% of real clips instead of
+73%, which looks like progress, but it now passes 52% of fakes instead of 9%:
+the operating point moved along roughly the same curve. It is also worse on
+LA eval (5.47%, with A18 at 19.25%), which is expected when LA is an eighth of
+the training data. It trained for 12 epochs, chosen to match the baseline's
+number of optimiser steps rather than its number of passes, so it has seen
+each LA clip 12 times rather than 100.
+
+**What this says.** LA eval and In-the-Wild measure different things. LA eval
+tests unseen *attacks* recorded under the same conditions as training;
+RawBoost's channel distortions make the model better at exactly that. In-the-Wild
+tests unseen *speakers, channels and generators at once*, and neither change
+moved it. Two more corpora of lab-generated attacks on read speech do not
+look like the missing ingredient. The approach the literature credits with
+large In-the-Wild gains is a self-supervised front-end (wav2vec 2.0 / XLS-R),
+already on the list below, and that is now the stronger candidate than more
+augmentation or more ASVspoof-style data.
+
+Caveats: one seed each; `best.pth` still chosen by LA dev (Finding 1), and no
+per-epoch sweep has been run on either model; the two changes were not tried
+together.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
@@ -344,6 +398,8 @@ what a single seed could produce by chance.
   AASIST-L and an SSL front-end.
 - **A DP sweep.** One ε is a point, not the cost-of-privacy curve.
 - **Any tuned run.** Five epochs, one learning rate, one batch size, throughout.
+- **RawBoost and ASVspoof 5 together**, or RawBoost with algo 3 (upstream's
+  choice for codec-compressed audio), or ASVspoof 5 at more epochs.
 - **Variance.** Every result is a single seed. None of the gaps here have error
   bars, and the differences between adjacent epochs may not survive a reseed.
 
@@ -358,5 +414,10 @@ sbatch hpc/sweep_epochs.slurm <run-dir>             # score every epoch
 sbatch --time=12:00:00 hpc/train.slurm --arch aasist --no-dp   # AASIST
 sbatch hpc/evaluate.slurm --arch aasist                        # score it on LA eval
 sbatch hpc/evaluate.slurm --dataset itw --arch aasist          # and on In-the-Wild
+sbatch --time=14:00:00 hpc/train.slurm --arch aasist --no-dp --rawboost 5         # Finding 7
+sbatch hpc/get_asvspoof5.slurm                                                    # ~3h, 58 GB
+sbatch --time=20:00:00 hpc/train.slurm --arch aasist --no-dp --extra-train asvspoof5 --epochs 12
+sbatch --gres=gpu:L40S:1 hpc/evaluate.slurm --dataset itw --arch aasist --rawboost 5
+# Pin evaluation to a 48GB+ GPU: at batch 128, AASIST runs out of memory on a T4.
 cd ai_model && python summarise_results.py <run-dir>
 ```

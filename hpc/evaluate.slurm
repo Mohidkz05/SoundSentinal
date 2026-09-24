@@ -37,6 +37,10 @@
 # pass. Training all five CNN epochs took 2m49s, so half an hour is generous
 # there. AASIST is a much heavier forward pass and has not been timed — if this
 # job hits the limit, resubmit with --time=02:00:00 rather than assuming a hang.
+#
+# Plain --gres=gpu:1 can land on a 16GB T4, where AASIST at batch 128 runs out
+# of memory (job 60384454, 24 September 2026). For AASIST pass
+# --gres=gpu:L40S:1 (or A40/A100) on the sbatch line.
 
 set -euo pipefail
 

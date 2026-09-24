@@ -297,6 +297,12 @@ Be honest about these rather than assuming they work:
    comparable to published work and the CC-BY-SA licence reaches a model
    artifact.
 
+   **Two fixes tried on 24 September 2026 did not help In-the-Wild** (Finding 7):
+   RawBoost gives the best LA result yet (1.74% EER / 0.0531 min t-DCF) but
+   48.78% on In-the-Wild; adding ASVspoof 5 train (`--extra-train asvspoof5`,
+   branch `asvspoof5`) scores 38.14%. The served `best.pth` is still the
+   unaugmented AASIST. The next candidate is an SSL front-end.
+
    **AASIST is trained (20–21 September 2026)**, non-private only. There is no
    DP AASIST run yet, so the cost of privacy has only been measured on the CNN.
 2. **Model selection is known-broken.** `save_ckpt` picks `best.pth` by dev
