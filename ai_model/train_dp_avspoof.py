@@ -224,10 +224,17 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
             "batch_size": batch_size,
         } if use_dp else None,
     }
-    torch.save(payload, ckpt_dir / f"deepfake_{strftime('%Y%m%d-%H%M%S')}.pth")
+    # Only last.pth is ever resumed from, so only it carries the optimiser and
+    # scheduler. Adam keeps two tensors per parameter, so for ssl-aasist (316M
+    # parameters) that state is 2.5 GB of a 3.8 GB file — kept in every
+    # per-epoch file it would be 380 GB over 100 epochs, more than the project
+    # quota has free. The per-epoch files and best.pth are for scoring and
+    # serving, which read the weights and metadata only.
+    weights_only = {k: v for k, v in payload.items() if k not in ("optimizer", "scheduler")}
+    torch.save(weights_only, ckpt_dir / f"deepfake_{strftime('%Y%m%d-%H%M%S')}.pth")
     torch.save(payload, last_ckpt)
     if is_best:
-        torch.save(payload, best_ckpt)
+        torch.save(weights_only, best_ckpt)
         print(f"🎉 New best model saved to {best_ckpt}!")
 
 # ===================================================================
