@@ -16,14 +16,17 @@
 #   - AUDETER (claims 1.87%): partly generated FROM In-the-Wild's bona fide
 #     audio. Training on it leaks our test set, so it is excluded outright.
 #   - MLAAD: CC BY-NC 4.0, i.e. no commercial use.
-#   SpeechFake is CC BY 4.0 and ungated. Its real speech is VCTK, LibriTTS
-#   (CC BY 4.0), AISHELL-1/3 (Apache 2.0) and Common Voice (CC0) — Common
-#   Voice is crowd-sourced on whatever microphone people had, the closest thing
-#   here to In-the-Wild's noisy bona fide. Its 10 API-generated systems are
-#   withheld by the authors for licensing reasons, so the release has 30.
+#   SpeechFake is CC BY 4.0 and ungated. BD's real speech is VCTK, LibriTTS
+#   (CC BY 4.0) and AISHELL-1/3 (Apache 2.0): read speech, mostly clean, so
+#   this adds generator diversity but not In-the-Wild's noisy recording
+#   conditions. Its 10 API-generated systems are withheld by the authors for
+#   licensing reasons, so the release has 30.
 #
 # WHAT IS FETCHED. BD (bilingual English/Chinese, a 7-part split zip, ~275 GB)
-# and Real/ (5 zips, ~34 GB), plus metadata and the licence. MD (multilingual,
+# and the four Real/ zips BD's protocols reference (~13 GB: VCTK, LibriTTS,
+# AISHELL-1/3), plus metadata and the licence. Real/CommonVoice.zip (20 GB) is
+# NOT fetched: no row of the baseline protocol points into it — it is the
+# bona fide half of MD. MD (multilingual,
 # ~115 GB) is NOT fetched: the result above is for BD. Add it to PARTS if the
 # cross-lingual rows are ever wanted.
 #
@@ -31,8 +34,13 @@
 #
 # Every file is checked against the SHA-256 ModelScope publishes for it. Re-running
 # resumes: a verified file is skipped, a partial one is continued with curl -C -,
-# and an extracted archive has a marker. Measured 25 September 2026 from the M3
-# login node: ~60 MB/s from ModelScope's CDN, so the download is ~1.5 h.
+# and an extracted archive has a marker.
+#
+# SPEED. A fresh connection gets 50-90 MB/s from ModelScope's CDN (measured 26
+# September 2026, login and compute nodes alike), but a long-lived one decays
+# to ~2 MB/s — the first version of this job crawled at 4 MB/s in total. So
+# curl aborts any transfer under 5 MB/s for 30 s and the loop resumes it on a
+# fresh connection. At the fresh-connection rate the download is ~1.5 h.
 #
 #SBATCH --job-name=speechfake-download
 #SBATCH --account=df37
@@ -60,7 +68,6 @@ Real/VCTK-Corpus.zip 2498726226 db1f7f01973f00ea612cd2b110d06b3fabbc504d2fdd6964
 Real/LibriTTS.zip 4597020747 60aeb64f973957127b096508aff29dc756be50c39ff1b509d8dabdd703abd736
 Real/Aishell.zip 3360424492 eb8529440ad09fea0ad2b8abc4a30446745b93c6e16e396473d7b5a211969068
 Real/Aishell3.zip 2571967588 376ffcd322a74298bb364bd7e42b889081d9cbb40078308925f0cb2e9c192302
-Real/CommonVoice.zip 20614616673 987f93a92f6a1dde4686604a114e8ccb7cdea8af461638269643272cd77bf2c1
 BD/BD.z01 42949672960 0c49f08578bfb6f359dc8a2758e18656b3094ff133dc1d24fb77394629261fe6
 BD/BD.z02 42949672960 489f62b3df6d1e04a9481af22e415301db7c2e7101be5ac98d1af360a9efc8c2
 BD/BD.z03 42949672960 d60f13921187c5cdf33eaa4bae33c686c83b5caa9b71b645496eaf8e100276ab
@@ -90,11 +97,14 @@ fetch() {
   local path=$1 want=$2 sha=$3 f="$ZIPS/$1" have
   mkdir -p "$(dirname "$f")"
   [ -f "$f.ok" ] && { echo "== $path: verified earlier, skipping =="; return 0; }
-  for attempt in $(seq 1 40); do
+  for attempt in $(seq 1 1000); do
     have=$(stat -c %s "$f" 2>/dev/null || echo 0)
     [ "$have" -eq "$want" ] && break
     [ "$have" -gt "$want" ] && { echo "   $path larger than expected; restarting"; rm -f "$f"; }
-    curl -sSL -C - --retry 5 --retry-delay 30 --retry-connrefused -o "$f" "${API}${path}" 2>/dev/null || sleep 30
+    # -Y/-y: give up on a connection that has decayed (see SPEED) and let the
+    # loop reopen it. Exit 28 is that abort, so it resumes without sleeping.
+    curl -sSL -C - -Y 5000000 -y 30 --retry 5 --retry-delay 30 --retry-connrefused \
+         -o "$f" "${API}${path}" 2>/dev/null || { [ $? -eq 28 ] || sleep 30; }
   done
   have=$(stat -c %s "$f" 2>/dev/null || echo 0)
   [ "$have" -eq "$want" ] || { echo "ERROR: $path stuck at $have of $want bytes" >&2; return 1; }
@@ -106,19 +116,25 @@ fetch() {
   fi
 }
 
-# Four at a time: one stream already gets ~60 MB/s, so fourteen at once would
+# Four at a time, as a pool: a slot is refilled the moment ANY download ends.
+# (The first version waited on the oldest, so a slow file at the head of the
+# queue held finished slots empty and only two ran.) Fourteen at once would
 # mostly contend for the same link and the same scratch disk.
 failed=0
-pids=()
+running=0
 while read -r path size sha; do
   [ -z "$path" ] && continue
-  fetch "$path" "$size" "$sha" & pids+=($!)
-  if [ "${#pids[@]}" -ge 4 ]; then
-    wait "${pids[0]}" || failed=1
-    pids=("${pids[@]:1}")
+  if [ "$running" -ge 4 ]; then
+    wait -n || failed=1
+    running=$((running - 1))
   fi
+  fetch "$path" "$size" "$sha" &
+  running=$((running + 1))
 done <<< "$PARTS"
-for p in "${pids[@]}"; do wait "$p" || failed=1; done
+while [ "$running" -gt 0 ]; do
+  wait -n || failed=1
+  running=$((running - 1))
+done
 if [ "$failed" -ne 0 ]; then
   echo "ERROR: at least one file did not verify. Re-submit; verified files are kept." >&2
   exit 1
