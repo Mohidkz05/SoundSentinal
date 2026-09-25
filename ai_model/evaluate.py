@@ -27,7 +27,6 @@ from time import strftime
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from model import (ARCHITECTURES, CLASS_NAMES, DEFAULT_ARCH, DEFAULT_FRONTEND,
@@ -79,17 +78,36 @@ def rates_at(labels, scores, threshold):
     return cm, far, frr
 
 
+def prob_to_log_odds(p):
+    """P(spoof) threshold -> the log-odds scale score_dataset() returns."""
+    with np.errstate(divide="ignore"):
+        return float(np.log(p) - np.log1p(-p))
+
+
+def log_odds_to_prob(s):
+    return float(1.0 / (1.0 + np.exp(-s)))
+
+
 @torch.no_grad()
 def score_dataset(model, loader):
-    """Run the model over a loader, returning P(spoof) and the true labels."""
+    """Run the model over a loader, returning log-odds of spoof and the labels.
+
+    Log-odds, not P(spoof). The two rank clips identically — P(spoof) is the
+    sigmoid of this — until softmax saturates: in float32 every clip past a
+    log-odds of ~17 is exactly 1.0. SSL-AASIST is confident enough that 15,307
+    In-the-Wild clips tied at 1.0, and an EER computed over a tie that size is
+    an arbitrary point inside it (it reported 37.82% at "threshold 1.0000").
+    The logit difference never saturates, so every EER and min t-DCF here is
+    computed on it and thresholds are converted, not the other way round.
+    """
     model.eval()
     all_scores, all_labels = [], []
     total = len(loader.dataset)
     seen = 0
     for x, y in loader:
         x = x.to(DEVICE, non_blocking=True)
-        probs = F.softmax(model(x), dim=1)
-        all_scores.append(probs[:, 1].cpu())
+        logits = model(x).float()
+        all_scores.append((logits[:, 1] - logits[:, 0]).cpu())
         all_labels.append(y)
         seen += y.size(0)
         # A plain periodic line rather than a progress bar: this runs in a Slurm
@@ -275,6 +293,9 @@ def main():
         print("   not the same quantity, so EER is the whole result.)")
     elif asv_key in paths:
         try:
+            # Log-odds, though tdcf.py documents P(spoof): it only flips and
+            # sweeps the scores, so any order-preserving scale gives the same
+            # minimum.
             min_tdcf, tdcf_detail = compute_min_tdcf(
                 scores[labels == 0], scores[labels == 1], paths[asv_key])
         except Exception as exc:                      # noqa: BLE001
@@ -282,7 +303,8 @@ def main():
     else:
         print(f"  (min t-DCF skipped: no ASV score file for the {args.partition} partition)")
     cm_oracle, far_oracle, frr_oracle = rates_at(labels, scores, eer_threshold)
-    cm_dev, far_dev, frr_dev = rates_at(labels, scores, dev_threshold)
+    cm_dev, far_dev, frr_dev = rates_at(labels, scores, prob_to_log_odds(dev_threshold))
+    eer_threshold_prob = log_odds_to_prob(eer_threshold)
     acc_dev = (cm_dev["tn"] + cm_dev["tp"]) / max(1, len(labels))
 
     print(f"\n=== {corpus_label} {partition_label} ===")
@@ -290,7 +312,8 @@ def main():
         print(f"min t-DCF                {min_tdcf:6.4f}  <- ASVspoof2019 PRIMARY metric")
         print(f"                                 (1.0 = the 'accept everything' floor;")
         print(f"                                  AASIST reports 0.0275 on this partition)")
-    print(f"EER                      {pooled_eer*100:6.2f}%  (at its own threshold {eer_threshold:.4f})")
+    print(f"EER                      {pooled_eer*100:6.2f}%  (at its own threshold P={eer_threshold_prob:.4g}, "
+          f"log-odds {eer_threshold:+.2f})")
     print(f"  confusion @EER         bonafide {cm_oracle['tn']} ok / {cm_oracle['fp']} flagged | "
           f"spoof {cm_oracle['tp']} caught / {cm_oracle['fn']} missed")
     print(f"\nAt the served threshold {dev_threshold:.4f} (calibrated on dev):")
@@ -340,7 +363,9 @@ def main():
                 "threshold": dev_threshold, "threshold_calibrated": calibrated},
         "pooled": {
             "min_tdcf": min_tdcf, "tdcf_detail": tdcf_detail,
-            "eer": pooled_eer, "eer_threshold": eer_threshold,
+            "eer": pooled_eer, "eer_threshold": eer_threshold_prob,
+            "eer_threshold_log_odds": eer_threshold,
+            "score_scale": "log-odds",
             "confusion_at_eer": cm_oracle,
             "at_served_threshold": {
                 "threshold": dev_threshold, "accuracy": acc_dev,
