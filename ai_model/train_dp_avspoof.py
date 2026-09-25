@@ -10,7 +10,7 @@ import torch.optim as optim
 from opacus import PrivacyEngine
 from tqdm import tqdm
 from pathlib import Path
-from time import strftime
+from time import monotonic, strftime
 import numpy as np
 import argparse
 import os
@@ -51,6 +51,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # The consequence must be stated wherever these rows are compared: the AASIST
 # row differs from the CNN rows by architecture AND schedule, so the gap is not
 # attributable to architecture alone. See RESULTS.md.
+# Steps between plain progress lines when tqdm is off (i.e. under Slurm).
+PROGRESS_EVERY = 1000
+
 TRAIN_DEFAULTS = {
     #          epochs  batch  lr      weight decay  cosine floor
     "cnn":      {"epochs": 5,   "batch_size": 64, "lr": 1e-3, "weight_decay": 0.0,  "lr_min": None},
@@ -590,6 +593,10 @@ def main():
         # disable=None is tqdm's "off unless stderr is a terminal" — inside a Slurm
         # job the bar would otherwise write one line per update into the log file.
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch}/{epochs}", disable=None)
+        # ...which leaves a Slurm log silent until the epoch ends: fine at 8
+        # minutes an epoch, blind at 3+ hours (--extra-train speechfake). So a
+        # plain line every PROGRESS_EVERY steps, with the rate and an ETA.
+        epoch_start, n_batches = monotonic(), len(train_loader)
         for batch_idx, (inputs, labels) in enumerate(progress_bar, start=1):
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
@@ -606,6 +613,12 @@ def main():
                 'Loss': f'{total_loss / batch_idx:.4f}',
                 'Acc': f'{100 * correct / total:.2f}%'
             })
+            if progress_bar.disable and batch_idx % PROGRESS_EVERY == 0:
+                elapsed = monotonic() - epoch_start
+                rate = batch_idx / elapsed
+                print(f"  step {batch_idx}/{n_batches} | loss {total_loss / batch_idx:.4f} "
+                      f"acc {100 * correct / total:.2f}% | {rate:.2f} it/s, "
+                      f"epoch ETA {(n_batches - batch_idx) / rate / 60:.0f} min", flush=True)
         
         train_avg_loss = total_loss / len(train_loader)
         if privacy_engine is not None:
