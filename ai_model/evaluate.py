@@ -158,7 +158,7 @@ def main():
                         help="Score the run trained with this RawBoost algo — it lives "
                              "in its own checkpoint directory. Picks the checkpoint "
                              "only; no augmentation is applied while scoring.")
-    parser.add_argument("--extra-train", default=None, choices=["asvspoof5"],
+    parser.add_argument("--extra-train", default=None, choices=["asvspoof5", "speechfake"],
                         help="Score the run trained with this extra corpus (its own "
                              "checkpoint directory, plus-<name>/). Picks the checkpoint only.")
     parser.add_argument("--ckpt", type=Path, default=None,

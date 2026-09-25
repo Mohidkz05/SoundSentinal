@@ -34,9 +34,13 @@ export UV_PYTHON_INSTALL_DIR="$PROJECT_DIR/.uv-python"
 # Edinburgh DataShare — textbook scratch data.
 export ASVSPOOF_ROOT="$SCRATCH_DIR/data"
 
-# Checkpoints are small and are the actual output of a run, so they go to
-# primary storage. train_dp_avspoof.py and app.py both read this variable.
-export CKPT_ROOT="$PROJECT_DIR/checkpoints"
+# Checkpoints are the actual output of a run, so they go to primary storage.
+# train_dp_avspoof.py and app.py both read this variable. Overridable because
+# SSL-AASIST checkpoints are 1.2 GB each and two 100-epoch runs filled the
+# 500 GB project quota (25 September 2026): pass
+#   sbatch --export=ALL,CKPT_ROOT=$SCRATCH_DIR/checkpoints ...
+# to put a run on scratch, and pass the same to evaluate.slurm to score it.
+export CKPT_ROOT="${CKPT_ROOT:-$PROJECT_DIR/checkpoints}"
 
 # In-the-Wild (Müller et al.): 58 celebrities and politicians, real clips and
 # deepfakes scraped from social media and video platforms. It is a GENERALISATION

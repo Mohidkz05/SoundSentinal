@@ -34,6 +34,7 @@ from model import (
 )
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
 import asvspoof5
+import speechfake
 
 # --- Hyperparameters & Constants ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -392,15 +393,19 @@ def main():
                              "In-the-Wild collapse in RESULTS.md Finding 6. 5 is upstream's "
                              "choice for LA, 3 for codec-compressed DF. Training set only; "
                              "checkpoints go to <arch dir>/rawboost<N>/.")
-    parser.add_argument("--extra-train", default=None, choices=["asvspoof5"],
+    parser.add_argument("--extra-train", default=None, choices=["asvspoof5", "speechfake"],
                         help="Add another corpus's training partition to LA train. "
                              "'asvspoof5' adds 182k crowdsourced clips with newer attacks "
                              "(asvspoof5.py; fetch with hpc/get_asvspoof5.slurm) — the "
                              "response to the In-the-Wild collapse in RESULTS.md Finding 6. "
                              "Selection and calibration still use LA dev. About 8x the "
                              "data, so pass --epochs: 12 is roughly the optimiser steps "
-                             "of the 100-epoch LA recipe. Checkpoints go to "
-                             "<arch dir>/plus-<name>/.")
+                             "of the 100-epoch LA recipe. 'speechfake' adds SpeechFake's "
+                             "bilingual subset, 705k clips from 30 generators (speechfake.py; "
+                             "fetch with hpc/get_speechfake.slurm) — ~29x the data, so "
+                             "--epochs 4 is ~1.15x the LA recipe's steps; its dev split joins "
+                             "LA dev for selection, because LA dev saturates at 0%% for "
+                             "ssl-aasist. Checkpoints go to <arch dir>/plus-<name>/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
     parser.add_argument("--batch-size", type=int, default=None,
@@ -461,11 +466,16 @@ def main():
     print(f"Augmentation: {augment or 'none'}")
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
                                    transform_pipeline, augment=augment)
-    if args.extra_train == "asvspoof5":
-        extra_protocol, extra_dir = asvspoof5.load_protocol("train")
-        print(f"Extra training data: ASVspoof 5 train, {len(extra_protocol)} clips from {extra_dir}")
+    if args.extra_train:
+        # (loader, audio-file suffix): ASVspoof 5 names files without an
+        # extension like ASVspoof2019; SpeechFake's paths already carry .wav.
+        adapter, suffix = {"asvspoof5": (asvspoof5, ".flac"),
+                           "speechfake": (speechfake, "")}[args.extra_train]
+        extra_protocol, extra_dir = adapter.load_protocol("train")
+        print(f"Extra training data: {args.extra_train} train, "
+              f"{len(extra_protocol)} clips from {extra_dir}")
         extra_dataset = AVSpoofDataset(None, extra_dir, transform_pipeline,
-                                       protocol=extra_protocol, augment=augment)
+                                       protocol=extra_protocol, suffix=suffix, augment=augment)
         parts = [train_dataset, extra_dataset]
         train_dataset = ConcatDataset(parts)
         # compute_class_weights reads .protocol; ConcatDataset has none, so give
@@ -475,6 +485,18 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True)
     dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline)
+    if args.extra_train == "speechfake":
+        # SSL-AASIST hits 0.00% on LA dev within a few epochs, after which every
+        # epoch ties and best.pth is just the first to tie. SpeechFake dev (117k
+        # clips, same 30 generators as its train split) keeps selection and the
+        # calibrated threshold meaningful. ASVspoof 5 runs keep LA dev alone, so
+        # their existing rows are unchanged.
+        sf_dev_protocol, sf_dir = speechfake.load_protocol("dev")
+        sf_dev = AVSpoofDataset(None, sf_dir, transform_pipeline, protocol=sf_dev_protocol, suffix="")
+        dev_parts = [dev_dataset, sf_dev]
+        dev_dataset = ConcatDataset(dev_parts)
+        dev_dataset.protocol = pd.concat([p.protocol for p in dev_parts], ignore_index=True)
+        print(f"Dev set: LA dev + SpeechFake dev = {len(dev_dataset)} clips")
     dev_loader = DataLoader(dev_dataset, batch_size=batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True)
 
