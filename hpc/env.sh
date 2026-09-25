@@ -55,6 +55,12 @@ export ITW_ROOT="$SCRATCH_DIR/in_the_wild"
 # ODC-By licence as ASVspoof2019. Regenerable from Zenodo, so scratch.
 export ASV5_ROOT="$SCRATCH_DIR/asvspoof5"
 
+# SpeechFake (ACL 2025), bilingual subset + its real speech (~310GB of zips,
+# fetched by hpc/get_speechfake.slurm). Training data, CC BY 4.0, ungated.
+# Chosen 26 September 2026 over SpoofCeleb (gated, manual approval) and
+# AUDETER (built partly FROM In-the-Wild, so it would leak the test set).
+export SPEECHFAKE_ROOT="$SCRATCH_DIR/speechfake"
+
 # Hugging Face cache: XLS-R's 1.27 GB of pretrained weights for ssl-aasist,
 # downloaded on first use. Project storage, not the 20 GB home quota.
 export HF_HOME="$PROJECT_DIR/.hf-cache"
