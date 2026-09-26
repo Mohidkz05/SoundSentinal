@@ -552,10 +552,34 @@ cannot suit both clean lab audio and real-world audio; for a tool whose users
 upload real-world clips, the real-world one is the right choice, but the
 trade-off should be stated.
 
-**Next:** calibrate on bona fide speech closer to In-the-Wild's conditions
-(broadcast, interviews, podcasts) — still not In-the-Wild itself — or put such
-speech into training so real-world recordings stop scoring as suspicious in
-the first place.
+**Second attempt: VoxPopuli (jobs 60478739–60478741).** Chosen *because*
+Common Voice fell short on In-the-Wild — so In-the-Wild informed that choice,
+and both attempts are reported here. European Parliament speeches (CC0, none
+of In-the-Wild's speakers), 9,000 clips split by speaker (719 speakers), same
+5% target:
+
+| Threshold fitted on | Held-out real flagged | ITW real flagged | ITW fakes passed | LA eval fakes passed |
+| --- | --- | --- | --- | --- |
+| Dev EER (clean read speech) | 35.19% (VoxPopuli) / 33.26% (CV) | 46.02% | 0.14% | 4.08% |
+| Common Voice, P = 0.7457 | 5.52% | **15.64%** | 1.17% | 18.09% |
+| VoxPopuli, P = 0.5308 | 3.62% | 19.26% | 0.98% | 15.78% |
+
+**It did worse.** The model scores parliamentary speech as *more* genuine
+than people reading at home, so the threshold came out lower and flagged more
+of In-the-Wild. One likely reason is the caveat in `voxpopuli.py`: XLS-R was
+pretrained on unlabelled VoxPopuli, so this audio is familiar to its
+features. Either way, In-the-Wild's genuine clips score higher than any real
+speech we can calibrate on, so **no threshold chosen without looking at
+In-the-Wild gets its false flags near 5%**. Calibration stops here, as
+committed before this attempt: a third set chosen after seeing two
+In-the-Wild results would be tuning on the test set by increments.
+
+**Conclusion.** The fault is in the scores, not the threshold. Genuine
+real-world recordings look suspicious to this model because nothing real and
+noisy was in its training data. The fix is to train with real-world bona fide
+speech — e.g. VoxPopuli, Common Voice or People's Speech (all ungated,
+commercially usable) — so the model learns that noisy, broadcast and
+home-recorded real speech is real.
 
 Caveats: one seed; four epochs, with dev EER still falling at epoch 4 (so
 more epochs might help); `best.pth` is the last epoch, so selection did not
