@@ -220,6 +220,9 @@ def main():
     # point — at serving time there are no eval labels to tune against.
     dev_threshold = ckpt.get("threshold")
     calibrated = dev_threshold is not None
+    # calibrate.py rewrites the threshold and records where it came from.
+    threshold_source = ckpt.get("threshold_source") or (
+        "calibrated on dev" if calibrated else "DEFAULT 0.5, checkpoint carries none")
     if not calibrated:
         dev_threshold = 0.5
 
@@ -241,7 +244,7 @@ def main():
        abs(dev_eer_best - dev_eer_epoch) > 1e-9:
         print(f"              {fmt_pct(dev_eer_best)}  (best so far in the run)")
     print(f"  threshold   {dev_threshold:.4f} "
-          f"({'calibrated on dev' if calibrated else 'DEFAULT 0.5, checkpoint carries none'})")
+          f"({threshold_source})")
 
     if args.dataset == "itw":
         itw_root = get_itw_root()
@@ -316,7 +319,7 @@ def main():
           f"log-odds {eer_threshold:+.2f})")
     print(f"  confusion @EER         bonafide {cm_oracle['tn']} ok / {cm_oracle['fp']} flagged | "
           f"spoof {cm_oracle['tp']} caught / {cm_oracle['fn']} missed")
-    print(f"\nAt the served threshold {dev_threshold:.4f} (calibrated on dev):")
+    print(f"\nAt the served threshold {dev_threshold:.4f} ({threshold_source}):")
     print(f"  accuracy               {acc_dev*100:6.2f}%")
     print(f"  false accept (spoof passed)   {frr_dev*100:6.2f}%")
     print(f"  false reject (real flagged)   {far_dev*100:6.2f}%")

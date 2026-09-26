@@ -19,13 +19,15 @@ Read this first; `RESULTS.md` has every number and its job ID.
   `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/best.pth`
   (epoch 4, 1.2 GB). Score it with
   `sbatch --gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints hpc/evaluate.slurm --dataset itw --arch ssl-aasist --rawboost 5 --extra-train speechfake`.
-- **Blocker before serving it: the threshold.** The dev-calibrated threshold
-  (P(spoof) = 0.0026) flags **46% of genuine In-the-Wild clips** as fake; the
-  ranking is excellent but real-world speech scores far higher than dev's clean
-  read speech. Do **not** calibrate on In-the-Wild. The fix is to calibrate on
-  a separate held-out set of noisy real-world *bona fide* speech. That is the
-  next task.
-- **Then serve it:** copy `best.pth` to `ai_model/checkpoints/best.pth`
+- **Threshold: partly fixed (27 September).** The dev-EER threshold flagged
+  46% of genuine In-the-Wild clips. `calibrate.py` re-set it so 5% of unseen
+  Common Voice clips are flagged (P(spoof) = 0.7457, written to
+  `best_calibrated.pth` beside `best.pth`): In-the-Wild false flags fell to
+  **15.6%**, fakes passed 1.2%. Still 3× the target — Common Voice (reading at
+  home) is closer to In-the-Wild than studio speech but not close enough.
+  Next: calibrate on broadcast/interview-style real speech (never In-the-Wild
+  itself), or add such speech to training. Do **not** calibrate on In-the-Wild.
+- **Then serve it:** copy `best_calibrated.pth` to `ai_model/checkpoints/best.pth`
   (`scp m3:...`), check `app.py` loads it with the new threshold, time one CPU
   prediction (316M params), and decide whether `/result` should state the
   real-world error rates. The app still serves plain AASIST today.

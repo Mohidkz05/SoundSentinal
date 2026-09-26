@@ -523,6 +523,40 @@ A13 at 0.10%). LA is now 3.5% of the training data, so this is expected; and
 because of the VCTK overlap the LA number no longer measures generalisation
 for this model anyway.
 
+### Follow-up: recalibrating the threshold on Common Voice (27 September)
+
+Jobs 60472073 (calibrate) and 60472074/60472075 (score). `ai_model/calibrate.py`
+set the threshold so that 5% of genuine **Common Voice** English clips are
+flagged — volunteers reading on their own microphones (CC0, never seen in
+training). The 5% target was fixed before In-the-Wild was scored at it, and
+In-the-Wild was scored once. It wrote `best_calibrated.pth`; `best.pth` keeps
+the dev threshold.
+
+| Threshold | Common Voice real flagged (held-out half) | ITW real flagged | ITW fakes passed | LA eval fakes passed |
+| --- | --- | --- | --- | --- |
+| Dev EER, P = 0.0026 | 33.26% | 46.02% | 0.14% | 4.08% |
+| **Common Voice 5%, P = 0.7457** | **5.52%** | **15.64%** | **1.17%** | 18.09% |
+
+**It worked on Common Voice and only partly on In-the-Wild.** The fitted rate
+held on the held-out half (5.52% against a 5.00% fit), and In-the-Wild's false
+flags fell from 46% to 16% while fakes passed rose from 0.14% to 1.17%. But
+16% is three times the target: In-the-Wild's genuine clips — interviews,
+speeches, broadcast audio — score higher still than people reading at home.
+Common Voice is closer to In-the-Wild than dev's studio speech, not close
+enough. The EER (2.65%) is unchanged by construction: moving a threshold never
+changes the ranking.
+
+**LA eval now passes 18% of fakes.** Clean studio spoofs score low on this
+model's scale, below a threshold set for noisy real speech. One threshold
+cannot suit both clean lab audio and real-world audio; for a tool whose users
+upload real-world clips, the real-world one is the right choice, but the
+trade-off should be stated.
+
+**Next:** calibrate on bona fide speech closer to In-the-Wild's conditions
+(broadcast, interviews, podcasts) — still not In-the-Wild itself — or put such
+speech into training so real-world recordings stop scoring as suspicious in
+the first place.
+
 Caveats: one seed; four epochs, with dev EER still falling at epoch 4 (so
 more epochs might help); `best.pth` is the last epoch, so selection did not
 have to choose; XLS-R's pretraining data may overlap In-the-Wild's speakers
