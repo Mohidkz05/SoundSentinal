@@ -147,14 +147,16 @@ def load_model():
             else "DP-SGD (Opacus)" if dp
             else "None — non-private baseline"
         ),
-        "threshold_source": "Equal error rate, dev partition" if calibrated else "Default 0.5, uncalibrated",
+        # calibrate.py records where a recalibrated threshold came from; older
+        # checkpoints carry the trainer's dev-EER threshold and say nothing.
+        "threshold_source": (
+            (payload.get("threshold_source") if isinstance(payload, dict) else None)
+            or ("Equal error rate, dev partition" if calibrated else "Default 0.5, uncalibrated")
+        ),
     }
 
     print(f"Loaded model weights from {path}")
-    print(
-        f"Decision threshold: {threshold:.4f} "
-        + ("(calibrated from dev EER)" if calibrated else "(default — checkpoint carries none)")
-    )
+    print(f"Decision threshold: {threshold:.4g} ({info['threshold_source']})")
     print(f"Architecture: {arch}, front-end: {frontend}")
     return net, float(threshold), calibrated, info, frontend
 
