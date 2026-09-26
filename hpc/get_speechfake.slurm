@@ -2,6 +2,7 @@
 # Download and extract SpeechFake's bilingual subset and its real speech into scratch.
 #
 #   sbatch hpc/get_speechfake.slurm
+#   sbatch --export=ALL,WITH_COMMONVOICE=1 hpc/get_speechfake.slurm   # + Common Voice
 #
 # WHY. SSL-AASIST + RawBoost trained on LA alone scores 11.21% EER on
 # In-the-Wild (Finding 8). A 2026 comparison of anti-spoofing training sets
@@ -25,8 +26,11 @@
 # WHAT IS FETCHED. BD (bilingual English/Chinese, a 7-part split zip, ~275 GB)
 # and the four Real/ zips BD's protocols reference (~13 GB: VCTK, LibriTTS,
 # AISHELL-1/3), plus metadata and the licence. Real/CommonVoice.zip (20 GB) is
-# NOT fetched: no row of the baseline protocol points into it — it is the
-# bona fide half of MD. MD (multilingual,
+# NOT fetched by default: no row of the baseline protocol points into it — it
+# is the bona fide half of MD. WITH_COMMONVOICE=1 adds it: 167,572 real clips
+# recorded by volunteers on their own microphones (50,000 English), CC0, and
+# unseen in training. It is the CALIBRATION set for the decision threshold
+# (ai_model/calibrate.py; RESULTS.md Finding 9), never training data. MD (multilingual,
 # ~115 GB) is NOT fetched: the result above is for BD. Add it to PARTS if the
 # cross-lingual rows are ever wanted.
 #
@@ -76,6 +80,11 @@ BD/BD.z05 42949672960 a1d1629ddbbf7f1ffda0dd93406064d5dbb99a62640334d5edf5fd5957
 BD/BD.z06 42949672960 2198a18a00bdc6a29995ce3d57d38c8171b38324bc43cb74017b32377ce068a4
 BD/BD.zip 17754620592 36907ce9058b062a88c5786216b3cabcae5f744fca7da0394d30fcae94d64208
 "
+if [ "${WITH_COMMONVOICE:-0}" = 1 ]; then
+  PARTS="$PARTS
+Real/CommonVoice.zip 20614616673 987f93a92f6a1dde4686604a114e8ccb7cdea8af461638269643272cd77bf2c1
+"
+fi
 
 echo "== Disk before =="
 df -h "$SCRATCH_DIR" | tail -1
