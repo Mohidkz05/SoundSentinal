@@ -6,46 +6,38 @@ differential privacy (Opacus) on the ASVspoof2019 corpus.
 
 University project. Active work is on branch `ssl-aasist` — see "Branching" below.
 
-## Where things stand (updated 26 September 2026)
+## Where things stand (updated 26 September 2026, evening)
 
 Read this first; `RESULTS.md` has every number and its job ID.
 
-- **Goal right now:** get In-the-Wild EER **under 5%** without ever training,
-  selecting or calibrating on In-the-Wild.
-- **Best model so far: SSL-AASIST + RawBoost** (XLS-R 300M front-end, Finding 8)
-  — 0.79% EER / 0.0143 min t-DCF on LA eval, **11.21% on In-the-Wild** (was
-  37.15% for plain AASIST). Checkpoint on M3:
-  `$CKPT_ROOT/ssl-aasist/rawboost5/nodp/best.pth` (epoch 91, 1.2 GB).
-  **Not yet served** — the app still serves plain AASIST from
-  `ai_model/checkpoints/best.pth`. SSL-AASIST without RawBoost does not help
-  In-the-Wild (37.86%).
-- **Running now:** the same model retrained on **LA + SpeechFake**
-  (`--extra-train speechfake`, 4 epochs, ~3 h each), branch `ssl-aasist`.
-  Slurm chain on M3: download 60452187 (done) → train **60452188** (H100,
-  started 04:53 26 Sep, due ~17:00) → score **60452189** (LA eval) and
-  **60452190** (In-the-Wild), which start automatically. Logs:
-  `~/SoundSentinal/soundsentinal-60452188.out` and `ss-eval-6045218{9,90}.out`
-  on M3. Its checkpoints are on **scratch**:
-  `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/`
-  — score or resume it with `--export=ALL,CKPT_ROOT=<that root>`. If the job
-  dies, resubmit the same command (see `RESULTS.md` "Reproducing"); it resumes
-  from `last.pth`, losing at most one epoch.
-- **When it finishes:** record the result as Finding 9 in `RESULTS.md`. Under
-  5% → serve it. Over 5% → the next gap is noisy *real* speech (SpeechFake's is
-  clean read speech); candidates are SpoofCeleb (needs manual access approval
-  with a Monash email) or adding a noisy bona fide corpus.
-- **Then:** copy the chosen checkpoint to `ai_model/checkpoints/best.pth`
-  (`scp m3:...`), time one CPU prediction in `app.py` (XLS-R is 316M params),
-  and decide whether `/result` should state the real-world error rates.
-- **Storage on M3:** project quota (500 GB) is **full** of the two SSL runs'
-  checkpoints — put new runs on scratch (3 TB) via `CKPT_ROOT` as above.
-  SpeechFake's zips (~290 GB, `$SPEECHFAKE_ROOT/zips/`) can be deleted once the
-  run has trained without read errors.
-
-> **There is an uncommitted frontend redesign in the working tree.** Read
-> **`HANDOFF.md`** first: it covers the full-bleed layout, the graduated
-> monochrome verdict scale, the new `/upload` 3D intake surface, the rebuilt
-> `/result`, and a silent WebGL uniform bug that had frozen the entire 3D layer.
+- **Goal:** In-the-Wild EER **under 5%**, without ever training, selecting or
+  calibrating on In-the-Wild. **Reached on 26 September: 2.65%** (Finding 9).
+- **Best model: SSL-AASIST + RawBoost trained on LA + SpeechFake** (XLS-R 300M
+  front-end, `--extra-train speechfake`, 4 epochs). In-the-Wild 2.65% EER, LA
+  eval 2.12% / 0.0649 (not a clean test — SpeechFake contains VCTK). Checkpoint
+  on M3 **scratch**:
+  `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/best.pth`
+  (epoch 4, 1.2 GB). Score it with
+  `sbatch --gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints hpc/evaluate.slurm --dataset itw --arch ssl-aasist --rawboost 5 --extra-train speechfake`.
+- **Blocker before serving it: the threshold.** The dev-calibrated threshold
+  (P(spoof) = 0.0026) flags **46% of genuine In-the-Wild clips** as fake; the
+  ranking is excellent but real-world speech scores far higher than dev's clean
+  read speech. Do **not** calibrate on In-the-Wild. The fix is to calibrate on
+  a separate held-out set of noisy real-world *bona fide* speech. That is the
+  next task.
+- **Then serve it:** copy `best.pth` to `ai_model/checkpoints/best.pth`
+  (`scp m3:...`), check `app.py` loads it with the new threshold, time one CPU
+  prediction (316M params), and decide whether `/result` should state the
+  real-world error rates. The app still serves plain AASIST today.
+- **Runner-up:** SSL-AASIST + RawBoost on LA only, 11.21% on In-the-Wild
+  (Finding 8), `$CKPT_ROOT/ssl-aasist/rawboost5/nodp/best.pth` on project storage.
+- **Storage on M3:** project quota (500 GB) is **full** of Finding 8's
+  per-epoch checkpoints — new runs go to scratch (3 TB) via
+  `--export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints`. SpeechFake's
+  zips (~290 GB, `$SPEECHFAKE_ROOT/zips/`) are now safe to delete: training
+  read the whole corpus four times without errors.
+- **Branch:** all of this is on `ssl-aasist`, pushed, not merged into `main`.
+  Open a PR once the threshold is fixed.
 
 ## Layout
 
@@ -345,9 +337,11 @@ Be honest about these rather than assuming they work:
 
    **SSL-AASIST + RawBoost is the first model that works on real-world
    audio** (25 September 2026, Finding 8): 11.21% on In-the-Wild, 0.79% /
-   0.0143 on LA eval. A retrain on LA + SpeechFake is running — see "Where
-   things stand" at the top. `evaluate.py` now scores on log-odds, because
-   these models saturate float32 softmax (Finding 8).
+   0.0143 on LA eval. **Adding SpeechFake to training brought In-the-Wild
+   to 2.65%** (26 September, Finding 9), but its dev-calibrated threshold
+   flags 46% of real-world clips — see "Where things stand" at the top.
+   `evaluate.py` now scores on log-odds, because these models saturate
+   float32 softmax (Finding 8).
 
    **AASIST is trained (20–21 September 2026)**, non-private only. There is no
    DP AASIST run yet, so the cost of privacy has only been measured on the CNN.

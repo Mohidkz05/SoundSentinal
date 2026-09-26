@@ -8,7 +8,8 @@ produced it. `APPROACH.md` records *what we chose and why*; this file records
 ASVspoof2019 LA** — except the two AASIST variants of 24 September in Finding 7,
 one with RawBoost augmentation and one with ASVspoof 5 added to training, and
 the two SSL-AASIST runs of 24–25 September in Finding 8 (XLS-R 300M in front of
-AASIST, 100 epochs on an H100, with and without RawBoost). CNN runs are 5 epochs, batch 64, Adam at 1e-3,
+AASIST, 100 epochs on an H100, with and without RawBoost), and the SSL-AASIST
+run of 26 September in Finding 9, trained on LA plus SpeechFake. CNN runs are 5 epochs, batch 64, Adam at 1e-3,
 inverse-frequency class weights `[4.919, 0.557]`, seed 42. The AASIST run uses
 its published recipe instead — 100 epochs, batch 24, Adam at 1e-4 with weight
 decay and cosine annealing — so it differs from the CNN rows by schedule as
@@ -40,6 +41,7 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | --- | --- | --- | --- | --- |
 | AASIST (published, **not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
 | **Our SSL-AASIST + RawBoost, `best.pth` (epoch 91)** | XLS-R 300M | non-private | **0.79%** | **0.0143** |
+| Our SSL-AASIST + RawBoost, LA + SpeechFake (epoch 4)† | XLS-R 300M | non-private | 2.12% | 0.0649 |
 | **Our AASIST + RawBoost, `best.pth` (epoch 51)** | raw waveform | non-private | **1.74%** | **0.0531** |
 | **Our AASIST, `best.pth` (epoch 42)** | raw waveform | non-private | **3.17%** | **0.0909** |
 | Our AASIST, LA + ASVspoof 5 train (epoch 12) | raw waveform | non-private | 5.47% | 0.1425 |
@@ -52,6 +54,9 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | Our CNN, `best.pth` | LFCC | non-private | 13.72% | 0.2463 |
 | **Our CNN, epoch 3** | log-Mel | **DP, ε=0.48** | **17.57%** | **0.2609** |
 | Our CNN, `best.pth` | log-Mel | DP, ε=0.48 | 17.80% | 0.2696 |
+
+† Not a clean held-out number: SpeechFake trains on VCTK, the corpus LA's
+bona fide speech comes from (Finding 9). Its point is In-the-Wild: **2.65%**.
 
 Our AASIST's best single epoch on eval reaches 2.98% EER (epochs 59, 64) and
 0.0807 min t-DCF (epochs 85, 95), but those are picked by looking at eval, so
@@ -455,20 +460,73 @@ every other epoch of both runs is kept); XLS-R's pretraining corpus is not
 public in full, so overlap with In-the-Wild's speakers cannot be ruled out,
 though nothing here was trained or selected on In-the-Wild.
 
-**In progress — LA + SpeechFake (job 60452188, started 26 September).** To push
-In-the-Wild below 5%, the RawBoost model is being retrained with SpeechFake's
-bilingual subset added (`--extra-train speechfake`, 705k clips from 30
-open-source generators, CC BY 4.0; `ai_model/speechfake.py`). A 2026 dataset
-comparison (arXiv 2606.08038) found generator diversity matters more than
-hours and reports 2.63% on In-the-Wild when training on it. 4 epochs (≈1.15×
-the LA recipe's optimiser steps), selection and calibration on LA dev +
-SpeechFake dev, which unlike LA dev does not saturate (6.09% after epoch 1).
-Two caveats apply before a number exists: SpeechFake's real speech is clean
-read speech (VCTK, LibriTTS, AISHELL), so it adds generator diversity but not
-In-the-Wild's recording conditions; and VCTK is also the source of LA's real
-speech, so this model's LA eval number is not a clean held-out test. Datasets
-rejected: SpoofCeleb (manual access approval), AUDETER (partly built from
-In-the-Wild — it would leak the test set), MLAAD (non-commercial licence).
+**Next:** the same model retrained with SpeechFake added — Finding 9.
+
+## Finding 9 — SpeechFake gets In-the-Wild to 2.65%, but the threshold does not transfer
+
+Job 60452188, 26 September 2026: SSL-AASIST + RawBoost algo 5, trained on LA
+train plus SpeechFake's bilingual training split (`--extra-train speechfake`,
+704,862 clips from 30 open-source TTS, voice-conversion and vocoder systems,
+English and Chinese, CC BY 4.0). 4 epochs — about 1.15× the optimiser steps
+of Finding 8's 100 LA epochs — 11h43m on an H100 at 5.28 steps/s. Same recipe
+otherwise (batch 14, constant lr 1e-6). Scored by jobs 60452189 (LA eval) and
+60452190 (In-the-Wild) on L40S GPUs; JSON in
+`~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/`.
+
+Selection and calibration used **LA dev + SpeechFake dev** (142,307 clips),
+because LA dev had saturated at 0.00% for SSL-AASIST (Finding 8). Unlike LA
+dev, it still separated epochs:
+
+| Epoch | Train acc | Dev EER | Dev threshold |
+| --- | --- | --- | --- |
+| 1 | 86.32% | 6.09% | 0.0142 |
+| 2 | 96.58% | 4.28% | 0.0090 |
+| 3 | 97.51% | 4.05% | 0.0039 |
+| **4** (`best.pth`) | 98.10% | **3.01%** | 0.0026 |
+
+| Model | LA eval EER | min t-DCF | In-the-Wild EER | ITW at served threshold |
+| --- | --- | --- | --- | --- |
+| AASIST baseline (epoch 42) | 3.17% | 0.0909 | 37.15% | 72.79% of real flagged, 9.16% of fakes passed |
+| SSL-AASIST + RawBoost, LA only (epoch 91) | 0.79% | 0.0143 | 11.21% | 6.80% flagged, 18.56% passed |
+| **+ SpeechFake** (epoch 4) | 2.12%† | 0.0649† | **2.65%** | **46.02% flagged, 0.14% passed** |
+
+† See the note under the summary table: SpeechFake contains VCTK.
+
+**In-the-Wild EER is 2.65%, under the 5% target** and a factor of 4.2 below
+Finding 8. At its own EER threshold the model gets 19,434 of 19,963 real clips
+and 11,503 of 11,816 fakes right. This matches the 2.63% reported for training
+on SpeechFake's bilingual subset in arXiv 2606.08038, although that study's
+setup was not identical to ours. It supports that study's conclusion: what
+LA-only training lacked was **generator diversity** — 30 systems against LA's
+six — and not hours of audio (ASVspoof 5 added 182k clips and did nothing,
+Finding 7).
+
+**But the served threshold makes the model unusable on real-world audio.**
+EER measures ranking — whether fakes score above real clips — and the ranking
+is now very good. A deployed detector also needs a threshold, and the one
+calibrated on dev (P(spoof) = 0.0026) flags **46% of genuine In-the-Wild clips
+as fake**. The EER threshold on In-the-Wild sits at P ≈ 0.999, nearly three
+orders of magnitude higher on the odds scale. Real-world speech gets far higher
+"fake" scores than the clean read speech that dev's bona fide consists of
+(VCTK, LibriTTS, AISHELL), while still scoring below real-world fakes. The
+ranking transferred; the scale did not. It is Finding 4 again, much larger.
+
+The threshold must **not** be fixed by calibrating on In-the-Wild: that turns
+the test set into a calibration set, and 2.65% would stop measuring anything.
+The fix is a held-out set of noisy, real-world *bona fide* speech that is not
+In-the-Wild, to calibrate on. This is the same gap as before — no noisy real
+speech anywhere in training or dev — showing up in calibration instead of in
+ranking.
+
+**On LA eval it got worse** (0.79% → 2.12%; worst attack A10 at 6.63%, best
+A13 at 0.10%). LA is now 3.5% of the training data, so this is expected; and
+because of the VCTK overlap the LA number no longer measures generalisation
+for this model anyway.
+
+Caveats: one seed; four epochs, with dev EER still falling at epoch 4 (so
+more epochs might help); `best.pth` is the last epoch, so selection did not
+have to choose; XLS-R's pretraining data may overlap In-the-Wild's speakers
+(Finding 8). Nothing was trained, selected or calibrated on In-the-Wild.
 
 ## What has not been measured
 
@@ -483,6 +541,10 @@ In-the-Wild — it would leak the test set), MLAAD (non-commercial licence).
   privately. Not designed yet.
 - **A per-epoch sweep of the SSL runs**, to see how arbitrary `best.pth` is
   once LA dev has saturated.
+- **A usable threshold for the SpeechFake model** (Finding 9): calibrating on
+  held-out noisy real-world bona fide speech, not In-the-Wild.
+- **More SpeechFake epochs**, or SpeechFake without RawBoost — dev EER was
+  still falling at epoch 4, and the two changes were not separated.
 - **A DP sweep.** One ε is a point, not the cost-of-privacy curve.
 - **Any tuned run.** Five epochs, one learning rate, one batch size, throughout.
 - **RawBoost and ASVspoof 5 together**, or RawBoost with algo 3 (upstream's
