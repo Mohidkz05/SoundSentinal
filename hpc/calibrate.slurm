@@ -3,7 +3,8 @@
 #
 #   sbatch --gres=gpu:L40S:1 \
 #          --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints \
-#          hpc/calibrate.slurm --ckpt <path>/best.pth [--target-frr 0.05]
+#          hpc/calibrate.slurm --ckpt <path>/best.pth [--target-frr 0.05] \
+#          [--calibration-set voxpopuli --n 9000]
 #
 # Arguments are forwarded to ai_model/calibrate.py, which explains why (the
 # dev-EER threshold flags 46% of genuine In-the-Wild clips, RESULTS.md

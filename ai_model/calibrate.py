@@ -2,7 +2,8 @@
 #
 # Re-derive a checkpoint's decision threshold from real-world bona fide speech.
 #
-#     python calibrate.py --ckpt <dir>/best.pth                  # 5% of real clips flagged
+#     python calibrate.py --ckpt <dir>/best.pth                  # Common Voice, 5% flagged
+#     python calibrate.py --ckpt <dir>/best.pth --calibration-set voxpopuli
 #     python calibrate.py --ckpt <dir>/best.pth --target-frr 0.02
 #
 # WHY. The trainer calibrates the threshold at the dev set's equal error rate.
@@ -16,7 +17,12 @@
 # WHAT. Common Voice: volunteers reading sentences on their own microphones in
 # their own rooms (CC0, shipped as SpeechFake's Real/CommonVoice.zip). No
 # training or dev protocol references it, so the model has never seen it. The
-# English subset is sampled, split in two, and scored:
+# English subset is sampled, split in two, and scored. `--calibration-set
+# voxpopuli` uses European Parliament speeches instead (voxpopuli.py): after
+# Common Voice left In-the-Wild's false flags at 15.6%, the closer match to
+# In-the-Wild's speeches and broadcast audio. Where the set has speaker ids,
+# the two halves share no speaker, so the check half is voices the threshold
+# never saw.
 #
 #   - the CALIBRATION half sets the threshold, so that --target-frr of its
 #     clips (default 5%) are flagged as fake;
@@ -54,32 +60,69 @@ from torch.utils.data import DataLoader
 from evaluate import BATCH_SIZE, DEVICE, log_odds_to_prob, prob_to_log_odds, score_dataset
 from model import DEFAULT_ARCH, DEFAULT_FRONTEND, build_model, build_transform
 from speechfake import get_speechfake_root
+import voxpopuli
 from train_dp_avspoof import AVSpoofDataset
 
 COMMONVOICE_CSV = Path("metadata") / "Real" / "CommonVoice.csv"
 
 
-def load_commonvoice(root, language, n, seed):
-    """n bona fide Common Voice clips in `language`, as two halves of a five-column frame."""
+def load_commonvoice(language):
+    """Bona fide Common Voice clips in `language`, from SpeechFake's metadata. No speaker ids."""
+    root = get_speechfake_root()
     meta = pd.read_csv(root / COMMONVOICE_CSV, dtype=str)
     meta = meta[(meta["language"] == language) & (meta["label"] == "bonafide")]
-    if len(meta) < n:
-        raise ValueError(f"Only {len(meta)} {language} clips in {COMMONVOICE_CSV}, asked for {n}.")
     missing = [f for f in meta["file"].head(20) if not (root / f).is_file()]
     if missing:
         raise FileNotFoundError(
             f"{root / missing[0]} does not exist. Was Real/CommonVoice.zip extracted?\n"
             f"Fetch it:  sbatch --export=ALL,WITH_COMMONVOICE=1 hpc/get_speechfake.slurm")
-    sample = meta.sample(n=n, random_state=seed).reset_index(drop=True)
-    frame = pd.DataFrame({
-        "speaker_id": "-",           # Common Voice ships no speaker ids here
-        "audio_file_name": sample["file"],
+    return pd.DataFrame({"file": meta["file"].values, "speaker_id": "-"}), root
+
+
+def load_voxpopuli(language):
+    if language != "en":
+        raise ValueError("Only VoxPopuli English is fetched (hpc/get_voxpopuli.slurm).")
+    clips, root = voxpopuli.load_clips()
+    return clips[["file", "speaker_id"]], root
+
+
+LOADERS = {"commonvoice": load_commonvoice, "voxpopuli": load_voxpopuli}
+
+
+def split_halves(clips, n, seed):
+    """Sample n clips and split them into (calibrate, check) halves.
+
+    With speaker ids, whole speakers are assigned to one half — so the check
+    half measures the rate on voices the threshold was not fitted to, not on
+    new sentences from the same voices. Without them (Common Voice here), a
+    random split.
+    """
+    if len(clips) < n:
+        raise ValueError(f"Only {len(clips)} clips available, asked for {n}.")
+    sample = clips.sample(n=n, random_state=seed).reset_index(drop=True)
+    if (sample["speaker_id"] == "-").all():
+        return sample.iloc[: n // 2], sample.iloc[n // 2:], "random"
+    speakers = sample["speaker_id"].drop_duplicates().sample(frac=1.0, random_state=seed)
+    sizes = sample["speaker_id"].value_counts()
+    calib_speakers, total = set(), 0
+    for spk in speakers:
+        if total >= n // 2:
+            break
+        calib_speakers.add(spk)
+        total += sizes[spk]
+    in_calib = sample["speaker_id"].isin(calib_speakers)
+    return sample[in_calib], sample[~in_calib], "by speaker"
+
+
+def to_protocol(clips):
+    """The five-column frame AVSpoofDataset reads."""
+    return pd.DataFrame({
+        "speaker_id": clips["speaker_id"].values,
+        "audio_file_name": clips["file"].values,
         "_": "-",
         "system_id": "-",
         "label": "bonafide",
     })
-    half = n // 2
-    return frame.iloc[:half].reset_index(drop=True), frame.iloc[half:].reset_index(drop=True)
 
 
 def score(model, frame, root, frontend, num_workers):
@@ -97,27 +140,33 @@ def flagged(scores, threshold_log_odds):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Set a checkpoint's threshold from real-world bona fide speech (Common Voice).")
+        description="Set a checkpoint's threshold from real-world bona fide speech.")
     parser.add_argument("--ckpt", type=Path, required=True)
     parser.add_argument("--target-frr", type=float, default=0.05,
                         help="Fraction of genuine clips the threshold may flag as fake. "
                              "A product decision, fixed before In-the-Wild is scored.")
+    parser.add_argument("--calibration-set", default="commonvoice", choices=sorted(LOADERS),
+                        help="Real speech to calibrate on. commonvoice: people reading at "
+                             "home. voxpopuli: European Parliament speeches, closer to "
+                             "In-the-Wild's speeches and broadcast audio.")
     parser.add_argument("--language", default="en",
-                        help="Common Voice language to calibrate on. English matches "
-                             "In-the-Wild and the app's expected input.")
+                        help="Language to calibrate on. English matches In-the-Wild "
+                             "and the app's expected input.")
     parser.add_argument("--n", type=int, default=10000,
                         help="Clips to sample; half calibrate, half check.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int,
                         default=int(os.getenv("SLURM_CPUS_PER_TASK", "2")))
     parser.add_argument("--out", type=Path, default=None,
-                        help="Calibrated checkpoint. Default: <ckpt dir>/<stem>_calibrated.pth")
+                        help="Calibrated checkpoint. Default: "
+                             "<ckpt dir>/<stem>_calibrated_<calibration set>.pth")
     args = parser.parse_args()
     if not 0 < args.target_frr < 1:
         raise SystemExit("--target-frr must be between 0 and 1")
 
-    root = get_speechfake_root()
-    calib, check = load_commonvoice(root, args.language, args.n, args.seed)
+    clips, root = LOADERS[args.calibration_set](args.language)
+    calib_clips, check_clips, split_kind = split_halves(clips, args.n, args.seed)
+    calib, check = to_protocol(calib_clips), to_protocol(check_clips)
 
     ckpt = torch.load(args.ckpt, map_location=DEVICE, weights_only=False)
     arch = ckpt.get("arch") or DEFAULT_ARCH
@@ -127,8 +176,8 @@ def main():
     dev_threshold = ckpt.get("threshold")
 
     print(f"Checkpoint   {args.ckpt} (epoch {ckpt.get('epoch')}, {arch})")
-    print(f"Calibration  Common Voice {args.language}: {len(calib)} clips to fit, "
-          f"{len(check)} to check (seed {args.seed})")
+    print(f"Calibration  {args.calibration_set} ({args.language}): {len(calib)} clips to fit, "
+          f"{len(check)} to check, split {split_kind} (seed {args.seed})")
     print(f"Target       flag {args.target_frr:.1%} of genuine clips\n")
 
     calib_scores = score(model, calib, root, frontend, args.num_workers)
@@ -144,8 +193,9 @@ def main():
         "timestamp": strftime("%Y-%m-%dT%H:%M:%S"),
         "checkpoint": str(args.ckpt),
         "epoch": ckpt.get("epoch"),
-        "calibration_set": f"Common Voice ({args.language}), via SpeechFake Real/CommonVoice.zip",
+        "calibration_set": f"{args.calibration_set} ({args.language})",
         "n_calibrate": len(calib), "n_check": len(check), "seed": args.seed,
+        "split": split_kind,
         "target_frr": args.target_frr,
         "threshold": thr_prob, "threshold_log_odds": thr,
         "frr_calibrate": flagged(calib_scores, thr),
@@ -166,10 +216,11 @@ def main():
     print("\nCheck-half scores (log-odds), percentiles 5/25/50/75/95/99:")
     print("  " + "  ".join(f"{v:+.2f}" for v in report["check_score_percentiles_log_odds"].values()))
 
-    out = args.out or args.ckpt.with_name(f"{args.ckpt.stem}_calibrated.pth")
+    out = args.out or args.ckpt.with_name(f"{args.ckpt.stem}_calibrated_{args.calibration_set}.pth")
     ckpt["threshold_dev"] = dev_threshold
     ckpt["threshold"] = thr_prob
-    ckpt["threshold_source"] = (f"{args.target_frr:.0%} of genuine Common Voice "
+    names = {"commonvoice": "Common Voice", "voxpopuli": "VoxPopuli"}
+    ckpt["threshold_source"] = (f"{args.target_frr:.0%} of genuine {names[args.calibration_set]} "
                                 f"({args.language}) clips flagged")
     ckpt["calibration"] = report
     torch.save(ckpt, out)
