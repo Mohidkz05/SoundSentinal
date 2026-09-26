@@ -43,8 +43,10 @@
 # SPEED. A fresh connection gets 50-90 MB/s from ModelScope's CDN (measured 26
 # September 2026, login and compute nodes alike), but a long-lived one decays
 # to ~2 MB/s — the first version of this job crawled at 4 MB/s in total. So
-# curl aborts any transfer under 5 MB/s for 30 s and the loop resumes it on a
-# fresh connection. At the fresh-connection rate the download is ~1.5 h.
+# curl aborts any transfer under 5 MB/s for 60 s and the loop resumes it on a
+# fresh connection. At the fresh-connection rate the download is ~1.5 h. At
+# busy times (evening AEST) connecting alone can take 10+ s and some attempts
+# never start; the loop just keeps reopening.
 #
 #SBATCH --job-name=speechfake-download
 #SBATCH --account=df37
@@ -112,7 +114,11 @@ fetch() {
     [ "$have" -gt "$want" ] && { echo "   $path larger than expected; restarting"; rm -f "$f"; }
     # -Y/-y: give up on a connection that has decayed (see SPEED) and let the
     # loop reopen it. Exit 28 is that abort, so it resumes without sleeping.
-    curl -sSL -C - -Y 5000000 -y 30 --retry 5 --retry-delay 30 --retry-connrefused \
+    # NO --retry: curl's own retry restarts from the offset that invocation
+    # began at and truncates the file back to it, throwing away everything
+    # downloaded since (seen 26 September: 788 MB fell back to 561 MB). This
+    # loop re-reads the file size each time, so it is the only retry.
+    curl -sSL -C - -Y 5000000 -y 60 --connect-timeout 60 \
          -o "$f" "${API}${path}" 2>/dev/null || { [ $? -eq 28 ] || sleep 30; }
   done
   have=$(stat -c %s "$f" 2>/dev/null || echo 0)
