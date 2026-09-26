@@ -6,7 +6,9 @@ produced it. `APPROACH.md` records *what we chose and why*; this file records
 
 **All runs: 20–21 September 2026, Monash M3 (project `df37`), trained on
 ASVspoof2019 LA** — except the two AASIST variants of 24 September in Finding 7,
-one with RawBoost augmentation and one with ASVspoof 5 added to training. CNN runs are 5 epochs, batch 64, Adam at 1e-3,
+one with RawBoost augmentation and one with ASVspoof 5 added to training, and
+the two SSL-AASIST runs of 24–25 September in Finding 8 (XLS-R 300M in front of
+AASIST, 100 epochs on an H100, with and without RawBoost). CNN runs are 5 epochs, batch 64, Adam at 1e-3,
 inverse-frequency class weights `[4.919, 0.557]`, seed 42. The AASIST run uses
 its published recipe instead — 100 epochs, batch 24, Adam at 1e-4 with weight
 decay and cosine annealing — so it differs from the CNN rows by schedule as
@@ -37,9 +39,11 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | System | Front-end | Regime | eval EER | min t-DCF |
 | --- | --- | --- | --- | --- |
 | AASIST (published, **not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
+| **Our SSL-AASIST + RawBoost, `best.pth` (epoch 91)** | XLS-R 300M | non-private | **0.79%** | **0.0143** |
 | **Our AASIST + RawBoost, `best.pth` (epoch 51)** | raw waveform | non-private | **1.74%** | **0.0531** |
 | **Our AASIST, `best.pth` (epoch 42)** | raw waveform | non-private | **3.17%** | **0.0909** |
 | Our AASIST, LA + ASVspoof 5 train (epoch 12) | raw waveform | non-private | 5.47% | 0.1425 |
+| Our SSL-AASIST, `best.pth` (epoch 75) | XLS-R 300M | non-private | 6.06% | 0.0828 |
 | LFCC-GMM (official B2) | LFCC | non-private | 8.09% | 0.2116 |
 | **Our CNN, epoch 2** | log-Mel | non-private | **9.60%** | **0.2124** |
 | CQCC-GMM (official B1) | CQCC | non-private | 9.57% | 0.2366 |
@@ -388,14 +392,97 @@ Caveats: one seed each; `best.pth` still chosen by LA dev (Finding 1), and no
 per-epoch sweep has been run on either model; the two changes were not tried
 together.
 
+## Finding 8 — a pretrained front-end fixes In-the-Wild, but only with RawBoost
+
+Jobs 60405665 (SSL-AASIST) and 60405666 (SSL-AASIST + RawBoost algo 5),
+24–25 September 2026: 100 epochs each on an H100, 13h22m and 12h51m. Scored
+by jobs 60434973–60434976 on L40S GPUs. SSL-AASIST puts XLS-R 300M, a
+wav2vec 2.0 model pretrained on 436k hours of unlabelled speech in 128
+languages, in front of AASIST's graph back-end and fine-tunes the whole
+316M-parameter network (`ai_model/ssl_aasist.py`). Recipe: batch 14, Adam at a
+constant 1e-6, weight decay 1e-4 — upstream's. Trained on LA alone, selected
+and calibrated on LA dev, exactly like every row above.
+
+| Model | LA eval EER | min t-DCF | In-the-Wild EER | ITW at served threshold |
+| --- | --- | --- | --- | --- |
+| AASIST baseline (epoch 42) | 3.17% | 0.0909 | 37.15% | 72.79% of real flagged, 9.16% of fakes passed |
+| AASIST + RawBoost (epoch 51) | 1.74% | 0.0531 | 48.78% | 84.86% flagged, 10.96% passed |
+| SSL-AASIST (epoch 75) | 6.06% | 0.0828 | 37.86% | 82.91% flagged, 0.30% passed |
+| **SSL-AASIST + RawBoost** (epoch 91) | **0.79%** | **0.0143** | **11.21%** | **6.80% flagged, 18.56% passed** |
+
+**The combination is the first model that works on real-world audio.**
+In-the-Wild EER falls from 37.15% (the model the app serves) to 11.21%, and at
+its served threshold it flags 6.8% of genuine clips instead of 73%. On LA eval
+it is the best row in this file, below even the published AASIST row (0.79% /
+0.0143 against 0.83% / 0.0275) — though that is a much smaller model without a
+pretrained front-end, so it is not a like-for-like comparison. Its worst LA attack is A18 at 7.04%; the
+spread across attacks is 0.00%–7.04%, against 0.02%–29.94% without RawBoost.
+
+**Neither ingredient works alone.** The pretrained front-end without RawBoost
+scores 37.86% on In-the-Wild — no better than plain AASIST — and 6.06% on LA,
+worse than plain AASIST, with A15 at 29.94%. RawBoost without the pretrained
+front-end made In-the-Wild *worse* (48.78%, Finding 7). Together they cut it by
+a factor of three. A plausible reading: XLS-R already represents real-world
+speech well, and RawBoost stops fine-tuning from over-writing that with "clean
+VCTK channel = real"; without the pretrained features there is nothing
+general for the augmentation to protect. That is an interpretation, not
+something these four runs isolate.
+
+**Published context.** The same architecture trained on LA is reported at
+13.58% on In-the-Wild in one 2025 study (arXiv 2508.10559), so 11.21% is in
+line with the literature rather than an outlier.
+
+**A scoring bug found and ruled out.** These models are confident enough that
+float32 softmax saturates: 15,307 In-the-Wild clips scored exactly P(spoof) =
+1.0 and the plain run's EER was taken at "threshold 1.0000". An EER computed
+inside a tie that size is arbitrary, so `evaluate.py` now scores on log-odds
+(logit[spoof] − logit[real]), which ranks identically but never saturates
+(commit d2a994c). All four runs were re-scored: every number moved by at most
+0.04 points (37.82% → 37.86%), so the saturation was real but harmless here.
+Every number in this file from now on is on the log-odds scale.
+
+**What is still wrong.** At its served threshold the RawBoost model passes
+18.56% of In-the-Wild fakes, and on LA eval 7.76% — the dev-calibrated
+threshold (0.0142) still does not transfer (Finding 4). And selection is
+weaker than ever: both runs reach 0.00% on LA dev, after which every epoch
+ties, so `best.pth` (epochs 75 and 91) is not a meaningful choice among the
+last ~50 epochs (Finding 1). SpeechFake's dev split fixes this for the next
+run.
+
+Caveats: one seed each; no per-epoch sweep (the plain run's per-epoch files
+for epochs 1–10 were deleted on 25 September to stay inside the project quota;
+every other epoch of both runs is kept); XLS-R's pretraining corpus is not
+public in full, so overlap with In-the-Wild's speakers cannot be ruled out,
+though nothing here was trained or selected on In-the-Wild.
+
+**In progress — LA + SpeechFake (job 60452188, started 26 September).** To push
+In-the-Wild below 5%, the RawBoost model is being retrained with SpeechFake's
+bilingual subset added (`--extra-train speechfake`, 705k clips from 30
+open-source generators, CC BY 4.0; `ai_model/speechfake.py`). A 2026 dataset
+comparison (arXiv 2606.08038) found generator diversity matters more than
+hours and reports 2.63% on In-the-Wild when training on it. 4 epochs (≈1.15×
+the LA recipe's optimiser steps), selection and calibration on LA dev +
+SpeechFake dev, which unlike LA dev does not saturate (6.09% after epoch 1).
+Two caveats apply before a number exists: SpeechFake's real speech is clean
+read speech (VCTK, LibriTTS, AISHELL), so it adds generator diversity but not
+In-the-Wild's recording conditions; and VCTK is also the source of LA's real
+speech, so this model's LA eval number is not a clean held-out test. Datasets
+rejected: SpoofCeleb (manual access approval), AUDETER (partly built from
+In-the-Wild — it would leak the test set), MLAAD (non-commercial licence).
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
   run has not been done, so the cost of privacy exists only for the CNN.
 - **AASIST with BatchNorm, or over several seeds** — the two cheapest ways to
   find out how much of the 3.17%-vs-0.83% gap comes from the GroupNorm swap.
-- **The rest of the comparison table** in `APPROACH.md`: LCNN-LSTM-sum,
-  AASIST-L and an SSL front-end.
+- **The rest of the comparison table** in `APPROACH.md`: LCNN-LSTM-sum and
+  AASIST-L. (The SSL front-end is Finding 8.)
+- **SSL-AASIST under DP.** Full DP fine-tuning of 316M parameters is
+  expensive; the practical version freezes XLS-R and trains only the back-end
+  privately. Not designed yet.
+- **A per-epoch sweep of the SSL runs**, to see how arbitrary `best.pth` is
+  once LA dev has saturated.
 - **A DP sweep.** One ε is a point, not the cost-of-privacy curve.
 - **Any tuned run.** Five epochs, one learning rate, one batch size, throughout.
 - **RawBoost and ASVspoof 5 together**, or RawBoost with algo 3 (upstream's
@@ -418,6 +505,13 @@ sbatch --time=14:00:00 hpc/train.slurm --arch aasist --no-dp --rawboost 5       
 sbatch hpc/get_asvspoof5.slurm                                                    # ~3h, 58 GB
 sbatch --time=20:00:00 hpc/train.slurm --arch aasist --no-dp --extra-train asvspoof5 --epochs 12
 sbatch --gres=gpu:L40S:1 hpc/evaluate.slurm --dataset itw --arch aasist --rawboost 5
+sbatch --partition=m3h --qos=m3h --gres=gpu:H100:1 --time=24:00:00 \
+       hpc/train.slurm --arch ssl-aasist --no-dp --rawboost 5                    # Finding 8
+sbatch --gres=gpu:L40S:1 hpc/evaluate.slurm --dataset itw --arch ssl-aasist --rawboost 5
+sbatch hpc/get_speechfake.slurm                                                   # ~3.5h, 290 GB
+sbatch --partition=m3h --qos=m3h --gres=gpu:H100:1 --time=24:00:00 \
+       --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints \
+       hpc/train.slurm --arch ssl-aasist --no-dp --rawboost 5 --extra-train speechfake --epochs 4
 # Pin evaluation to a 48GB+ GPU: at batch 128, AASIST runs out of memory on a T4.
 cd ai_model && python summarise_results.py <run-dir>
 ```

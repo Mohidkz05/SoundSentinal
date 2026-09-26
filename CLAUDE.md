@@ -4,7 +4,43 @@ Deepfake audio detector. A Next.js frontend and a Flask + PyTorch backend that
 classifies an uploaded audio clip as real or spoofed. The model is trained with
 differential privacy (Opacus) on the ASVspoof2019 corpus.
 
-University project. `main` is the only branch — see "Branching" below.
+University project. Active work is on branch `ssl-aasist` — see "Branching" below.
+
+## Where things stand (updated 26 September 2026)
+
+Read this first; `RESULTS.md` has every number and its job ID.
+
+- **Goal right now:** get In-the-Wild EER **under 5%** without ever training,
+  selecting or calibrating on In-the-Wild.
+- **Best model so far: SSL-AASIST + RawBoost** (XLS-R 300M front-end, Finding 8)
+  — 0.79% EER / 0.0143 min t-DCF on LA eval, **11.21% on In-the-Wild** (was
+  37.15% for plain AASIST). Checkpoint on M3:
+  `$CKPT_ROOT/ssl-aasist/rawboost5/nodp/best.pth` (epoch 91, 1.2 GB).
+  **Not yet served** — the app still serves plain AASIST from
+  `ai_model/checkpoints/best.pth`. SSL-AASIST without RawBoost does not help
+  In-the-Wild (37.86%).
+- **Running now:** the same model retrained on **LA + SpeechFake**
+  (`--extra-train speechfake`, 4 epochs, ~3 h each), branch `ssl-aasist`.
+  Slurm chain on M3: download 60452187 (done) → train **60452188** (H100,
+  started 04:53 26 Sep, due ~17:00) → score **60452189** (LA eval) and
+  **60452190** (In-the-Wild), which start automatically. Logs:
+  `~/SoundSentinal/soundsentinal-60452188.out` and `ss-eval-6045218{9,90}.out`
+  on M3. Its checkpoints are on **scratch**:
+  `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/`
+  — score or resume it with `--export=ALL,CKPT_ROOT=<that root>`. If the job
+  dies, resubmit the same command (see `RESULTS.md` "Reproducing"); it resumes
+  from `last.pth`, losing at most one epoch.
+- **When it finishes:** record the result as Finding 9 in `RESULTS.md`. Under
+  5% → serve it. Over 5% → the next gap is noisy *real* speech (SpeechFake's is
+  clean read speech); candidates are SpoofCeleb (needs manual access approval
+  with a Monash email) or adding a noisy bona fide corpus.
+- **Then:** copy the chosen checkpoint to `ai_model/checkpoints/best.pth`
+  (`scp m3:...`), time one CPU prediction in `app.py` (XLS-R is 316M params),
+  and decide whether `/result` should state the real-world error rates.
+- **Storage on M3:** project quota (500 GB) is **full** of the two SSL runs'
+  checkpoints — put new runs on scratch (3 TB) via `CKPT_ROOT` as above.
+  SpeechFake's zips (~290 GB, `$SPEECHFAKE_ROOT/zips/`) can be deleted once the
+  run has trained without read errors.
 
 > **There is an uncommitted frontend redesign in the working tree.** Read
 > **`HANDOFF.md`** first: it covers the full-bleed layout, the graduated
@@ -23,6 +59,10 @@ ai_model/
   aasist.py              AASIST, ported from the official implementation with
                          BatchNorm swapped for GroupNorm. Its header lists nine
                          deviations from upstream; read them before editing.
+  ssl_aasist.py          SSL-AASIST: XLS-R 300M front-end + AASIST back-end.
+  asvspoof5.py           Adapter: ASVspoof 5 train as extra training data.
+  speechfake.py          Adapter: SpeechFake (bilingual) as extra training
+                         data; its dev split joins LA dev for selection.
   rawboost.py            RawBoost waveform augmentation, TRAINING ONLY
                          (`--rawboost N`). Never imported by app.py or
                          evaluate.py. Bit-identical to upstream.
@@ -303,6 +343,12 @@ Be honest about these rather than assuming they work:
    branch `asvspoof5`) scores 38.14%. The served `best.pth` is still the
    unaugmented AASIST. The next candidate is an SSL front-end.
 
+   **SSL-AASIST + RawBoost is the first model that works on real-world
+   audio** (25 September 2026, Finding 8): 11.21% on In-the-Wild, 0.79% /
+   0.0143 on LA eval. A retrain on LA + SpeechFake is running — see "Where
+   things stand" at the top. `evaluate.py` now scores on log-odds, because
+   these models saturate float32 softmax (Finding 8).
+
    **AASIST is trained (20–21 September 2026)**, non-private only. There is no
    DP AASIST run yet, so the cost of privacy has only been measured on the CNN.
 2. **Model selection is known-broken.** `save_ckpt` picks `best.pth` by dev
@@ -506,9 +552,16 @@ CNN.** Reach for pretrained SSL only after dropping DP.
 
 ## Branching
 
-`main` only. `Alex-development` (the AI model, merged via PR #1) and
-`Mohid-fixes` (the training-loop rewrite) were both merged and deleted in
-August 2026. Branch from `main` for new work.
+**Active work is on `ssl-aasist`, not `main`** (as of 26 September 2026). It
+stacks on the unmerged `rawboost` and `asvspoof5` branches, so it contains
+both, plus SSL-AASIST, the log-odds scoring fix and SpeechFake — 11 commits
+ahead of `main`. Everything is pushed; M3 runs whatever `ssl-aasist` holds.
+`aasist-port` is already in `main`. `rawboost` and `asvspoof5` have nothing
+that `ssl-aasist` lacks, so merging `ssl-aasist` into `main` brings in all
+three. Not merged yet — do that (via a PR) once the SpeechFake run is recorded.
+
+`Alex-development` (the AI model, merged via PR #1) and `Mohid-fixes` (the
+training-loop rewrite) were both merged and deleted in August 2026.
 
 Note: git identity is set repo-locally (`git config user.name` / `user.email`),
 not globally, because this machine had no global git identity configured.
