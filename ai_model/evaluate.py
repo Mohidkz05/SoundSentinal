@@ -161,6 +161,9 @@ def main():
     parser.add_argument("--extra-train", default=None, choices=["asvspoof5", "speechfake"],
                         help="Score the run trained with this extra corpus (its own "
                              "checkpoint directory, plus-<name>/). Picks the checkpoint only.")
+    parser.add_argument("--extra-bonafide", default=None, choices=["commonvoice"],
+                        help="Score the run trained with this extra bona fide speech "
+                             "(plus-<name>-bonafide/). Picks the checkpoint only.")
     parser.add_argument("--ckpt", type=Path, default=None,
                         help="An explicit checkpoint path, overriding --arch, "
                              "--frontend and --dp.")
@@ -189,7 +192,7 @@ def main():
     else:
         frontend_sel = args.frontend or default_frontend_for(args.arch)
         _, _, ckpt_path = get_ckpt_paths(args.dp, frontend_sel, args.arch, args.rawboost,
-                                         args.extra_train)
+                                         args.extra_train, args.extra_bonafide)
     if not ckpt_path.exists():
         raise FileNotFoundError(
             f"No checkpoint at {ckpt_path}.\n"

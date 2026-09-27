@@ -20,6 +20,8 @@
 #          --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints \
 #          hpc/train.slurm --arch ssl-aasist --no-dp --rawboost 5 \
 #          --extra-train speechfake --epochs 4   # + SpeechFake BD (~29x the data)
+#     add --extra-bonafide commonvoice to that line for Finding 10: + Common
+#     Voice English train (33,614 real clips, ~5% more data, ~12h15m)
 #   sbatch --partition=m3h --qos=m3h --gres=gpu:H100:1 --time=24:00:00 \
 #          hpc/train.slurm --arch ssl-aasist --no-dp  # XLS-R + AASIST, 316M params
 #     (needs a big GPU: fine-tuning XLS-R at batch 14 will not fit a 16GB T4.

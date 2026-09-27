@@ -5,6 +5,7 @@
 #     python calibrate.py --ckpt <dir>/best.pth                  # Common Voice, 5% flagged
 #     python calibrate.py --ckpt <dir>/best.pth --calibration-set voxpopuli
 #     python calibrate.py --ckpt <dir>/best.pth --target-frr 0.02
+#     python calibrate.py --ckpt <dir>/best.pth --commonvoice-split test   # see below
 #
 # WHY. The trainer calibrates the threshold at the dev set's equal error rate.
 # For SSL-AASIST trained on LA + SpeechFake that threshold is P(spoof) = 0.0026,
@@ -39,6 +40,14 @@
 # make every In-the-Wild number meaningless. The target rate is fixed before
 # In-the-Wild is scored at the new threshold, and is not revised after.
 #
+# A MODEL TRAINED ON COMMON VOICE (--extra-bonafide commonvoice) saw the
+# English train split labelled bona fide, so calibrating on those clips would
+# fit the threshold to data the model was taught to call real. For such a
+# checkpoint this script requires --commonvoice-split test — Common Voice's own
+# held-out split, whose speakers are not in train (commonvoice.py). The earlier
+# calibrations sampled both splits (--commonvoice-split all, the default), and
+# are reproduced unchanged.
+#
 # Output: a COPY of the checkpoint with the new threshold (the original keeps
 # its dev-EER one, so every earlier number stays reproducible), plus a JSON
 # report beside it. app.py reads `threshold` and `threshold_source` from it.
@@ -59,27 +68,17 @@ from torch.utils.data import DataLoader
 
 from evaluate import BATCH_SIZE, DEVICE, log_odds_to_prob, prob_to_log_odds, score_dataset
 from model import DEFAULT_ARCH, DEFAULT_FRONTEND, build_model, build_transform
-from speechfake import get_speechfake_root
+import commonvoice
 import voxpopuli
 from train_dp_avspoof import AVSpoofDataset
 
-COMMONVOICE_CSV = Path("metadata") / "Real" / "CommonVoice.csv"
+def load_commonvoice(language, split="all"):
+    """Bona fide Common Voice clips in `language` (commonvoice.py). No speaker ids."""
+    clips, root = commonvoice.load_clips(language, None if split == "all" else split)
+    return clips[["file", "speaker_id"]], root
 
 
-def load_commonvoice(language):
-    """Bona fide Common Voice clips in `language`, from SpeechFake's metadata. No speaker ids."""
-    root = get_speechfake_root()
-    meta = pd.read_csv(root / COMMONVOICE_CSV, dtype=str)
-    meta = meta[(meta["language"] == language) & (meta["label"] == "bonafide")]
-    missing = [f for f in meta["file"].head(20) if not (root / f).is_file()]
-    if missing:
-        raise FileNotFoundError(
-            f"{root / missing[0]} does not exist. Was Real/CommonVoice.zip extracted?\n"
-            f"Fetch it:  sbatch --export=ALL,WITH_COMMONVOICE=1 hpc/get_speechfake.slurm")
-    return pd.DataFrame({"file": meta["file"].values, "speaker_id": "-"}), root
-
-
-def load_voxpopuli(language):
+def load_voxpopuli(language, split="all"):
     if language != "en":
         raise ValueError("Only VoxPopuli English is fetched (hpc/get_voxpopuli.slurm).")
     clips, root = voxpopuli.load_clips()
@@ -152,6 +151,10 @@ def main():
     parser.add_argument("--language", default="en",
                         help="Language to calibrate on. English matches In-the-Wild "
                              "and the app's expected input.")
+    parser.add_argument("--commonvoice-split", default="all", choices=["all", *commonvoice.SPLITS],
+                        help="Which Common Voice split to sample from. 'all' reproduces "
+                             "the calibrations in RESULTS.md Finding 9; a checkpoint "
+                             "trained with --extra-bonafide commonvoice must use 'test'.")
     parser.add_argument("--n", type=int, default=10000,
                         help="Clips to sample; half calibrate, half check.")
     parser.add_argument("--seed", type=int, default=42)
@@ -164,11 +167,21 @@ def main():
     if not 0 < args.target_frr < 1:
         raise SystemExit("--target-frr must be between 0 and 1")
 
-    clips, root = LOADERS[args.calibration_set](args.language)
+    ckpt = torch.load(args.ckpt, map_location=DEVICE, weights_only=False)
+    # Before any scoring: calibrating on the clips a model was trained to call
+    # real would make the "check half" rate meaningless.
+    if (ckpt.get("extra_bonafide") == args.calibration_set == "commonvoice"
+            and args.commonvoice_split != "test"):
+        raise SystemExit(
+            "ERROR: this checkpoint trained on Common Voice's train split. "
+            "Calibrate on its held-out split: pass --commonvoice-split test.")
+    if args.calibration_set != "commonvoice" and args.commonvoice_split != "all":
+        raise SystemExit("--commonvoice-split only applies to --calibration-set commonvoice.")
+
+    clips, root = LOADERS[args.calibration_set](args.language, args.commonvoice_split)
     calib_clips, check_clips, split_kind = split_halves(clips, args.n, args.seed)
     calib, check = to_protocol(calib_clips), to_protocol(check_clips)
 
-    ckpt = torch.load(args.ckpt, map_location=DEVICE, weights_only=False)
     arch = ckpt.get("arch") or DEFAULT_ARCH
     frontend = ckpt.get("frontend") or DEFAULT_FRONTEND
     model = build_model(arch).to(DEVICE)
@@ -194,6 +207,8 @@ def main():
         "checkpoint": str(args.ckpt),
         "epoch": ckpt.get("epoch"),
         "calibration_set": f"{args.calibration_set} ({args.language})",
+        "commonvoice_split": (args.commonvoice_split
+                              if args.calibration_set == "commonvoice" else None),
         "n_calibrate": len(calib), "n_check": len(check), "seed": args.seed,
         "split": split_kind,
         "target_frr": args.target_frr,

@@ -586,6 +586,58 @@ more epochs might help); `best.pth` is the last epoch, so selection did not
 have to choose; XLS-R's pretraining data may overlap In-the-Wild's speakers
 (Finding 8). Nothing was trained, selected or calibrated on In-the-Wild.
 
+## Finding 10 — training on real-world bona fide speech (pre-registered, not yet run)
+
+Written 27 September 2026, **before** the run is submitted. Nothing below may
+be changed after In-the-Wild is scored; the result is reported whatever it is.
+
+**Question.** Does adding noisy, home-recorded real speech to training, labelled
+bona fide, stop the model scoring genuine real-world recordings as suspicious
+(Finding 9), without losing its ranking?
+
+**The one change.** Finding 9's run plus `--extra-bonafide commonvoice`: Common
+Voice English's **train** split, 33,614 clips (`commonvoice.py`). Everything
+else is held fixed: SSL-AASIST, RawBoost 5, `--extra-train speechfake`, 4
+epochs, batch 14, constant lr 1e-6, class weights recomputed from the data
+(bona fide goes from ~78k to ~112k of ~739k clips). Selection is unchanged —
+LA dev + SpeechFake dev, `best.pth` by dev EER — so Common Voice influences
+only the weights, not which epoch is chosen.
+
+**Calibration**, fixed now: `calibrate.py --commonvoice-split test`, Common
+Voice English's **test** split (16,386 clips; Common Voice puts each speaker
+in one split only), n = 10,000, seed 42, target 5% of genuine clips flagged.
+`calibrate.py` refuses the train split for this checkpoint.
+
+**Control.** The Finding 9 model is recalibrated the same way (test split,
+same n and seed) and scored on In-the-Wild at that threshold, so both models
+are compared at thresholds chosen by the identical procedure. Its earlier
+15.64% sampled both Common Voice splits.
+
+**What is reported**, in this order:
+
+1. In-the-Wild EER (ranking). Must stay **under 5%**.
+2. **In-the-Wild real clips flagged** at the Common Voice test threshold — the
+   primary number. Compared with the control.
+3. In-the-Wild fakes passed at that threshold.
+4. VoxPopuli real clips flagged at that threshold (`calibrate.py
+   --calibration-set voxpopuli` on the calibrated checkpoint, whose "old
+   threshold" line is then the Common Voice one): a second, unseen kind of
+   real speech.
+5. LA eval EER / min t-DCF, with Finding 9's VCTK caveat.
+
+**Reading the result**, decided in advance:
+
+- **Fixed:** ITW EER < 5% and ≤ 5% of ITW real clips flagged. Serve it.
+- **Improved:** ITW EER < 5% and real flagged clearly below the control (≥ 5
+  points), but above 5%. Report it; decide on serving with the numbers.
+- **No effect:** real flagged within 5 points of the control. The problem is
+  not the absence of noisy bona fide in training.
+- **Broken ranking:** ITW EER ≥ 5%. The added data cost more than it bought.
+
+In-the-Wild is scored once for this model. If the outcome is not "fixed", the
+next step is written up and argued for, not run as a quick variant — a second
+data mix chosen after seeing this result would be tuning on In-the-Wild.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

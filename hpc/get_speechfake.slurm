@@ -29,8 +29,9 @@
 # NOT fetched by default: no row of the baseline protocol points into it — it
 # is the bona fide half of MD. WITH_COMMONVOICE=1 adds it: 167,572 real clips
 # recorded by volunteers on their own microphones (50,000 English), CC0, and
-# unseen in training. It is the CALIBRATION set for the decision threshold
-# (ai_model/calibrate.py; RESULTS.md Finding 9), never training data. MD (multilingual,
+# unseen in training by the Finding 9 model. Its English TRAIN split is
+# training data for `--extra-bonafide commonvoice`, its TEST split the
+# calibration set (ai_model/commonvoice.py; RESULTS.md Findings 9-10). MD (multilingual,
 # ~115 GB) is NOT fetched: the result above is for BD. Add it to PARTS if the
 # cross-lingual rows are ever wanted.
 #

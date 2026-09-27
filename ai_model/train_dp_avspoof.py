@@ -34,6 +34,7 @@ from model import (
 )
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
 import asvspoof5
+import commonvoice
 import speechfake
 
 # --- Hyperparameters & Constants ---
@@ -141,7 +142,8 @@ def get_corpus_paths(corpus: str = "LA"):
 CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 
 def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH,
-                   rawboost: int | None = None, extra_train: str | None = None):
+                   rawboost: int | None = None, extra_train: str | None = None,
+                   extra_bonafide: str | None = None):
     """Each (architecture, front-end, privacy regime) triple gets its own directory.
 
     Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
@@ -159,7 +161,8 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
 
     Extra training data gets one more level, for the same reason again: a run
     on LA + ASVspoof 5 is a different model from the LA-only one, and the two
-    must never share a last.pth.
+    must never share a last.pth. Extra bona fide speech (--extra-bonafide)
+    nests one level below that.
     """
     ckpt_dir = CKPT_DIR if arch == DEFAULT_ARCH else CKPT_DIR / arch
     if frontend != default_frontend_for(arch):
@@ -168,6 +171,8 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
         ckpt_dir = ckpt_dir / f"rawboost{rawboost}"
     if extra_train:
         ckpt_dir = ckpt_dir / f"plus-{extra_train}"
+    if extra_bonafide:
+        ckpt_dir = ckpt_dir / f"plus-{extra_bonafide}-bonafide"
     if not use_dp:
         ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -180,7 +185,7 @@ def unwrap(model):
 def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
               is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND,
               arch=DEFAULT_ARCH, batch_size=None, scheduler=None, rawboost=None,
-              extra_train=None):
+              extra_train=None, extra_bonafide=None):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -211,6 +216,9 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         # Training data beyond the corpus, e.g. "asvspoof5". Provenance only,
         # like rawboost: nothing at inference depends on it.
         "extra_train": extra_train,
+        # Real speech added as bona fide, e.g. "commonvoice". Provenance, and
+        # calibrate.py reads it to refuse calibrating on the clips trained on.
+        "extra_bonafide": extra_bonafide,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
         # Restored on resume so a cosine schedule survives a job hitting its
@@ -409,6 +417,17 @@ def main():
                              "--epochs 4 is ~1.15x the LA recipe's steps; its dev split joins "
                              "LA dev for selection, because LA dev saturates at 0%% for "
                              "ssl-aasist. Checkpoints go to <arch dir>/plus-<name>/.")
+    parser.add_argument("--extra-bonafide", default=None, choices=["commonvoice"],
+                        help="Add real-world speech to training, labelled bona fide. "
+                             "'commonvoice' adds Common Voice English's train split, "
+                             "33,614 clips read by volunteers on their own microphones "
+                             "(commonvoice.py; fetch with WITH_COMMONVOICE=1 "
+                             "hpc/get_speechfake.slurm) — the fix RESULTS.md Finding 9 "
+                             "points to: every bona fide clip the model has trained on "
+                             "is clean read speech, so genuine real-world recordings "
+                             "score as suspicious. Its test split is kept for "
+                             "calibrate.py. Selection still uses the same dev set. "
+                             "Checkpoints go to <dir>/plus-<name>-bonafide/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
     parser.add_argument("--batch-size", type=int, default=None,
@@ -469,6 +488,7 @@ def main():
     print(f"Augmentation: {augment or 'none'}")
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
                                    transform_pipeline, augment=augment)
+    extra_parts = []
     if args.extra_train:
         # (loader, audio-file suffix): ASVspoof 5 names files without an
         # extension like ASVspoof2019; SpeechFake's paths already carry .wav.
@@ -477,9 +497,19 @@ def main():
         extra_protocol, extra_dir = adapter.load_protocol("train")
         print(f"Extra training data: {args.extra_train} train, "
               f"{len(extra_protocol)} clips from {extra_dir}")
-        extra_dataset = AVSpoofDataset(None, extra_dir, transform_pipeline,
-                                       protocol=extra_protocol, suffix=suffix, augment=augment)
-        parts = [train_dataset, extra_dataset]
+        extra_parts.append(AVSpoofDataset(None, extra_dir, transform_pipeline,
+                                          protocol=extra_protocol, suffix=suffix,
+                                          augment=augment))
+    if args.extra_bonafide:
+        bf_protocol, bf_dir = commonvoice.load_protocol("train")
+        print(f"Extra bona fide: {args.extra_bonafide} train, "
+              f"{len(bf_protocol)} clips from {bf_dir}")
+        # Augmented like everything else: RawBoost stays a property of the run,
+        # not of which corpus a clip came from.
+        extra_parts.append(AVSpoofDataset(None, bf_dir, transform_pipeline,
+                                          protocol=bf_protocol, suffix="", augment=augment))
+    if extra_parts:
+        parts = [train_dataset, *extra_parts]
         train_dataset = ConcatDataset(parts)
         # compute_class_weights reads .protocol; ConcatDataset has none, so give
         # it the union. The weights must come from the data actually trained on,
@@ -530,7 +560,8 @@ def main():
             noise_multiplier=NOISE_MULTIPLIER, max_grad_norm=MAX_GRAD_NORM,
         )
 
-    paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost, args.extra_train)
+    paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost, args.extra_train,
+                           args.extra_bonafide)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
@@ -565,6 +596,12 @@ def main():
                 f"ERROR: {LAST_CKPT} was trained with extra_train={ckpt.get('extra_train')}, "
                 f"but this run has extra_train={args.extra_train}. Check $CKPT_ROOT, "
                 f"currently {CKPT_DIR}."
+            )
+        if ckpt.get("extra_bonafide") != args.extra_bonafide:
+            raise SystemExit(
+                f"ERROR: {LAST_CKPT} was trained with extra_bonafide="
+                f"{ckpt.get('extra_bonafide')}, but this run has extra_bonafide="
+                f"{args.extra_bonafide}. Check $CKPT_ROOT, currently {CKPT_DIR}."
             )
         unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
@@ -655,13 +692,15 @@ def main():
             "arch": args.arch,
             "rawboost": args.rawboost,
             "extra_train": args.extra_train,
+            "extra_bonafide": args.extra_bonafide,
             "lr": optimizer.param_groups[0]["lr"],
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
                   class_weights=class_weights, is_best=is_best,
                   metrics=metrics, best_eer=best_eer, frontend=frontend,
                   arch=args.arch, batch_size=batch_size, scheduler=scheduler,
-                  rawboost=args.rawboost, extra_train=args.extra_train)
+                  rawboost=args.rawboost, extra_train=args.extra_train,
+                  extra_bonafide=args.extra_bonafide)
         if scheduler is not None:
             scheduler.step()
 

@@ -238,6 +238,35 @@ def main():
         check("class weights computed over the concatenated corpus",
               len(concat) == 4 and torch.allclose(w, torch.tensor([1.0, 1.0])), w.tolist())
 
+    print("--- Common Voice adapter (--extra-bonafide commonvoice) ---")
+    # Laid out as SpeechFake ships it: one clip in each split plus one in
+    # another language. Training must see only English train, calibration only
+    # English test — a leak between the two is the failure this guards.
+    import commonvoice
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        rows = []
+        for lang, split in [("en", "train"), ("en", "test"), ("fr", "train")]:
+            rel = f"Real/CommonVoice/{lang}/{split}/{lang}_{split}_0/common_voice_{lang}_1.wav"
+            (root / rel).parent.mkdir(parents=True)
+            shutil.copy(SAMPLE, root / rel)
+            rows.append(f"{rel},bonafide,-,-,-,{lang}")
+        (root / "metadata" / "Real").mkdir(parents=True)
+        (root / "metadata" / "Real" / "CommonVoice.csv").write_text(
+            "file,label,generator,model,speaker,language\n" + "\n".join(rows) + "\n")
+        proto, audio_dir = commonvoice.load_protocol("train", root=root)
+        check("training sees English train only, labelled bona fide",
+              len(proto) == 1 and "/en/train/" in proto["audio_file_name"][0]
+              and list(proto["label"]) == ["bonafide"], list(proto["audio_file_name"]))
+        held_out, _ = commonvoice.load_clips("en", "test", root=root)
+        check("calibration split shares no clip with training",
+              not set(held_out["file"]) & set(proto["audio_file_name"]))
+        dscv = AVSpoofDataset(None, audio_dir, build_transform(DEFAULT_FRONTEND),
+                              protocol=proto, suffix="")
+        xcv, ycv = dscv[0]
+        check("Common Voice clip yields the sample's tensor and label 0",
+              torch.equal(xcv, specs[DEFAULT_FRONTEND]) and int(ycv) == 0)
+
     spec = specs[DEFAULT_FRONTEND]
 
     print("--- Train/serve parity ---")
