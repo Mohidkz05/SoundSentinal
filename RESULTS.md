@@ -9,7 +9,9 @@ ASVspoof2019 LA** — except the two AASIST variants of 24 September in Finding 
 one with RawBoost augmentation and one with ASVspoof 5 added to training, and
 the two SSL-AASIST runs of 24–25 September in Finding 8 (XLS-R 300M in front of
 AASIST, 100 epochs on an H100, with and without RawBoost), and the SSL-AASIST
-run of 26 September in Finding 9, trained on LA plus SpeechFake. CNN runs are 5 epochs, batch 64, Adam at 1e-3,
+run of 26 September in Finding 9, trained on LA plus SpeechFake, and the
+run of 27–28 September in Finding 10, which adds Common Voice as bona fide
+speech. CNN runs are 5 epochs, batch 64, Adam at 1e-3,
 inverse-frequency class weights `[4.919, 0.557]`, seed 42. The AASIST run uses
 its published recipe instead — 100 epochs, batch 24, Adam at 1e-4 with weight
 decay and cosine annealing — so it differs from the CNN rows by schedule as
@@ -41,6 +43,7 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | --- | --- | --- | --- | --- |
 | AASIST (published, **not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
 | **Our SSL-AASIST + RawBoost, `best.pth` (epoch 91)** | XLS-R 300M | non-private | **0.79%** | **0.0143** |
+| Our SSL-AASIST + RawBoost, LA + SpeechFake + Common Voice bona fide (epoch 4)† | XLS-R 300M | non-private | 1.39% | 0.0415 |
 | Our SSL-AASIST + RawBoost, LA + SpeechFake (epoch 4)† | XLS-R 300M | non-private | 2.12% | 0.0649 |
 | **Our AASIST + RawBoost, `best.pth` (epoch 51)** | raw waveform | non-private | **1.74%** | **0.0531** |
 | **Our AASIST, `best.pth` (epoch 42)** | raw waveform | non-private | **3.17%** | **0.0909** |
@@ -56,7 +59,8 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | Our CNN, `best.pth` | log-Mel | DP, ε=0.48 | 17.80% | 0.2696 |
 
 † Not a clean held-out number: SpeechFake trains on VCTK, the corpus LA's
-bona fide speech comes from (Finding 9). Its point is In-the-Wild: **2.65%**.
+bona fide speech comes from (Finding 9). Their point is In-the-Wild: **2.65%**
+and 2.71% respectively (Findings 9 and 10).
 
 Our AASIST's best single epoch on eval reaches 2.98% EER (epochs 59, 64) and
 0.0807 min t-DCF (epochs 85, 95), but those are picked by looking at eval, so
@@ -586,7 +590,10 @@ more epochs might help); `best.pth` is the last epoch, so selection did not
 have to choose; XLS-R's pretraining data may overlap In-the-Wild's speakers
 (Finding 8). Nothing was trained, selected or calibrated on In-the-Wild.
 
-## Finding 10 — training on real-world bona fide speech (pre-registered, not yet run)
+## Finding 10 — training on real-world bona fide speech makes the threshold worse
+
+The pre-registration below is unchanged from 27 September. The result follows
+it, under "Result (28 September)".
 
 Written 27 September 2026, **before** the run is submitted. Nothing below may
 be changed after In-the-Wild is scored; the result is reported whatever it is.
@@ -638,6 +645,104 @@ In-the-Wild is scored once for this model. If the outcome is not "fixed", the
 next step is written up and argued for, not run as a quick variant — a second
 data mix chosen after seeing this result would be tuning on In-the-Wild.
 
+### Result (28 September)
+
+Job 60493491: 12h20m on an H100, no errors. Class weights came out
+`[3.413, 0.586]` (111,902 bona fide, 651,954 spoof). Scored by jobs 60500934
+(calibration), 60500935 (In-the-Wild), 60500936 (VoxPopuli) and 60500939 (LA
+eval). The control used jobs 60493492 (calibration), 60500937 (In-the-Wild) and
+60500938 (VoxPopuli). All ran on L40S GPUs at commit `677066e`. The JSON is in
+`.../plus-speechfake/plus-commonvoice-bonafide/nodp/` and `.../plus-speechfake/nodp/`.
+
+| Epoch | Train acc | Dev EER | Dev threshold |
+| --- | --- | --- | --- |
+| 1 | 89.25% | 5.20% | 0.0171 |
+| 2 | 97.13% | 3.12% | 0.0407 |
+| 3 | 97.90% | 3.20% | 0.0076 |
+| **4** (`best.pth`) | 98.34% | **2.48%** | 0.0045 |
+
+The five numbers, in the pre-registered order. Both models use a threshold
+fitted on the Common Voice **test** split (n 10,000, seed 42, target 5%):
+
+| | Control (Finding 9 model) | + Common Voice bona fide |
+| --- | --- | --- |
+| Common Voice test threshold | P = 0.9766 (log-odds +3.73) | P = 0.000509 (log-odds −7.58) |
+| Common Voice real flagged, held-out half | 5.50% | 6.70% |
+| 1. In-the-Wild EER | 2.65% | **2.71%** |
+| 2. **In-the-Wild real flagged** | **8.04%** | **53.69%** |
+| 3. In-the-Wild fakes passed | 1.74% | 0.12% |
+| 4. VoxPopuli real flagged (9,000 clips) | 0.93% | 52.41% |
+| 5. LA eval EER / min t-DCF | 2.12% / 0.0649† | 1.39% / 0.0415† |
+
+† SpeechFake contains VCTK, so neither LA row is a clean held-out number
+(Finding 9). The new model's worst attack is A11 (4.23%) and its best is A13
+(0.00%).
+
+**The result is none of the four pre-registered outcomes.** The ranking held:
+the In-the-Wild EER stayed at 2.71%, under 5%, so this is not "broken ranking".
+But real clips flagged went from 8.04% to 53.69%, **45.6 points worse** than
+the control. "Fixed" and "improved" need it lower. "No effect" needs it within
+5 points. The categories did not allow for the change making things worse, and
+the result is reported as that rather than filed under the nearest heading.
+
+**Why: training on Common Voice made Common Voice useless for calibration.**
+The new model is extremely confident that Common Voice audio is real. Its
+held-out Common Voice scores span log-odds −7.79 to −7.44 from the 5th to the
+99th percentile, a band 0.35 wide; the control's same percentiles span −7.10 to
++8.30. Flagging "5% of Common Voice" therefore put the threshold inside that
+narrow band, at −7.58. Nearly every real recording that does not sound like
+Common Voice scores above it, so about half of In-the-Wild and of VoxPopuli
+gets flagged. Common Voice keeps each speaker in one split, so its test split
+has new speakers. It does not have new recording conditions: same website, same
+kind of microphones, same reading task. The model learned those conditions, and
+held-out speakers did not hold them out.
+
+**This is a flaw in the pre-registration, not in the run.** Calibration must
+use a source of real speech the model was never trained on. Choosing the other
+split of the training corpus met the letter of that and not the point of it.
+
+**What the run does show:**
+
+- **Adding real speech did not hurt the ranking.** In-the-Wild EER moved from
+  2.65% to 2.71%, and LA eval improved from 2.12% / 0.0649 to 1.39% / 0.0415.
+  The data is safe to train on. The question is only how to set the threshold
+  afterwards.
+- **It did not make real-world speech look real in general.** It made Common
+  Voice look real. On the new model, Common Voice's 95th-percentile score is
+  log-odds −7.57, and VoxPopuli's is −0.25. A quarter of VoxPopuli scores
+  above −5.29, which is far above anything Common Voice produces.
+- **The control's threshold is unstable.** Two samples from the same corpus
+  gave thresholds P = 0.7457 (both splits, Finding 9) and P = 0.9766 (test
+  split only). Their In-the-Wild false flags were 15.64% and 8.04%. A threshold
+  that moves by 2.6 on the log-odds scale when the sample changes is not a
+  property of the model that can be relied on.
+
+**On serving the control at 8.04%.** Of the thresholds fitted for the
+Finding 9 model, this one gives the lowest real-world false flags: 8.04%, with
+1.74% of fakes passed. Its procedure was fixed before In-the-Wild was scored.
+But it is the third threshold for that model scored on In-the-Wild
+(15.64%, 19.26%, 8.04%). Choosing it *because* it scored best is choosing on
+In-the-Wild. If it is served, the reason has to be one that does not depend on
+those three numbers, and `/result` should state the measured rates.
+
+**The next step, argued rather than run.** The mistake to avoid is
+calibrating on a source that is also in training. The design that avoids it
+holds out whole *sources*, not speakers:
+
+1. Train with bona fide speech from two or more real-world sources, e.g.
+   Common Voice and People's Speech.
+2. Calibrate on a third source that stays out of training entirely. VoxPopuli
+   is a candidate, with the caveat that XLS-R was pretrained on it (Finding 9).
+3. Fix all three choices, the 5% target and the outcome categories before
+   submitting, and score In-the-Wild once.
+
+This is a new data mix chosen after seeing this result, which the
+pre-registration warned about. What keeps it from being tuning is that it is
+motivated by a mechanism found in the calibration data (the collapsed score
+band), not by In-the-Wild's numbers. That should be checked when it is
+pre-registered. Nothing was trained, selected or calibrated on In-the-Wild in
+this finding.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
@@ -651,8 +756,9 @@ data mix chosen after seeing this result would be tuning on In-the-Wild.
   privately. Not designed yet.
 - **A per-epoch sweep of the SSL runs**, to see how arbitrary `best.pth` is
   once LA dev has saturated.
-- **A usable threshold for the SpeechFake model** (Finding 9): calibrating on
-  held-out noisy real-world bona fide speech, not In-the-Wild.
+- **A threshold fitted on a source held out of training.** Findings 9 and 10
+  tried Common Voice twice and VoxPopuli once. Finding 10's Common Voice set
+  was also in training, which broke it. Finding 10 sets out the design.
 - **More SpeechFake epochs**, or SpeechFake without RawBoost — dev EER was
   still falling at epoch 4, and the two changes were not separated.
 - **A DP sweep.** One ε is a point, not the cost-of-privacy curve.
@@ -684,6 +790,15 @@ sbatch hpc/get_speechfake.slurm                                                 
 sbatch --partition=m3h --qos=m3h --gres=gpu:H100:1 --time=24:00:00 \
        --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints \
        hpc/train.slurm --arch ssl-aasist --no-dp --rawboost 5 --extra-train speechfake --epochs 4
+sbatch --partition=m3h --qos=m3h --gres=gpu:H100:1 --time=24:00:00 \
+       --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints \
+       hpc/train.slurm --arch ssl-aasist --no-dp --rawboost 5 --extra-train speechfake \
+       --extra-bonafide commonvoice --epochs 4                                   # Finding 10
+sbatch --gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints \
+       hpc/calibrate.slurm --ckpt <run-dir>/best.pth --commonvoice-split test \
+       --out <run-dir>/best_calibrated_commonvoice_test.pth
+sbatch --gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints \
+       hpc/evaluate.slurm --dataset itw --ckpt <run-dir>/best_calibrated_commonvoice_test.pth
 # Pin evaluation to a 48GB+ GPU: at batch 128, AASIST runs out of memory on a T4.
 cd ai_model && python summarise_results.py <run-dir>
 ```

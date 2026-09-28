@@ -6,7 +6,7 @@ differential privacy (Opacus) on the ASVspoof2019 corpus.
 
 University project. Active work is on branch `ssl-aasist` — see "Branching" below.
 
-## Where things stand (updated 26 September 2026, evening)
+## Where things stand (updated 28 September 2026)
 
 Read this first; `RESULTS.md` has every number and its job ID.
 
@@ -19,16 +19,20 @@ Read this first; `RESULTS.md` has every number and its job ID.
   `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/best.pth`
   (epoch 4, 1.2 GB). Score it with
   `sbatch --gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints hpc/evaluate.slurm --dataset itw --arch ssl-aasist --rawboost 5 --extra-train speechfake`.
-- **Threshold: calibration tried twice, not enough (27 September).** The
-  dev-EER threshold flags 46% of genuine In-the-Wild clips. Re-fitting it to
-  flag 5% of unseen real speech got that to 15.6% (Common Voice,
-  saved as `best_calibrated.pth`) and 19.3%
-  (VoxPopuli, `best_calibrated_voxpopuli.pth`). **Calibration is closed** — a
-  third attempt would be tuning on In-the-Wild. Next step is to **retrain with
-  real-world bona fide speech** (VoxPopuli, Common Voice, People's Speech: all
-  ungated, commercially usable) so real recordings stop scoring as suspicious.
-  See the end of Finding 9.
-- **Then serve it:** copy `best_calibrated.pth` to `ai_model/checkpoints/best.pth`
+- **Threshold: still the open problem (28 September).** The dev-EER threshold
+  flags 46% of genuine In-the-Wild clips. Re-fitting it to flag 5% of unseen
+  real speech gave 15.6% (Common Voice, both splits, `best_calibrated.pth`),
+  19.3% (VoxPopuli, `best_calibrated_voxpopuli.pth`) and 8.04% (Common Voice
+  test split, `best_calibrated_commonvoice_test.pth`, the Finding 10 control).
+- **Retraining with Common Voice as bona fide made it worse** (Finding 10):
+  In-the-Wild EER held at 2.71%, but its Common Voice-test threshold flags
+  **53.7%** of real In-the-Wild clips. Common Voice was in training, so its
+  scores collapsed into a narrow band and calibrating on it failed. The next
+  design, argued in Finding 10 and **not yet pre-registered or run**: train
+  on bona fide from some real-world sources, calibrate on a source held out
+  of training entirely. Checkpoint:
+  `.../plus-speechfake/plus-commonvoice-bonafide/nodp/best.pth` on scratch.
+- **Then serve it:** once a threshold is chosen, copy that checkpoint to `ai_model/checkpoints/best.pth`
   (`scp m3:...`), check `app.py` loads it with the new threshold, time one CPU
   prediction (316M params), and decide whether `/result` should state the
   real-world error rates. The app still serves plain AASIST today.
