@@ -743,6 +743,91 @@ band), not by In-the-Wild's numbers. That should be checked when it is
 pre-registered. Nothing was trained, selected or calibrated on In-the-Wild in
 this finding.
 
+## Finding 11 — two real-speech sources in training, a third held out to calibrate (pre-registered, not yet run)
+
+Written 28 September 2026, **before** anything is submitted. Nothing below may
+be changed after In-the-Wild is scored. The result is reported whatever it is.
+
+**Question.** If the model trains on real speech from more than one recording
+setup, and the threshold is set on a source it never trained on, does it stop
+flagging genuine real-world recordings, without losing its ranking?
+
+**Why this design, and why it is not tuning on In-the-Wild.** Finding 10 failed
+for a reason visible without In-the-Wild: the model's scores on Common Voice
+test collapsed into a band 0.35 log-odds wide, because it had trained on Common
+Voice's recording conditions. This design fixes that specific mechanism: the
+threshold comes from a source held out of training, and training spreads
+"real" across two setups. The choice of sources was made from their licences
+and from what XLS-R was pretrained on, not from any In-the-Wild number.
+
+**The change.** Finding 9's run plus `--extra-bonafide commonvoice+voxpopuli`:
+
+- Common Voice English, **train** split (33,614 clips): people reading at home
+  on their own microphones. CC0.
+- VoxPopuli English, **train** shards 00000-00005 (~36k clips): European
+  Parliament speeches through the chamber's broadcast microphones. CC0.
+
+Everything else is held fixed: SSL-AASIST, RawBoost 5, `--extra-train
+speechfake`, 4 epochs, batch 14, constant lr 1e-6, class weights recomputed
+from the data. Selection is unchanged: LA dev + SpeechFake dev, `best.pth` by
+dev EER.
+
+**Calibration, fixed now.** `calibrate.py --calibration-set peoples_speech`:
+People's Speech `clean` **test** split, archive.org talks, lectures, meetings
+and proceedings. It is CC-BY, so commercial use is allowed. It is in neither
+training nor XLS-R's pretraining data. n = 10,000, seed 42, target 5% of
+genuine clips flagged, halves split by source recording. Before sampling,
+every recording whose name matches one of In-the-Wild's 54 speakers is
+dropped. The patterns are in `peoples_speech.py` and were fixed before any
+download. `calibrate.py` refuses to set this checkpoint's threshold on Common
+Voice or VoxPopuli.
+
+**Control.** The Finding 9 model, calibrated on People's Speech the same way
+(same n, seed and target) and scored on In-the-Wild at that threshold. Both
+models then have thresholds chosen by the identical procedure, from the same
+unseen source. This is the **fourth** threshold for the Finding 9 model to be
+scored on In-the-Wild. It is here for attribution only. It is not a serving
+candidate, whatever it scores.
+
+The Finding 10 model is **not** re-scored: Finding 10 committed to scoring it
+on In-the-Wild once.
+
+**What is reported**, in this order:
+
+1. In-the-Wild EER. Must stay **under 5%**.
+2. **In-the-Wild real clips flagged** at the People's Speech threshold. This
+   is the primary number, compared with the control.
+3. In-the-Wild fakes passed at that threshold.
+4. People's Speech real clips flagged, check half. This shows whether the
+   threshold holds on recordings it was not fitted to.
+5. Diagnostics at that threshold, using `calibrate.py --measure-only`; they
+   choose nothing. Common Voice test (n 10,000, seed 42) and VoxPopuli
+   held-out speakers (validation and test clips whose speakers are in no
+   fetched train shard, all of them up to 10,000), for both models.
+6. LA eval EER / min t-DCF, with Finding 9's VCTK caveat.
+
+**Reading the result**, decided in advance. "Control" means the control's
+In-the-Wild real flagged rate. The first line that applies wins:
+
+- **Broken ranking:** new model's ITW EER ≥ 5%. The added data cost more than
+  it bought.
+- **Fixed:** ≤ 5% of ITW real clips flagged. Serve the new model at the People's
+  Speech threshold, and state the measured rates on `/result`. If the control
+  is also ≤ 5%, the fix came from the held-out calibration source rather than
+  from training, and the writeup says so.
+- **Improved:** ≥ 5 points below the control, but above 5%. Report it and decide
+  on serving with the numbers.
+- **No effect:** within 5 points of the control, either way.
+- **Worse:** ≥ 5 points above the control. Training on real speech still teaches
+  the model its sources' recording conditions rather than what real speech is.
+
+Finding 10's categories left no room for "worse", and it happened. This time
+there is a category for it.
+
+In-the-Wild is scored once for each of the two models. If the outcome is not
+"fixed", the next step is written up and argued for, not run as a quick
+variant.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
@@ -758,7 +843,8 @@ this finding.
   once LA dev has saturated.
 - **A threshold fitted on a source held out of training.** Findings 9 and 10
   tried Common Voice twice and VoxPopuli once. Finding 10's Common Voice set
-  was also in training, which broke it. Finding 10 sets out the design.
+  was also in training, which broke it. Finding 11 is that design,
+  pre-registered and not yet run.
 - **More SpeechFake epochs**, or SpeechFake without RawBoost — dev EER was
   still falling at epoch 4, and the two changes were not separated.
 - **A DP sweep.** One ε is a point, not the cost-of-privacy curve.

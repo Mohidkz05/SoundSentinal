@@ -36,6 +36,7 @@ from in_the_wild import get_itw_root, load_protocol as load_itw_protocol
 from tdcf import compute_min_tdcf
 from train_dp_avspoof import (
     AVSpoofDataset,
+    BONAFIDE_MIXES,
     CKPT_DIR,
     compute_eer_np,
     get_ckpt_paths,
@@ -161,7 +162,7 @@ def main():
     parser.add_argument("--extra-train", default=None, choices=["asvspoof5", "speechfake"],
                         help="Score the run trained with this extra corpus (its own "
                              "checkpoint directory, plus-<name>/). Picks the checkpoint only.")
-    parser.add_argument("--extra-bonafide", default=None, choices=["commonvoice"],
+    parser.add_argument("--extra-bonafide", default=None, choices=list(BONAFIDE_MIXES),
                         help="Score the run trained with this extra bona fide speech "
                              "(plus-<name>-bonafide/). Picks the checkpoint only.")
     parser.add_argument("--ckpt", type=Path, default=None,

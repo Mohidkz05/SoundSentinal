@@ -35,6 +35,7 @@ from model import (
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
 import asvspoof5
 import commonvoice
+import voxpopuli
 import speechfake
 
 # --- Hyperparameters & Constants ---
@@ -140,6 +141,14 @@ def get_corpus_paths(corpus: str = "LA"):
 # clone sits in a small home quota while runs belong in project storage; app.py
 # reads the same variable so the server still finds best.pth.
 CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
+
+# --extra-bonafide values -> the sources they add, each loaded with its train
+# split. The value is stored in the checkpoint as-is, and calibrate.py splits
+# it on "+" to know which sources it must not calibrate on.
+BONAFIDE_SOURCES = {"commonvoice": commonvoice.load_protocol,
+                    "voxpopuli": voxpopuli.load_protocol}
+BONAFIDE_MIXES = {"commonvoice": ("commonvoice",),
+                  "commonvoice+voxpopuli": ("commonvoice", "voxpopuli")}
 
 def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH,
                    rawboost: int | None = None, extra_train: str | None = None,
@@ -417,7 +426,7 @@ def main():
                              "--epochs 4 is ~1.15x the LA recipe's steps; its dev split joins "
                              "LA dev for selection, because LA dev saturates at 0%% for "
                              "ssl-aasist. Checkpoints go to <arch dir>/plus-<name>/.")
-    parser.add_argument("--extra-bonafide", default=None, choices=["commonvoice"],
+    parser.add_argument("--extra-bonafide", default=None, choices=list(BONAFIDE_MIXES),
                         help="Add real-world speech to training, labelled bona fide. "
                              "'commonvoice' adds Common Voice English's train split, "
                              "33,614 clips read by volunteers on their own microphones "
@@ -426,7 +435,12 @@ def main():
                              "points to: every bona fide clip the model has trained on "
                              "is clean read speech, so genuine real-world recordings "
                              "score as suspicious. Its test split is kept for "
-                             "calibrate.py. Selection still uses the same dev set. "
+                             "calibrate.py. 'commonvoice+voxpopuli' adds VoxPopuli "
+                             "English's train shards too (~36k European Parliament "
+                             "speeches, voxpopuli.py; hpc/get_voxpopuli.slurm), so that "
+                             "no one recording setup defines real speech (RESULTS.md "
+                             "Finding 11); calibrate it on peoples_speech. Selection "
+                             "still uses the same dev set. "
                              "Checkpoints go to <dir>/plus-<name>-bonafide/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
@@ -500,9 +514,9 @@ def main():
         extra_parts.append(AVSpoofDataset(None, extra_dir, transform_pipeline,
                                           protocol=extra_protocol, suffix=suffix,
                                           augment=augment))
-    if args.extra_bonafide:
-        bf_protocol, bf_dir = commonvoice.load_protocol("train")
-        print(f"Extra bona fide: {args.extra_bonafide} train, "
+    for source in BONAFIDE_MIXES.get(args.extra_bonafide, ()):
+        bf_protocol, bf_dir = BONAFIDE_SOURCES[source]("train")
+        print(f"Extra bona fide: {source} train, "
               f"{len(bf_protocol)} clips from {bf_dir}")
         # Augmented like everything else: RawBoost stays a property of the run,
         # not of which corpus a clip came from.

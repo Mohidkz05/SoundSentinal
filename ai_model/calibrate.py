@@ -6,6 +6,9 @@
 #     python calibrate.py --ckpt <dir>/best.pth --calibration-set voxpopuli
 #     python calibrate.py --ckpt <dir>/best.pth --target-frr 0.02
 #     python calibrate.py --ckpt <dir>/best.pth --commonvoice-split test   # see below
+#     python calibrate.py --ckpt <dir>/best.pth --calibration-set peoples_speech
+#     python calibrate.py --ckpt <cal>.pth --calibration-set voxpopuli \
+#                         --voxpopuli-split heldout --measure-only     # diagnostic
 #
 # WHY. The trainer calibrates the threshold at the dev set's equal error rate.
 # For SSL-AASIST trained on LA + SpeechFake that threshold is P(spoof) = 0.0026,
@@ -48,6 +51,21 @@
 # calibrations sampled both splits (--commonvoice-split all, the default), and
 # are reproduced unchanged.
 #
+# FINDING 10 SHOWED THAT IS NOT ENOUGH. Held-out speakers from a corpus the
+# model trained on are not held-out recording conditions: the model's Common
+# Voice test scores collapsed into a band 0.35 log-odds wide, and the
+# threshold fitted inside it flagged 54% of real In-the-Wild clips. So for
+# any other trained-on source (--extra-bonafide commonvoice+voxpopuli), this
+# script refuses to set a threshold from it at all. Calibrate on a source held
+# out of training entirely: `--calibration-set peoples_speech`
+# (peoples_speech.py). The one exception above stays so Finding 10 reproduces.
+#
+# --measure-only scores a set at the checkpoint's EXISTING threshold and
+# writes a JSON report, no checkpoint. It is how the flag rate on a
+# trained-on source (Common Voice test, VoxPopuli held-out speakers) is
+# reported as a diagnostic, and it may read those sources because it chooses
+# nothing.
+#
 # Output: a COPY of the checkpoint with the new threshold (the original keeps
 # its dev-EER one, so every earlier number stays reproducible), plus a JSON
 # report beside it. app.py reads `threshold` and `threshold_source` from it.
@@ -69,6 +87,7 @@ from torch.utils.data import DataLoader
 from evaluate import BATCH_SIZE, DEVICE, log_odds_to_prob, prob_to_log_odds, score_dataset
 from model import DEFAULT_ARCH, DEFAULT_FRONTEND, build_model, build_transform
 import commonvoice
+import peoples_speech
 import voxpopuli
 from train_dp_avspoof import AVSpoofDataset
 
@@ -78,14 +97,35 @@ def load_commonvoice(language, split="all"):
     return clips[["file", "speaker_id"]], root
 
 
-def load_voxpopuli(language, split="all"):
+def load_voxpopuli(language, split="calibration"):
+    """VoxPopuli English (voxpopuli.py). "calibration" is the Finding 9 set."""
     if language != "en":
         raise ValueError("Only VoxPopuli English is fetched (hpc/get_voxpopuli.slurm).")
-    clips, root = voxpopuli.load_clips()
+    clips, root = voxpopuli.load_clips(split)
     return clips[["file", "speaker_id"]], root
 
 
-LOADERS = {"commonvoice": load_commonvoice, "voxpopuli": load_voxpopuli}
+def load_peoples_speech(language, split=None):
+    """People's Speech clean test, In-the-Wild name matches dropped (peoples_speech.py)."""
+    if language != "en":
+        raise ValueError("People's Speech is English only.")
+    clips, root = peoples_speech.load_clips()
+    return clips[["file", "speaker_id"]], root
+
+
+LOADERS = {"commonvoice": load_commonvoice, "voxpopuli": load_voxpopuli,
+           "peoples_speech": load_peoples_speech}
+NAMES = {"commonvoice": "Common Voice", "voxpopuli": "VoxPopuli",
+         "peoples_speech": "People's Speech"}
+# The split each set is read with, from the flags below.
+SPLIT_ARG = {"commonvoice": "commonvoice_split", "voxpopuli": "voxpopuli_split"}
+# Sources a checkpoint trained on, and the split of each that training did not use.
+HELD_OUT_SPLIT = {"commonvoice": "test", "voxpopuli": "heldout"}
+
+
+def trained_sources(ckpt):
+    """Bona fide sources the checkpoint trained on, from its extra_bonafide field."""
+    return set(filter(None, (ckpt.get("extra_bonafide") or "").split("+")))
 
 
 def split_halves(clips, n, seed):
@@ -137,6 +177,37 @@ def flagged(scores, threshold_log_odds):
     return float((scores >= threshold_log_odds).mean())
 
 
+def measure(args, ckpt, model, clips, root, frontend, split):
+    """--measure-only: the flag rate at the checkpoint's own threshold. Chooses nothing."""
+    threshold = ckpt.get("threshold")
+    if threshold is None:
+        raise SystemExit("ERROR: this checkpoint carries no threshold to measure at.")
+    sample = clips.sample(n=min(args.n, len(clips)), random_state=args.seed)
+    scores = score(model, to_protocol(sample), root, frontend, args.num_workers)
+    rate = flagged(scores, prob_to_log_odds(threshold))
+    source = ckpt.get("threshold_source") or "dev EER"
+    print(f"Checkpoint   {args.ckpt} (epoch {ckpt.get('epoch')})")
+    print(f"Threshold    P(spoof) = {threshold:.6g}  ({source})")
+    print(f"Measured on  {NAMES[args.calibration_set]} ({args.language}, split {split}), "
+          f"{len(sample)} clips (seed {args.seed})")
+    print(f"  flagged              {rate:6.2%}")
+    pct = {str(q): float(np.percentile(scores, q)) for q in (5, 25, 50, 75, 95, 99)}
+    print("Scores (log-odds), percentiles 5/25/50/75/95/99:")
+    print("  " + "  ".join(f"{v:+.2f}" for v in pct.values()))
+    report = {
+        "timestamp": strftime("%Y-%m-%dT%H:%M:%S"), "checkpoint": str(args.ckpt),
+        "epoch": ckpt.get("epoch"), "measure_only": True,
+        "set": f"{args.calibration_set} ({args.language})", "split": split,
+        "n": len(sample), "seed": args.seed,
+        "threshold": threshold, "threshold_source": source,
+        "flagged": rate, "score_percentiles_log_odds": pct,
+    }
+    out = args.ckpt.with_name(f"{args.ckpt.stem}_measured_{args.calibration_set}"
+                              f"_{split or 'all'}_{strftime('%Y%m%d-%H%M%S')}.json")
+    out.write_text(json.dumps(report, indent=2))
+    print(f"\nWrote {out}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Set a checkpoint's threshold from real-world bona fide speech.")
@@ -147,7 +218,9 @@ def main():
     parser.add_argument("--calibration-set", default="commonvoice", choices=sorted(LOADERS),
                         help="Real speech to calibrate on. commonvoice: people reading at "
                              "home. voxpopuli: European Parliament speeches, closer to "
-                             "In-the-Wild's speeches and broadcast audio.")
+                             "In-the-Wild's speeches and broadcast audio. peoples_speech: "
+                             "archive.org talks and proceedings, held out of all training "
+                             "and of XLS-R's pretraining (Finding 11).")
     parser.add_argument("--language", default="en",
                         help="Language to calibrate on. English matches In-the-Wild "
                              "and the app's expected input.")
@@ -155,8 +228,16 @@ def main():
                         help="Which Common Voice split to sample from. 'all' reproduces "
                              "the calibrations in RESULTS.md Finding 9; a checkpoint "
                              "trained with --extra-bonafide commonvoice must use 'test'.")
+    parser.add_argument("--voxpopuli-split", default="calibration", choices=voxpopuli.SPLITS,
+                        help="'calibration' is the set Findings 9 and 10 used; 'heldout' "
+                             "is validation/test speakers in no train shard, for a "
+                             "checkpoint trained on VoxPopuli (--measure-only).")
+    parser.add_argument("--measure-only", action="store_true",
+                        help="Score the set at the checkpoint's existing threshold and "
+                             "report the flag rate. Writes JSON only; sets nothing.")
     parser.add_argument("--n", type=int, default=10000,
-                        help="Clips to sample; half calibrate, half check.")
+                        help="Clips to sample; half calibrate, half check. With "
+                             "--measure-only, at most this many, all scored.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int,
                         default=int(os.getenv("SLURM_CPUS_PER_TASK", "2")))
@@ -168,25 +249,46 @@ def main():
         raise SystemExit("--target-frr must be between 0 and 1")
 
     ckpt = torch.load(args.ckpt, map_location=DEVICE, weights_only=False)
-    # Before any scoring: calibrating on the clips a model was trained to call
-    # real would make the "check half" rate meaningless.
-    if (ckpt.get("extra_bonafide") == args.calibration_set == "commonvoice"
-            and args.commonvoice_split != "test"):
-        raise SystemExit(
-            "ERROR: this checkpoint trained on Common Voice's train split. "
-            "Calibrate on its held-out split: pass --commonvoice-split test.")
-    if args.calibration_set != "commonvoice" and args.commonvoice_split != "all":
-        raise SystemExit("--commonvoice-split only applies to --calibration-set commonvoice.")
+    for name, attr in SPLIT_ARG.items():
+        if args.calibration_set != name and getattr(args, attr) != parser.get_default(attr):
+            raise SystemExit(f"--{attr.replace('_', '-')} only applies to "
+                             f"--calibration-set {name}.")
+    split = getattr(args, SPLIT_ARG[args.calibration_set], None) \
+        if args.calibration_set in SPLIT_ARG else None
+    # Before any scoring: fitting a threshold to the clips a model was trained
+    # to call real makes it meaningless (Finding 10).
+    trained = trained_sources(ckpt)
+    if args.calibration_set in trained:
+        held_out = HELD_OUT_SPLIT[args.calibration_set]
+        if split != held_out:
+            raise SystemExit(
+                f"ERROR: this checkpoint trained on {NAMES[args.calibration_set]}. "
+                f"Only its held-out split may be read: pass "
+                f"--{SPLIT_ARG[args.calibration_set].replace('_', '-')} {held_out}.")
+        # Finding 10's pre-registered calibration, kept reproducible.
+        finding10 = trained == {"commonvoice"}
+        if not (args.measure_only or finding10):
+            raise SystemExit(
+                f"ERROR: this checkpoint trained on {NAMES[args.calibration_set]}, so a "
+                f"threshold fitted on it is fitted to its recording conditions "
+                f"(RESULTS.md Finding 10). Calibrate on a source held out of training, "
+                f"e.g. --calibration-set peoples_speech, or pass --measure-only for a "
+                f"diagnostic flag rate.")
 
-    clips, root = LOADERS[args.calibration_set](args.language, args.commonvoice_split)
-    calib_clips, check_clips, split_kind = split_halves(clips, args.n, args.seed)
-    calib, check = to_protocol(calib_clips), to_protocol(check_clips)
+    clips, root = LOADERS[args.calibration_set](args.language, split)
 
     arch = ckpt.get("arch") or DEFAULT_ARCH
     frontend = ckpt.get("frontend") or DEFAULT_FRONTEND
     model = build_model(arch).to(DEVICE)
     model.load_state_dict(ckpt["model"])
     dev_threshold = ckpt.get("threshold")
+
+    if args.measure_only:
+        measure(args, ckpt, model, clips, root, frontend, split)
+        return
+
+    calib_clips, check_clips, split_kind = split_halves(clips, args.n, args.seed)
+    calib, check = to_protocol(calib_clips), to_protocol(check_clips)
 
     print(f"Checkpoint   {args.ckpt} (epoch {ckpt.get('epoch')}, {arch})")
     print(f"Calibration  {args.calibration_set} ({args.language}): {len(calib)} clips to fit, "
@@ -207,10 +309,9 @@ def main():
         "checkpoint": str(args.ckpt),
         "epoch": ckpt.get("epoch"),
         "calibration_set": f"{args.calibration_set} ({args.language})",
-        "commonvoice_split": (args.commonvoice_split
-                              if args.calibration_set == "commonvoice" else None),
+        "split": split,
         "n_calibrate": len(calib), "n_check": len(check), "seed": args.seed,
-        "split": split_kind,
+        "halves": split_kind,
         "target_frr": args.target_frr,
         "threshold": thr_prob, "threshold_log_odds": thr,
         "frr_calibrate": flagged(calib_scores, thr),
@@ -234,8 +335,7 @@ def main():
     out = args.out or args.ckpt.with_name(f"{args.ckpt.stem}_calibrated_{args.calibration_set}.pth")
     ckpt["threshold_dev"] = dev_threshold
     ckpt["threshold"] = thr_prob
-    names = {"commonvoice": "Common Voice", "voxpopuli": "VoxPopuli"}
-    ckpt["threshold_source"] = (f"{args.target_frr:.0%} of genuine {names[args.calibration_set]} "
+    ckpt["threshold_source"] = (f"{args.target_frr:.0%} of genuine {NAMES[args.calibration_set]} "
                                 f"({args.language}) clips flagged")
     ckpt["calibration"] = report
     torch.save(ckpt, out)

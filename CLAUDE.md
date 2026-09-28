@@ -27,11 +27,16 @@ Read this first; `RESULTS.md` has every number and its job ID.
 - **Retraining with Common Voice as bona fide made it worse** (Finding 10):
   In-the-Wild EER held at 2.71%, but its Common Voice-test threshold flags
   **53.7%** of real In-the-Wild clips. Common Voice was in training, so its
-  scores collapsed into a narrow band and calibrating on it failed. The next
-  design, argued in Finding 10 and **not yet pre-registered or run**: train
-  on bona fide from some real-world sources, calibrate on a source held out
-  of training entirely. Checkpoint:
-  `.../plus-speechfake/plus-commonvoice-bonafide/nodp/best.pth` on scratch.
+  scores collapsed into a narrow band and calibrating on it failed.
+  Checkpoint: `.../plus-speechfake/plus-commonvoice-bonafide/nodp/best.pth`.
+- **Next: Finding 11, pre-registered 28 September, not yet run.** Train on
+  Common Voice + VoxPopuli as bona fide (`--extra-bonafide
+  commonvoice+voxpopuli`), then set the threshold on People's Speech, which is
+  held out of training (`calibrate.py --calibration-set peoples_speech`).
+  Every source is licensed for commercial use: CC0, CC0 and CC-BY
+  respectively. Only People's Speech's `clean` subset is used, never `_sa`.
+  `calibrate.py` now refuses to fit a threshold on any source the checkpoint
+  trained on, and `--measure-only` gives diagnostic flag rates instead.
 - **Then serve it:** once a threshold is chosen, copy that checkpoint to `ai_model/checkpoints/best.pth`
   (`scp m3:...`), check `app.py` loads it with the new threshold, time one CPU
   prediction (316M params), and decide whether `/result` should state the
@@ -62,6 +67,14 @@ ai_model/
   asvspoof5.py           Adapter: ASVspoof 5 train as extra training data.
   speechfake.py          Adapter: SpeechFake (bilingual) as extra training
                          data; its dev split joins LA dev for selection.
+  commonvoice.py         Adapter: Common Voice, bona fide training (train
+                         split) and diagnostics (test split).
+  voxpopuli.py           Adapter: VoxPopuli, bona fide training (train
+                         shards) and the Findings 9-10 calibration set.
+  peoples_speech.py      Adapter: People's Speech, CALIBRATION ONLY (Finding
+                         11). Drops recordings named after ITW speakers.
+  calibrate.py           Sets a checkpoint's threshold from real speech.
+                         Refuses any source the checkpoint trained on.
   rawboost.py            RawBoost waveform augmentation, TRAINING ONLY
                          (`--rawboost N`). Never imported by app.py or
                          evaluate.py. Bit-identical to upstream.

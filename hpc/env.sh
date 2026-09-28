@@ -65,9 +65,15 @@ export ASV5_ROOT="$SCRATCH_DIR/asvspoof5"
 # AUDETER (built partly FROM In-the-Wild, so it would leak the test set).
 export SPEECHFAKE_ROOT="$SCRATCH_DIR/speechfake"
 
-# VoxPopuli English (~5 GB, hpc/get_voxpopuli.slurm): European Parliament
-# speeches, CC0. CALIBRATION data for the threshold (calibrate.py), not training.
+# VoxPopuli English (~24 GB of shards, hpc/get_voxpopuli.slurm): European
+# Parliament speeches, CC0. Calibration data in Findings 9-10, bona fide
+# training data in Finding 11 (voxpopuli.py says which clips are which).
 export VOXPOPULI_ROOT="$SCRATCH_DIR/voxpopuli"
+
+# People's Speech, clean test split (~4 GB, hpc/get_peoples_speech.slurm):
+# archive.org talks and proceedings, CC-BY. CALIBRATION only, held out of all
+# training (Finding 11).
+export PEOPLES_SPEECH_ROOT="$SCRATCH_DIR/peoples_speech"
 
 # Hugging Face cache: XLS-R's 1.27 GB of pretrained weights for ssl-aasist,
 # downloaded on first use. Project storage, not the 20 GB home quota.

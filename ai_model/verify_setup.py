@@ -267,6 +267,54 @@ def main():
         check("Common Voice clip yields the sample's tensor and label 0",
               torch.equal(xcv, specs[DEFAULT_FRONTEND]) and int(ycv) == 0)
 
+    print("--- VoxPopuli adapter (--extra-bonafide commonvoice+voxpopuli) ---")
+    # Speaker 1 is in train and test, as VoxPopuli's own splits allow; speaker
+    # 2 is in test only. Train shard 00001 is outside the Finding 9 set.
+    import voxpopuli
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        rows = [("train", "train-00000-of-00030", "1"), ("train", "train-00001-of-00030", "3"),
+                ("test", "test-00000-of-00001", "1"), ("test", "test-00000-of-00001", "2")]
+        lines = []
+        for i, (split, shard, spk) in enumerate(rows):
+            rel = f"audio/{split}/clip{i}.wav"
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(SAMPLE, root / rel)
+            lines.append(f"{rel},{spk},male,{split},{shard}")
+        (root / "clips.csv").write_text("file,speaker_id,gender,split,shard\n"
+                                        + "\n".join(lines) + "\n")
+        proto, _ = voxpopuli.load_protocol("train", root=root)
+        check("training sees every train shard and nothing else, labelled bona fide",
+              list(proto["audio_file_name"]) == ["audio/train/clip0.wav", "audio/train/clip1.wav"]
+              and set(proto["label"]) == {"bonafide"}, list(proto["audio_file_name"]))
+        held, _ = voxpopuli.load_clips("heldout", root=root)
+        check("held-out split drops test speakers who are also in train",
+              list(held["speaker_id"]) == ["2"], list(held["speaker_id"]))
+        calib, _ = voxpopuli.load_clips("calibration", root=root)
+        check("the Finding 9 calibration set ignores the shards added later",
+              "audio/train/clip1.wav" not in set(calib["file"]) and len(calib) == 3)
+
+    print("--- People's Speech adapter (calibration, Finding 11) ---")
+    import peoples_speech
+    from calibrate import trained_sources
+    check("recording names matching an In-the-Wild speaker are caught",
+          peoples_speech.itw_match("BarackObama_Address_DOT_flac") == "obama"
+          and peoples_speech.itw_match("jfk_inaugural") == "jfk")
+    check("ordinary words containing a surname are not",
+          peoples_speech.itw_match("Trumpet_Lessons_Bushwick") == "")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "clips.csv").write_text(
+            "file,speaker_id,duration_ms,itw_match\n"
+            "audio/a.flac,Passive_Houses,1000,\n"
+            "audio/b.flac,Obama_Speech,1000,obama\n")
+        ps, _ = peoples_speech.load_clips(root=root)
+        check("load_clips drops the In-the-Wild matches",
+              list(ps["file"]) == ["audio/a.flac"], list(ps["file"]))
+    check("calibrate.py reads every trained source off extra_bonafide",
+          trained_sources({"extra_bonafide": "commonvoice+voxpopuli"})
+          == {"commonvoice", "voxpopuli"} and trained_sources({}) == set())
+
     spec = specs[DEFAULT_FRONTEND]
 
     print("--- Train/serve parity ---")
