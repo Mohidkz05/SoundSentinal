@@ -6,7 +6,7 @@ differential privacy (Opacus) on the ASVspoof2019 corpus.
 
 University project. Active work is on branch `ssl-aasist` — see "Branching" below.
 
-## Where things stand (updated 28 September 2026)
+## Where things stand (updated 29 September 2026)
 
 Read this first; `RESULTS.md` has every number and its job ID.
 
@@ -29,14 +29,16 @@ Read this first; `RESULTS.md` has every number and its job ID.
   **53.7%** of real In-the-Wild clips. Common Voice was in training, so its
   scores collapsed into a narrow band and calibrating on it failed.
   Checkpoint: `.../plus-speechfake/plus-commonvoice-bonafide/nodp/best.pth`.
-- **Next: Finding 11, pre-registered 28 September, not yet run.** Train on
-  Common Voice + VoxPopuli as bona fide (`--extra-bonafide
-  commonvoice+voxpopuli`), then set the threshold on People's Speech, which is
-  held out of training (`calibrate.py --calibration-set peoples_speech`).
-  Every source is licensed for commercial use: CC0, CC0 and CC-BY
-  respectively. Only People's Speech's `clean` subset is used, never `_sa`.
-  `calibrate.py` now refuses to fit a threshold on any source the checkpoint
-  trained on, and `--measure-only` gives diagnostic flag rates instead.
+- **Finding 11 ran (29 September): no effect.** Training on Common Voice +
+  VoxPopuli as bona fide, with the threshold set on held-out People's Speech,
+  flags **8.90%** of real In-the-Wild clips vs **8.21%** for the Finding 9
+  model calibrated the same way; In-the-Wild EER got worse (3.55%). The Finding
+  9 model is still best. Its People's Speech threshold (P = 0.9748,
+  `.../plus-speechfake/nodp/best_calibrated_peoples_speech.pth`) matches its
+  Common Voice-test one to 0.07 log-odds. **Next is a decision, not a run:**
+  serve that, lower the target, or show an uncertainty band. The three options
+  are argued at the end of Finding 11 in `RESULTS.md`. `calibrate.py` refuses
+  to fit a threshold on any source the checkpoint trained on.
 - **Then serve it:** once a threshold is chosen, copy that checkpoint to `ai_model/checkpoints/best.pth`
   (`scp m3:...`), check `app.py` loads it with the new threshold, time one CPU
   prediction (316M params), and decide whether `/result` should state the
