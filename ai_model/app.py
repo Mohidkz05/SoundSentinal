@@ -131,14 +131,27 @@ def load_model():
         "cnn": "2× conv, adaptive pool, 2 dense",
         "aasist": "SincConv, 6 residual blocks, spectro-temporal graph attention",
         "aasist-l": "SincConv, 6 residual blocks, spectro-temporal graph attention (light)",
+        "ssl-aasist": "XLS-R 300M (wav2vec 2.0), spectro-temporal graph attention",
     }
+
+    # SSL-AASIST reads the raw waveform too, but through XLS-R's convolutional
+    # feature encoder, not AASIST's sinc filterbank.
+    if arch == "ssl-aasist":
+        representations["raw"] = "Raw waveform, XLS-R convolutional features"
+
+    # --extra-train corpora join ASVspoof2019 in training; a card naming only
+    # LA would misstate what the model has heard.
+    extra_names = {"speechfake": "SpeechFake", "asvspoof5": "ASVspoof 5"}
+    extra = (payload.get("extra_train") if isinstance(payload, dict) else None) or ""
+    corpora = [f"ASVspoof2019 {metrics['corpus']}"] if metrics.get("corpus") else []
+    corpora += [extra_names.get(e, e) for e in extra.split("+") if e]
 
     info = {
         "input": f"Mono, {SAMPLE_RATE // 1000} kHz, {MAX_LEN // SAMPLE_RATE} s",
         "representation": representations.get(frontend, frontend),
         "network": networks.get(arch, arch),
         "parameters": sum(p.numel() for p in net.parameters()),
-        "corpus": f"ASVspoof2019 {metrics['corpus']}" if metrics.get("corpus") else None,
+        "corpus": " + ".join(corpora) or None,
         "epoch": payload.get("epoch") if isinstance(payload, dict) else None,
         "dev_eer": metrics.get("dev_eer"),
         "privacy": (
