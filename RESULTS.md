@@ -929,6 +929,49 @@ third attempt at the same idea. The options are:
 
 Nothing was trained, selected or calibrated on In-the-Wild in this finding.
 
+## Finding 12 — a stricter target for the served model (pre-registered, not yet run)
+
+Written 29 September 2026, **before** anything is submitted. Nothing below may
+be changed after In-the-Wild is scored. The result is reported whatever it is.
+
+**Question.** The served model (Finding 9, People's Speech threshold) flags
+8.21% of real In-the-Wild clips and passes 1.70% of fakes. Its ranking allows
+about 2.65% of each (the EER). If the threshold is set so that 1% of People's
+Speech is flagged instead of 5%, how much lower do real-world false flags go,
+and what does it cost in fakes passed?
+
+**What is fixed.** Everything from Finding 11's control except the target:
+the Finding 9 checkpoint, People's Speech `clean` test, n 10,000, seed 42,
+halves split by speaker, so the fit and check halves are the same clips as
+before and only the quantile changes. `--target-frr 0.01`. Output
+`best_calibrated_peoples_speech_1pct.pth` beside the 5% file, which is kept.
+
+**Why 1%, and what it is not.** The target is a product decision made by the
+project owner: fewer false accusations of real speakers, accepting more missed
+fakes. It is a round number, not the result of a search. But the *direction*
+was chosen after seeing that a 5% target became 8.21% on In-the-Wild, so this
+choice is informed by an In-the-Wild number. That is disclosed here rather
+than hidden. It is the fifth threshold for this model to be scored on
+In-the-Wild, and the **last**: no further target is tried on this model.
+
+**What is reported:**
+
+1. People's Speech real flagged, check half (the target is 1%).
+2. **In-the-Wild real flagged** at the new threshold. Primary number.
+3. **In-the-Wild fakes passed** at the new threshold.
+4. LA eval fakes passed at the new threshold, per attack, as a view of which
+   attack types slip through.
+
+The In-the-Wild EER does not change: same model, same scores.
+
+**Expected** (written down so it can be wrong): real flagged 3–4%, fakes
+passed around 3%.
+
+**Decision, fixed now.** Serve the 1% threshold unless In-the-Wild fakes
+passed exceeds **5%**, in which case keep serving the 5% threshold. Both
+outcomes and the rule are recorded before the score exists. Whichever is
+served, `/result` states its measured In-the-Wild rates.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
