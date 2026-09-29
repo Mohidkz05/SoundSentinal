@@ -35,17 +35,19 @@ Read this first; `RESULTS.md` has every number and its job ID.
   model calibrated the same way; In-the-Wild EER got worse (3.55%). The Finding
   9 model is still best. Its People's Speech threshold (P = 0.9748,
   `.../plus-speechfake/nodp/best_calibrated_peoples_speech.pth`) matches its
-  Common Voice-test one to 0.07 log-odds. **Next is a decision, not a run:**
-  serve that, lower the target, or show an uncertainty band. The three options
-  are argued at the end of Finding 11 in `RESULTS.md`. `calibrate.py` refuses
-  to fit a threshold on any source the checkpoint trained on.
+  Common Voice-test one to 0.07 log-odds. `calibrate.py` refuses to fit a
+  threshold on any source the checkpoint trained on.
+- **Threshold settled (Finding 12, 29 September).** A 1% People's Speech
+  target (P = 0.999658) flags **0.62%** of real In-the-Wild clips and passes
+  **3.61%** of fakes (98.27% accuracy). The cost: **46% of LA eval's clean
+  studio fakes pass.** That was the last threshold tried on this model — no
+  more tuning it.
 - **Served locally since 29 September:** `ai_model/checkpoints/best.pth` is
-  the Finding 9 model's `best_calibrated_peoples_speech.pth` (1.26 GB,
-  threshold P = 0.9748). `app.py` loads it and answers in ~0.5 s per clip on
-  this laptop's CPU. The old AASIST weights are beside it as `aasist_best.pth`.
-  Still to do: an "uncertain" band around the threshold, sized from People's
-  Speech scores only, and `/result` stating the measured rates (~8% of real
-  In-the-Wild clips flagged, ~2% of fakes passed).
+  the Finding 9 model's `best_calibrated_peoples_speech_1pct.pth` (1.26 GB).
+  `app.py` answers in ~0.5 s per clip on this laptop's CPU. Beside it:
+  `best_5pct.pth` (Finding 11 control) and `aasist_best.pth` (old AASIST).
+  Still to do: `/result` stating the measured rates, including the clean
+  studio-fake caveat; then the PR merging `ssl-aasist` into `main`.
 - **Runner-up:** SSL-AASIST + RawBoost on LA only, 11.21% on In-the-Wild
   (Finding 8), `$CKPT_ROOT/ssl-aasist/rawboost5/nodp/best.pth` on project storage.
 - **Storage on M3:** project quota (500 GB) is **full** of Finding 8's

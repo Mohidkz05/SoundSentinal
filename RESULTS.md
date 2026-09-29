@@ -929,7 +929,10 @@ third attempt at the same idea. The options are:
 
 Nothing was trained, selected or calibrated on In-the-Wild in this finding.
 
-## Finding 12 — a stricter target for the served model (pre-registered, not yet run)
+## Finding 12 — a stricter target: 0.62% of real clips flagged, 3.61% of fakes passed
+
+The pre-registration below is unchanged from 29 September. The result follows
+it, under "Result (29 September)".
 
 Written 29 September 2026, **before** anything is submitted. Nothing below may
 be changed after In-the-Wild is scored. The result is reported whatever it is.
@@ -971,6 +974,54 @@ passed around 3%.
 passed exceeds **5%**, in which case keep serving the 5% threshold. Both
 outcomes and the rule are recorded before the score exists. Whichever is
 served, `/result` states its measured In-the-Wild rates.
+
+### Result (29 September)
+
+Jobs 60549794 (calibration, 1m46s), 60549795 (In-the-Wild) and 60549796 (LA
+eval), all on L40S GPUs at commit `d1df9ce`. The JSON is in
+`.../plus-speechfake/nodp/` (`best_calibrated_peoples_speech_1pct.json`,
+`eval_itw_20260929-120334.json`, `eval_eval_20260929-120817.json`).
+
+| | People's Speech 5% (Finding 11 control) | **People's Speech 1%** |
+| --- | --- | --- |
+| Threshold | P = 0.9748 (log-odds +3.66) | P = 0.999658 (log-odds +7.98) |
+| 1. People's Speech real flagged, check half | 3.72% | **0.60%** |
+| 2. **In-the-Wild real flagged** | 8.21% | **0.62%** (124 of 19,963) |
+| 3. **In-the-Wild fakes passed** | 1.70% | **3.61%** (426 of 11,816) |
+| In-the-Wild accuracy | 94.21% | 98.27% |
+| 4. LA eval fakes passed | not scored | **46.25%** (29,543 of 63,882) |
+| LA eval real flagged | not scored | 0.00% |
+
+In-the-Wild EER is 2.65% and LA eval 2.12% / 0.0649, unchanged, as expected.
+
+**The prediction was wrong in the good direction.** Real clips flagged fell
+to 0.62%, not 3–4%. Fakes passed rose to 3.61%, close to the ~3% expected.
+The threshold held on its own check half (0.60% against a 1% fit) and carried
+over to In-the-Wild almost exactly, which the 5% threshold did not (3.72% on
+the check half, 8.21% on In-the-Wild). Near the top of the score range, real
+speech from both sources thins out the same way; in the middle, In-the-Wild's
+noisier recordings sit higher than People's Speech's.
+
+**Decision, by the pre-registered rule: serve the 1% threshold.** Fakes passed
+is 3.61%, under the 5% limit.
+
+**The cost: clean studio fakes.** At this threshold LA eval passes 46% of its
+fakes. This is the same trade Finding 9's follow-up found at a lower threshold
+(18% at P = 0.7457), taken further. LA's attacks are 2019-era TTS and voice
+conversion rendered as clean studio audio, and this model scores them lower
+than real-world fakes; a threshold set for noisy real speech sits above many of
+them. In-the-Wild's fakes, which are what a user of this tool is likely to
+upload, pass at 3.61%. `/result` has to say both: the rate is measured on
+real-world audio, and clean synthetic speech in the style of older systems is
+caught far less reliably.
+
+**Not reported: LA fakes passed per attack.** `evaluate.py` saves per-attack
+EERs, not per-clip scores, so the pass rate of each attack at a given
+threshold cannot be recovered from the JSON. Reporting it needs `evaluate.py`
+to write scores and one more LA run. The per-attack EERs (best A13 0.10%,
+worst A10 6.63%) are unchanged from Finding 9.
+
+This was the last threshold tried on this model.
 
 ## What has not been measured
 
