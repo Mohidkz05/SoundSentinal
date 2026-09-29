@@ -95,13 +95,13 @@ export default function DesignSystem() {
 
             <p className="mb-4 mt-10 max-w-prose text-small text-[var(--text-muted)]">
               Readings render that ramp through a graduation mask instead: fifty
-              fine ticks, one per two percentage points, with a full-height major
-              every ten. The mask changes where the colour is painted, never
+              fine ticks, one per half point of the model&apos;s score (log-odds),
+              with a full-height major every 2.5. The mask changes where the colour is painted, never
               which colour it is, so both rules survive — hue still says which
               side of the threshold, chroma still drains at the boundary — and
               the scale becomes something you read a position off.
             </p>
-            <VerdictScale threshold={0.5} probability={0.71} />
+            <VerdictScale threshold={8} bandLow={2.5} score={9.4} />
           </div>
         </Section>
 
@@ -206,7 +206,7 @@ export default function DesignSystem() {
           note="The element the product is remembered by. No competitor publishes its decision threshold; drawing it turns an unexplained verdict into a reading you can argue with. Three channels carry the result — needle position, tier name, numeric readout — so colour is never load-bearing alone."
         >
           <div className="panel-raised px-7 pt-12 pb-8">
-            <CalibrationMeter probability={0.714} threshold={0.5} />
+            <CalibrationMeter score={9.4} threshold={8} bandLow={2.5} />
           </div>
         </Section>
 
@@ -276,12 +276,12 @@ export default function DesignSystem() {
 
           <div className="mb-10 grid gap-4 sm:grid-cols-2">
             {[
-              { p: 0.03, caption: 'Decisive reading — the lattice holds' },
-              { p: 0.49, caption: 'On the threshold — order comes apart' },
+              { p: -7, caption: 'Decisive reading — the lattice holds' },
+              { p: 7.6, caption: 'On the threshold — order comes apart' },
             ].map(({ p, caption }) => (
               <div key={p} className="panel overflow-hidden">
                 <div className="h-40 bg-[var(--canvas)]">
-                  <UncertaintyField className="h-full w-full" probability={p} threshold={0.5} />
+                  <UncertaintyField className="h-full w-full" score={p} threshold={8} bandLow={2.5} />
                 </div>
                 <p className="border-t border-[var(--line)] px-5 py-3 text-small text-[var(--text-muted)]">
                   {caption}

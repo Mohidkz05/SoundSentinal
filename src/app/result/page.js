@@ -14,7 +14,13 @@ import {
   MODEL_SAMPLE_RATE,
   MODEL_WINDOW_SECONDS,
 } from '../../lib/peaks';
-import { TIERS, tierFor, formatProbability } from '../../lib/verdict';
+import {
+  formatPercent,
+  formatScore,
+  readingScale,
+  tierFor,
+  tiersFor,
+} from '../../lib/verdict';
 
 /* The model card, built from what the API reported about the checkpoint that
    produced this reading — never written down here. Every row is a fact about
@@ -31,7 +37,7 @@ function modelCard(model) {
     ['Network', model.network],
     ['Training corpus', model.corpus],
     ['Trained epochs', model.epoch != null ? String(model.epoch) : null],
-    ['Dev EER', model.dev_eer != null ? formatProbability(model.dev_eer) : null],
+    ['Dev EER', model.dev_eer != null ? formatPercent(model.dev_eer) : null],
     ['Privacy', model.privacy],
     ['Threshold from', model.threshold_source],
   ].filter(([, value]) => value);
@@ -60,12 +66,14 @@ export default function ResultPage() {
   }, []);
 
   const reading = clip?.reading ?? null;
-  const probability = reading?.spoof_probability ?? null;
-  const threshold = reading?.threshold ?? null;
-  const hasReading = probability != null;
-
-  const tier = hasReading ? tierFor(probability) : null;
-  const clears = hasReading && threshold != null && probability >= threshold;
+  /* Before a reading exists the tiers are still described, against a
+     neutral threshold; they are not a result until there is a score. */
+  const { score, threshold, bandLow, bandMeasured, bandSource } = readingScale(reading);
+  const hasReading = score != null;
+  const tiers = tiersFor(threshold, bandLow);
+  const tier = hasReading ? tierFor(score, tiers) : null;
+  const clears = hasReading && score >= threshold;
+  const measured = reading?.measured ?? [];
   const truncated =
     clip?.duration != null && clip.duration > MODEL_WINDOW_SECONDS;
   const card = modelCard(reading?.model);
@@ -79,7 +87,7 @@ export default function ResultPage() {
             The scale spans the full bleed, which is the one place on the site
             where that is a functional choice rather than a stylistic one: on a
             graduated scale, width is resolution. Across a whole screen, two
-            readings a percentage point apart are visibly different positions. */}
+            readings a tenth of a unit apart are visibly different positions. */}
         <section className="shell pb-16 pt-14">
           <div className="animate-rise flex flex-col gap-3">
             <p className="tick-label">Step 2 of 2 · Reading</p>
@@ -98,13 +106,13 @@ export default function ResultPage() {
             <>
               <div className="mt-8 flex flex-wrap items-end gap-x-12 gap-y-6">
                 <div className="flex flex-col gap-2">
-                  <p className="tick-label">Synthetic likelihood</p>
+                  <p className="tick-label">Model score</p>
                   <output
                     data-readout
                     className="block text-[clamp(4rem,11vw,9rem)] font-medium leading-[0.85] tracking-[-0.04em]"
                     style={{ color: tier.token }}
                   >
-                    {formatProbability(probability)}
+                    {formatScore(score)}
                   </output>
                 </div>
 
@@ -117,15 +125,16 @@ export default function ResultPage() {
                   </h1>
                   <p className="tick-label">
                     {clears ? 'Above' : 'Below'} the decision threshold of{' '}
-                    {formatProbability(threshold)}
+                    <span className="tabular">{formatScore(threshold)}</span>
                   </p>
                 </div>
               </div>
 
               <div className="mt-14">
                 <VerdictScale
-                  probability={probability}
+                  score={score}
                   threshold={threshold}
+                  bandLow={bandLow}
                   height="h-16"
                 />
               </div>
@@ -139,9 +148,10 @@ export default function ResultPage() {
                   difference between a threshold and a number someone typed. */}
               {reading.threshold_calibrated === false && (
                 <p className="mt-4 max-w-[68ch] text-small text-muted">
-                  This threshold is the default 0.5, not a calibrated one — the
-                  checkpoint being served carries no operating point. Treat the
-                  side of the line this reading falls on as provisional.
+                  This threshold is the default score of 0, not a calibrated
+                  one — the checkpoint being served carries no operating point.
+                  Treat the side of the line this reading falls on as
+                  provisional.
                 </p>
               )}
             </>
@@ -243,17 +253,36 @@ export default function ResultPage() {
               stretching a line of text to 200 characters. */}
           <div className="grid gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-14">
             <h2 className="text-h2 text-balance">Where this reading falls</h2>
-            <p className="max-w-[80ch] text-small text-secondary">
-              The bands are fixed quarters of the probability range and describe
-              the reading itself, so they don&apos;t move when the model is
-              retrained. The threshold does move — it is recomputed from
-              held-out data on every run — which is why it is drawn separately
-              rather than being one of these boundaries.
-            </p>
+            <div className="flex max-w-[80ch] flex-col gap-3 text-small text-secondary">
+              <p>
+                The bands are placed around the threshold, so they move with
+                it. The uncertain band starts where genuine speech stops being
+                typical
+                {bandMeasured && bandSource ? (
+                  <>
+                    {' '}
+                    —{' '}
+                    <span className="text-primary">
+                      {bandSource.charAt(0).toLowerCase() + bandSource.slice(1)}
+                    </span>
+                  </>
+                ) : null}
+                . The flagged band mirrors its width above the line: a
+                convention, because there is no held-out set of fakes to
+                measure that edge on.
+              </p>
+              {hasReading && !bandMeasured && (
+                <p className="text-muted">
+                  The checkpoint being served carries no calibration data, so
+                  this band is a fixed width around the threshold rather than a
+                  measured one.
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="mt-10 overflow-x-auto">
-            <table className="w-full min-w-[44rem] border-collapse text-left">
+            <table className="w-full border-collapse text-left sm:min-w-[44rem]">
               <thead>
                 <tr className="border-b border-line">
                   <th scope="col" className="tick-label pb-3 pr-6 font-normal">
@@ -262,16 +291,19 @@ export default function ResultPage() {
                   <th scope="col" className="tick-label pb-3 pr-6 font-normal">
                     Range
                   </th>
-                  <th scope="col" className="tick-label pb-3 font-normal">
+                  <th scope="col" className="tick-label pb-3 font-normal max-sm:hidden">
                     What it means
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {TIERS.map((band, i) => {
-                  const low = i === 0 ? 0 : TIERS[i - 1].max;
-                  const high = Math.min(band.max, 1);
+                {tiers.map((band) => {
                   const here = hasReading && band.id === tier.id;
+                  const range = !Number.isFinite(band.from)
+                    ? `below ${formatScore(band.to)}`
+                    : !Number.isFinite(band.to)
+                      ? `${formatScore(band.from)} and above`
+                      : `${formatScore(band.from)} to ${formatScore(band.to)}`;
                   return (
                     <tr
                       key={band.id}
@@ -297,11 +329,16 @@ export default function ResultPage() {
                             </span>
                           )}
                         </span>
+                        {/* At phone width the meaning moves under the name
+                            rather than into a column off the right edge. */}
+                        <span className="mt-2 block text-small font-normal text-secondary sm:hidden">
+                          {band.detail}
+                        </span>
                       </th>
-                      <td className="tabular py-4 pr-6 text-small text-secondary">
-                        {formatProbability(low)} – {formatProbability(high)}
+                      <td className="tabular whitespace-nowrap py-4 pr-6 text-small text-secondary max-sm:pr-0">
+                        {range}
                       </td>
-                      <td className="py-4 text-small text-secondary">
+                      <td className="py-4 text-small text-secondary max-sm:hidden">
                         {band.detail}
                       </td>
                     </tr>
@@ -312,31 +349,114 @@ export default function ResultPage() {
           </div>
         </section>
 
+        {/* How often it is wrong ------------------------------------------
+            Measured for this checkpoint at this threshold, and delivered by
+            the API from evaluate.py's own reports — the server drops any
+            report measured at a different threshold, so these numbers cannot
+            describe a model other than the one that produced the reading. */}
+        <section className="rule-full shell py-12">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-14">
+            <h2 className="text-h2 text-balance">How often it is wrong</h2>
+            <p className="max-w-[80ch] text-small text-secondary">
+              Two mistakes, measured separately, because they cost different
+              things: a genuine recording wrongly flagged is an accusation, a
+              fake let through is a miss. Both were measured at the threshold
+              this reading was compared against, on recordings the model never
+              trained on and that played no part in choosing the threshold.
+            </p>
+          </div>
+
+          {measured.length > 0 ? (
+            <div className="mt-10 overflow-x-auto">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th scope="col" className="tick-label pb-3 pr-6 font-normal">
+                      Tested on
+                    </th>
+                    <th scope="col" className="tick-label pb-3 pr-6 font-normal">
+                      Real recordings flagged
+                    </th>
+                    <th scope="col" className="tick-label pb-3 font-normal">
+                      Fakes missed
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {measured.map((m) => (
+                    <tr key={m.set} className="border-b border-line align-top last:border-0">
+                      <th scope="row" className="max-w-[34ch] py-5 pr-6 font-normal">
+                        <span className="block font-semibold text-primary">{m.set}</span>
+                        {m.about && (
+                          <span className="mt-1 block text-small text-muted">{m.about}</span>
+                        )}
+                      </th>
+                      <td className="py-5 pr-6">
+                        <span className="tabular block text-h3 leading-none text-primary">
+                          {formatPercent(m.real_flagged)}
+                        </span>
+                        <span className="tabular mt-2 block text-small text-muted">
+                          of {m.n_real.toLocaleString('en-GB')}
+                        </span>
+                      </td>
+                      <td className="py-5">
+                        <span className="tabular block text-h3 leading-none text-primary">
+                          {formatPercent(m.fakes_passed)}
+                        </span>
+                        <span className="tabular mt-2 block text-small text-muted">
+                          of {m.n_fake.toLocaleString('en-GB')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-10 max-w-[68ch] text-small text-muted">
+              {hasReading
+                ? 'No error rates have been measured for this model at this threshold, so none are shown. A rate measured at another threshold would describe a different operating point.'
+                : 'The error rates are measured for the model and threshold that produced a reading, so they appear once a clip has been analysed.'}
+            </p>
+          )}
+
+          {measured.length > 1 && (
+            <p className="mt-8 max-w-[68ch] text-small text-secondary">
+              The rows disagree, and that is the finding. The threshold is set
+              for real-world audio, which is what people upload. Clean,
+              studio-quality synthetic speech in the style of older systems
+              scores lower on this model than real-world fakes do, and much of
+              it falls below the line. A low reading on a very clean recording
+              is weak evidence that it is real.
+            </p>
+          )}
+        </section>
+
         {/* How to read it, and the model card ----------------------------- */}
         <section className="rule-full shell grid gap-10 py-12 lg:grid-cols-3 lg:gap-14">
           <div className="flex flex-col gap-3">
             <h2 className="text-h3">What this number is</h2>
             <p className="text-small text-secondary">
-              A likelihood, not a fact.{' '}
+              A score, not a fact.{' '}
               {hasReading ? (
                 <>
-                  The model scored this clip at{' '}
+                  The model scored this clip{' '}
+                  <span className="tabular text-primary">{formatScore(score)}</span>,
+                  against a decision threshold of{' '}
                   <span className="tabular text-primary">
-                    {formatProbability(probability)}
-                  </span>{' '}
-                  on its synthetic-speech scale, against a decision threshold of{' '}
-                  <span className="tabular text-primary">
-                    {formatProbability(threshold)}
+                    {formatScore(threshold)}
                   </span>
                   .
                 </>
               ) : (
                 <>
-                  The model scores a clip from 0 to 1 on its synthetic-speech
-                  scale, and that score is compared against a decision
-                  threshold to produce a label.
+                  The model gives every clip a score, and that score is
+                  compared against a decision threshold to produce a label.
                 </>
-              )}
+              )}{' '}
+              Positive scores lean synthetic, negative lean real, and 0 means
+              the model found both equally likely. The scale is logarithmic:
+              every 2.3 points is ten times the odds.
             </p>
             <p className="text-small text-secondary">
               A reading near the threshold means the model was close to its own
@@ -347,16 +467,18 @@ export default function ResultPage() {
 
           <div className="flex flex-col gap-3">
             <h2 className="text-h3">Where the threshold comes from</h2>
+            {/* Two kinds of checkpoint exist: recalibrated by calibrate.py on
+                held-out real speech (they carry the band's data), and the
+                trainer's own dev-EER threshold. Describe the one being served. */}
             <p className="text-small text-secondary">
-              It is the equal error rate point: the score at which the model
-              wrongly flags a real clip exactly as often as it misses a fake
-              one. It is computed on a held-out partition after training, not
-              chosen by hand, and it is rarely 0.5 on imbalanced data.
+              {!hasReading || bandMeasured
+                ? 'It is set on genuine speech the model never trained on: the score that only a small, fixed share of those real recordings reach. The model card names the recordings and the share. It is chosen before the model is tested on real-world audio, never adjusted to fit that test.'
+                : 'It is the equal error rate point on a held-out partition: the score at which the model wrongly flags a real clip exactly as often as it misses a fake one. It is computed after training, not chosen by hand.'}
             </p>
             <p className="text-small text-muted">
               It is stored with the weights it was computed for, so retraining
               moves the threshold and the reading together. A checkpoint that
-              carries none is served at 0.5 and says so above.
+              carries none is served at 0 and says so above.
             </p>
           </div>
 

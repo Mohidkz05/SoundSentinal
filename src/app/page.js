@@ -13,8 +13,8 @@ import { VerdictScale } from '../../components/ui/verdict-scale';
 const PRINCIPLES = [
   {
     label: 'Reading',
-    title: 'A probability, not a verdict',
-    body: 'The model returns a likelihood. We show you that number instead of stamping REAL or FAKE over a clip it was only ever 71% sure about.',
+    title: 'A score, not a verdict',
+    body: 'The model returns a score. We show you that number, and the band where it is unsure, instead of stamping REAL or FAKE over a clip.',
   },
   {
     label: 'Threshold',
@@ -115,15 +115,15 @@ export default function Home() {
           </div>
 
           <div className="mt-10">
-            <VerdictScale threshold={0.5} height="h-16" />
+            <VerdictScale threshold={8} bandLow={2.5} height="h-16" />
           </div>
 
           <div className="mt-10 grid gap-8 lg:grid-cols-3 lg:gap-14">
             <p className="text-small text-secondary">
               A neutral face and a coloured pointer, the way an instrument is
               built. The graduations say nothing on their own — fifty of them,
-              one per two percentage points — because the scale is an axis, not
-              a verdict at every point along it.
+              one per half point of the model&apos;s score — because the scale
+              is an axis, not a verdict at every point along it.
             </p>
             <p className="text-small text-secondary">
               Colour belongs to the reading alone. The needle takes a diverging

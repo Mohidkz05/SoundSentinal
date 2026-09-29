@@ -351,8 +351,9 @@
    one point on it that is the measurement.
 
    Readings render the ramp through a graduation mask instead, which turns it
-   into an engraved centesimal scale: 50 fine graduations, one per two
-   percentage points, with a full-height major every ten. The engraving is what
+   into an engraved scale: 50 fine graduations and a full-height major every
+   five. On /result the axis is the model's score, −11.25 to +13.75, so a fine
+   tick is half a point and a major 2.5 (see src/lib/verdict.js). The engraving is what
    makes the scale a ruler you read a position off, and it carries both colour
    rules intact — hue still says which side of the threshold, chroma still
    drains to grey at the boundary, because the mask changes where the colour

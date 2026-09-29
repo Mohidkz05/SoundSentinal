@@ -46,8 +46,10 @@ Read this first; `RESULTS.md` has every number and its job ID.
   the Finding 9 model's `best_calibrated_peoples_speech_1pct.pth` (1.26 GB).
   `app.py` answers in ~0.5 s per clip on this laptop's CPU. Beside it:
   `best_5pct.pth` (Finding 11 control) and `aasist_best.pth` (old AASIST).
-  Still to do: `/result` stating the measured rates, including the clean
-  studio-fake caveat; then the PR merging `ssl-aasist` into `main`.
+  Beside it too: `best.measured-itw.json` and `best.measured-la.json`
+  (evaluate.py's reports, scp'd from M3), which `/result` shows as "How often
+  it is wrong". `/result` now draws the score in log-odds with an uncertain
+  band. Still to do: the PR merging `ssl-aasist` into `main`.
 - **Runner-up:** SSL-AASIST + RawBoost on LA only, 11.21% on In-the-Wild
   (Finding 8), `$CKPT_ROOT/ssl-aasist/rawboost5/nodp/best.pth` on project storage.
 - **Storage on M3:** project quota (500 GB) is **full** of Finding 8's
@@ -496,13 +498,15 @@ type in, which looks like provenance while being fiction.
 
 **Two rules that are easy to break by accident:**
 
-- **No tier description may mention which side of the threshold it falls on.**
-  The tiers are fixed quarters of the range; the threshold moves with every
-  training run. Two tier strings used to say "sits below the decision
-  threshold" / "clears the threshold", which was true only while the threshold
-  was pinned at 0.5. The first calibrated checkpoint served 0.413 and the page
-  contradicted itself on screen. The threshold relation is stated once, by the
-  page, from the value the API returned.
+- **The scale is the model's score (log-odds), and the tiers are placed
+  around the threshold** (29 September 2026). They used to be fixed quarters of
+  P(spoof), so no tier text could mention the threshold. That broke when the
+  SSL model was served at P = 0.99966: real clips just under the line were
+  headlined "Very likely AI generated". Now `app.py` returns `spoof_score`,
+  `threshold_score`, `uncertain_band` (95th percentile of held-out real speech,
+  from the checkpoint) and `measured` (error rates from
+  `checkpoints/best.measured-*.json`, dropped if measured at another
+  threshold). Don't draw readings in probability again.
 - **The 5 MB limit lives in three places** — `MAX_BYTES` in `upload/page.js`,
   `MAX_BYTES` in the proxy route, `MAX_UPLOAD_BYTES` in `app.py`. The client
   check is a courtesy; the route is reachable directly and Flask has no default

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { Stage, advance } from './stage';
 import { usePalette, tierColor } from './use-palette';
 import { usePrefersReducedMotion } from './use-stage';
-import { tierFor } from '../../src/lib/verdict';
+import { SCALE, tierFor, tiersFor } from '../../src/lib/verdict';
 
 /**
  * The result screen's field: order as certainty.
@@ -88,18 +88,19 @@ const fragmentShader = /* glsl */ `
 /**
  * How unsettled the field should be: 1 when the reading sits on the threshold,
  * falling to 0 as it moves half the scale away. This is the same quantity the
- * verdict scale expresses as loss of chroma.
+ * verdict scale expresses as loss of chroma. Scores are log-odds, as on the
+ * scale (src/lib/verdict.js).
  */
-function scatterFor(probability, threshold) {
-  const distance = Math.abs(probability - threshold);
-  return 1 - Math.min(1, distance / 0.5);
+function scatterFor(score, threshold) {
+  const distance = Math.abs(score - threshold);
+  return 1 - Math.min(1, distance / ((SCALE.max - SCALE.min) / 2));
 }
 
-function Field({ probability, threshold }) {
+function Field({ score, threshold, bandLow }) {
   const palette = usePalette();
   const reduced = usePrefersReducedMotion();
   const invalidate = useThree((state) => state.invalidate);
-  const target = scatterFor(probability, threshold);
+  const target = scatterFor(score, threshold);
 
   const geometry = useMemo(() => {
     const count = COLUMNS * ROWS;
@@ -155,9 +156,10 @@ function Field({ probability, threshold }) {
   useEffect(() => {
     const u = materialRef.current?.uniforms;
     if (!u) return;
-    u.uColour.value.copy(tierColor(palette, tierFor(probability).id));
+    const tier = tierFor(score, tiersFor(threshold, bandLow));
+    u.uColour.value.copy(tierColor(palette, tier.id));
     invalidate();
-  }, [palette, probability, invalidate]);
+  }, [palette, score, threshold, bandLow, invalidate]);
 
   /* Under reduced motion the loop only runs on demand, so the eased approach
      below never converges. Snap instead, and ask for the one frame. */
@@ -191,10 +193,10 @@ function Field({ probability, threshold }) {
   );
 }
 
-export function UncertaintyField({ probability = 0, threshold = 0.5, className = '' }) {
+export function UncertaintyField({ score = 0, threshold = 0, bandLow = -4, className = '' }) {
   return (
     <Stage className={className} camera={{ position: [0, 0, 4.4], fov: 46 }}>
-      <Field probability={probability} threshold={threshold} />
+      <Field score={score} threshold={threshold} bandLow={bandLow} />
     </Stage>
   );
 }

@@ -1,6 +1,8 @@
 # app.py
 
 import io
+import json
+import math
 import os
 
 import soundfile as sf
@@ -171,10 +173,104 @@ def load_model():
     print(f"Loaded model weights from {path}")
     print(f"Decision threshold: {threshold:.4g} ({info['threshold_source']})")
     print(f"Architecture: {arch}, front-end: {frontend}")
-    return net, float(threshold), calibrated, info, frontend
+    calibration = (payload.get("calibration") or {}) if isinstance(payload, dict) else {}
+    return net, float(threshold), calibrated, info, frontend, calibration
 
 
-model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO, FRONTEND = load_model()
+def logit(p):
+    """P(spoof) -> log-odds, the scale evaluate.py scores and calibrates on."""
+    p = min(max(float(p), 1e-12), 1 - 1e-12)
+    return math.log(p) - math.log1p(-p)
+
+
+model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO, FRONTEND, CALIBRATION = load_model()
+
+# ---------------------------------------------------------------------------
+# The reading's scale. SSL-AASIST pushes P(spoof) to within a hair of 0 or 1
+# (RESULTS.md Finding 8), and the served threshold is P = 0.99966 (Finding 12).
+# On a 0-1 scale nearly every reading and the threshold share the last pixel,
+# so the page draws the model's own score instead: the log-odds, i.e. the
+# difference of the two logits, which is what every threshold here was fitted
+# on. P(spoof) is still returned; it is the sigmoid of the score.
+# ---------------------------------------------------------------------------
+THRESHOLD_SCORE = CALIBRATION.get("threshold_log_odds")
+if THRESHOLD_SCORE is None:
+    THRESHOLD_SCORE = logit(THRESHOLD)
+
+# The uncertain band's lower edge: the 95th percentile of the calibration
+# set's CHECK half, which calibrate.py stores in the checkpoint. Genuine speech
+# the threshold was not fitted to scores above it one time in twenty, so a
+# reading between it and the threshold is not flagged but is not clear either.
+# Read from held-out real speech only — never from In-the-Wild.
+CALIBRATION_NAMES = {"peoples_speech": "People's Speech", "commonvoice": "Common Voice",
+                     "voxpopuli": "VoxPopuli"}
+UNCERTAIN_BAND = None
+_p95 = (CALIBRATION.get("check_score_percentiles_log_odds") or {}).get("95")
+if _p95 is not None and _p95 < THRESHOLD_SCORE:
+    # calibrate.py records the set as e.g. "peoples_speech (en)".
+    _set = (CALIBRATION.get("calibration_set") or "").split(" ")[0]
+    UNCERTAIN_BAND = {
+        "low": float(_p95),
+        "source": f"95% of held-out {CALIBRATION_NAMES.get(_set, _set or 'calibration')} "
+                  f"real clips score below this",
+    }
+
+# Error rates measured for exactly this checkpoint at exactly this threshold,
+# from evaluate.py's JSON copied beside it as best.measured-<name>.json. A file
+# measured at any other threshold describes a different operating point, so it
+# is skipped rather than shown — the same reason the model card is read off the
+# checkpoint rather than typed into the page.
+MEASURED_SETS = {
+    "itw": ("In-the-Wild", "Real-world recordings of public figures: interviews, "
+                           "speeches, broadcasts, and deepfakes of the same people"),
+    "asvspoof": ("ASVspoof2019 LA eval", "Clean studio speech; the fakes are 2019-era "
+                                         "text-to-speech and voice conversion"),
+}
+
+
+def load_measured():
+    measured = []
+    for f in sorted(CKPT_DIR.glob(f"{BEST_CKPT.stem}.measured-*.json")):
+        try:
+            report = json.loads(f.read_text())
+            served = report["pooled"]["at_served_threshold"]
+            c = served["confusion"]
+        except (OSError, ValueError, KeyError, TypeError):
+            print(f"Skipping {f.name}: not an evaluate.py report")
+            continue
+        if not math.isclose(served["threshold"], THRESHOLD, rel_tol=0, abs_tol=1e-9):
+            print(f"Skipping {f.name}: measured at threshold {served['threshold']:.6g}, "
+                  f"serving {THRESHOLD:.6g}")
+            continue
+        name, about = MEASURED_SETS.get(report.get("dataset"), (report.get("corpus"), None))
+        measured.append({
+            "set": name,
+            "about": about,
+            "real_flagged": c["fp"] / (c["tn"] + c["fp"]),
+            "fakes_passed": c["fn"] / (c["fn"] + c["tp"]),
+            "n_real": c["tn"] + c["fp"],
+            "n_fake": c["fn"] + c["tp"],
+        })
+    return measured
+
+
+MEASURED = load_measured()
+print(f"Threshold score: {THRESHOLD_SCORE:+.2f}; uncertain band from "
+      f"{UNCERTAIN_BAND['low']:+.2f}" if UNCERTAIN_BAND else
+      f"Threshold score: {THRESHOLD_SCORE:+.2f}; no uncertain band in this checkpoint")
+print(f"Measured error rates: {', '.join(m['set'] for m in MEASURED) or 'none'}")
+
+
+def reading_context():
+    """Everything a reading is interpreted against, shared by /health and /predict."""
+    return {
+        "threshold": THRESHOLD,
+        "threshold_score": THRESHOLD_SCORE,
+        "threshold_calibrated": THRESHOLD_CALIBRATED,
+        "uncertain_band": UNCERTAIN_BAND,
+        "measured": MEASURED,
+        "model": MODEL_INFO,
+    }
 transform_pipeline = build_transform(FRONTEND)
 
 # ===================================================================
@@ -249,12 +345,7 @@ def too_large(_):
 def health():
     """Enough for the proxy route to report the model server being down as a
     connection problem rather than a failed analysis."""
-    return jsonify({
-        "status": "ok",
-        "threshold": THRESHOLD,
-        "threshold_calibrated": THRESHOLD_CALIBRATED,
-        "model": MODEL_INFO,
-    })
+    return jsonify({"status": "ok", **reading_context()})
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -276,6 +367,9 @@ def predict():
             outputs = model(tensor)
             probabilities = F.softmax(outputs, dim=1)
             spoof_probability = probabilities[0][1].item()   # class 1 = spoof
+            # The logit difference: log-odds of spoof, unsaturated. The label
+            # is decided on it too, so it agrees with evaluate.py to the bit.
+            spoof_score = (outputs[0][1] - outputs[0][0]).item()
 
         # 3. Send the result back as JSON.
         #
@@ -287,10 +381,9 @@ def predict():
         #    label is meaningless without the line it was compared against.
         return jsonify({
             "spoof_probability": spoof_probability,
-            "prediction": CLASS_NAMES[1 if spoof_probability >= THRESHOLD else 0],
-            "threshold": THRESHOLD,
-            "threshold_calibrated": THRESHOLD_CALIBRATED,
-            "model": MODEL_INFO,
+            "spoof_score": spoof_score,
+            "prediction": CLASS_NAMES[1 if spoof_score >= THRESHOLD_SCORE else 0],
+            **reading_context(),
         })
     except sf.LibsndfileError as e:
         # A file libsndfile cannot open. That is the client's problem, not a

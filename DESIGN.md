@@ -13,10 +13,11 @@ a one-off value in a component.
 
 **An instrument, not a verdict machine.**
 
-The detector returns a probability, not a fact — and right now it's a two-layer
-CNN with no trained weights against the current architecture, so its real error
-rate is unknown and likely 10–20% EER when measured. A UI that stamps a red
-**FAKE** on a clip would be claiming a confidence the model does not have.
+The detector returns a score, not a fact. The served model is good — 2.65% EER
+on real-world audio — but at its threshold it still flags 0.6% of genuine
+recordings, misses 3.6% of real-world fakes and nearly half of clean studio
+fakes (RESULTS.md Finding 12). A UI that stamps a red **FAKE** on a clip would
+be claiming a confidence the model does not have.
 
 Three consequences run through every decision below:
 
@@ -111,8 +112,15 @@ Two separate decisions, both arrived at by removing something.
 accumulating towards completion, and a probability is not that. It also drags the
 eye along its whole length when the only thing carrying the result is one point
 on it. The graduated form says "read a position off me", which is what the number
-actually is: fifty fine ticks, one per two percentage points, with a full-height
-major every ten.
+actually is: fifty fine ticks, one per half point of the model's score, with a
+full-height major every 2.5.
+
+**The axis is the model's score (log-odds), not a percentage.** The SSL model
+pushes P(spoof) to within a hair of 0 or 1 and its threshold is P = 0.99966, so
+on a 0–100% axis the threshold and every high reading shared the last pixel, and
+fixed probability tiers headlined real clips "Very likely AI generated". The
+scale runs from −11.25 to +13.75, chosen so the existing masks put majors on
+multiples of 2.5 and numerals can sit on −10, −5, 0, +5, +10.
 
 **Not a coloured track.** A coloured track states a verdict at every point on the
 axis, including all the points the model said nothing about. On a real instrument
@@ -189,7 +197,7 @@ width by default: prose keeps its own `ch`-based measure. What earns the width i
 content where width does real work:
 
 - The **verdict scale**, because on a graduated scale width *is* resolution:
-  a longer scale puts more distance between two readings a percentage point
+  a longer scale puts more distance between two readings a tenth of a point
   apart.
 - The **waveform**, because it is a signal on a time axis and width buys
   visible detail.
@@ -266,11 +274,20 @@ currently throws away.
 Three channels carry the result — needle position, tier name, numeric readout —
 so colour is never load-bearing on its own (WCAG 1.4.1).
 
-**Tiers and threshold are different things and must not be conflated.** The four
-tiers are fixed quarters of the probability range describing the reading itself,
-so they don't move when the model is retrained. The threshold is the model's
-calibrated operating point and moves between training runs. See
+**The tiers are placed around the threshold.** Clear, below the uncertain band;
+Uncertain, from the band's lower edge to the threshold (not flagged, but where
+genuine speech sometimes scores); Flagged, from the threshold up by the band's
+width; Strong, beyond. The band's lower edge is the 95th percentile of held-out
+real speech, read from the checkpoint by `app.py`; the upper edge mirrors it and
+is a convention, which `/result` states. The uncertain band is drawn as a
+neutral bracket under the engraving — a region of the axis, not a reading. See
 `src/lib/verdict.js`.
+
+**The measured error rates are shown on `/result`** ("How often it is wrong"),
+from `evaluate.py` reports placed beside the checkpoint as
+`best.measured-<name>.json`. `app.py` drops any report measured at a different
+threshold, so the page cannot show rates for an operating point it is not
+using.
 
 ---
 
