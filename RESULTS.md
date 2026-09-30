@@ -68,6 +68,32 @@ Our AASIST's best single epoch on eval reaches 2.98% EER (epochs 59, 64) and
 0.0807 min t-DCF (epochs 85, 95), but those are picked by looking at eval, so
 the `best.pth` row is the one to quote. See Finding 5.
 
+### The served system, and where it stands (30 September 2026)
+
+SSL-AASIST + RawBoost trained on LA + SpeechFake (Finding 9), threshold set so
+1% of held-out People's Speech is flagged (Finding 12). The model was never
+trained, selected or calibrated on any test set below.
+
+| Test set | What it is | EER | Real flagged | Fakes missed |
+| --- | --- | --- | --- | --- |
+| In-the-Wild | real-world recordings and deepfakes of public figures | 2.65% | **0.62%** | **3.61%** |
+| SpeechFake test (English) | clean modern TTS/VC, 26 systems seen in training | 6.26% | 0.01% | **32.72%** |
+| ASVspoof2019 LA eval | clean studio speech, 2019-era fakes | 2.12% | 0.00% | **46.25%** |
+
+**On real-world audio the detector is strong; on clean synthetic speech it
+misses a third to a half of fakes.** The EER column shows it can still rank
+clean fakes well; the misses come from one threshold having to serve two kinds
+of audio. Clean audio, real and fake, sits about 14 log-odds lower on its
+scale than noisy real-world speech (Finding 13), and the threshold is set for
+the latter.
+
+What was tried and did not close that gap: adding real-world speech to
+training (Findings 10, 11: the model learned each source's recording
+conditions), and degrading every input through a codec, phone band or noise
+(Finding 14: it blurred the fakes' artefacts instead of lifting clean audio).
+What has not been tried: a separate threshold for clean audio, and scoring
+the whole clip rather than its first 4 seconds.
+
 ## Finding 1 — dev EER does not select the best model
 
 Job 60256177 trained; job 60261175 scored every epoch it saved.
