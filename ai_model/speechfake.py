@@ -62,20 +62,16 @@ def get_speechfake_root():
     return root
 
 
-def load_protocol(partition="train", root=None):
-    """Returns (protocol frame, audio root) for AVSpoofDataset, with suffix="".
+def read_metadata(partition, root):
+    """The baseline protocol CSV as released, validated, all six columns.
 
-    The frame has the same five columns an ASVspoof2019 protocol does, so the
-    dataset class, the preprocessing and the class weighting are shared rather
-    than redefined — see "The one rule" in CLAUDE.md. `file` is a path relative
-    to the corpus root and already carries .wav, so the caller passes suffix="",
-    as in_the_wild.py does. Sample rates are mixed (16, 24 and 48 kHz);
-    preprocess_waveform resamples every clip to 16 kHz.
+    load_protocol() reduces it to the five ASVspoof columns; evaluate.py reads
+    this too, for the language column, and relies on the rows being in the
+    same order as load_protocol's.
     """
     if partition not in PARTITIONS:
         raise ValueError(f"partition must be one of {PARTITIONS}, got {partition!r}")
-    root = Path(root) if root is not None else get_speechfake_root()
-    proto = root / "metadata" / "experiments" / "baseline" / f"{partition}_all.csv"
+    proto = Path(root) / "metadata" / "experiments" / "baseline" / f"{partition}_all.csv"
     if not proto.is_file():
         raise FileNotFoundError(f"No {proto}. Was metadata.zip extracted?")
 
@@ -88,6 +84,21 @@ def load_protocol(partition="train", root=None):
     unknown = set(meta["label"]) - {"bonafide", "spoof"}
     if unknown:
         raise ValueError(f"Unrecognised label(s) {sorted(unknown)} in {proto}.")
+    return meta
+
+
+def load_protocol(partition="train", root=None):
+    """Returns (protocol frame, audio root) for AVSpoofDataset, with suffix="".
+
+    The frame has the same five columns an ASVspoof2019 protocol does, so the
+    dataset class, the preprocessing and the class weighting are shared rather
+    than redefined — see "The one rule" in CLAUDE.md. `file` is a path relative
+    to the corpus root and already carries .wav, so the caller passes suffix="",
+    as in_the_wild.py does. Sample rates are mixed (16, 24 and 48 kHz);
+    preprocess_waveform resamples every clip to 16 kHz.
+    """
+    root = Path(root) if root is not None else get_speechfake_root()
+    meta = read_metadata(partition, root)
 
     frame = pd.DataFrame({
         "speaker_id": meta["speaker"],

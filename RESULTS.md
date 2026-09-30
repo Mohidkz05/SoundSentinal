@@ -1023,6 +1023,44 @@ worst A10 6.63%) are unchanged from Finding 9.
 
 This was the last threshold tried on this model.
 
+## Finding 13 — do clean *modern* fakes slip through too? (pre-registered, not yet run)
+
+Written 30 September 2026, before the job is submitted. A diagnostic: it
+chooses no threshold and trains nothing.
+
+**Question.** Finding 12's served threshold passes 46% of LA eval's fakes,
+which are clean studio audio from 2019-era systems. Is that about 2019-era
+synthesis, or about clean audio? Modern commercial cloning also produces clean
+audio, and if it behaves like LA the served model misses the fakes users worry
+about most.
+
+**What is scored.** The served checkpoint (`best_calibrated_peoples_speech_1pct.pth`)
+on SpeechFake-BD's baseline **test** split, English rows only: 208,655 clips,
+189,455 fakes from 26 TTS, voice-conversion and vocoder systems, 19,200 real
+(LibriTTS and VCTK). `evaluate.py --dataset speechfake`, which now also reports,
+for every attack, the share of its fakes that pass at the served threshold.
+
+**Two limits, stated before the number exists.**
+
+- **Seen generators.** The model trained on SpeechFake's train split, which
+  holds the same 26 systems. So this is an optimistic test: a high pass rate is
+  damning, a low one is an upper bound on how well it catches clean modern
+  fakes, not evidence it catches unseen ones.
+- **The real rows are not held out in kind.** LibriTTS and VCTK are in
+  training, so the real-flagged rate here says little about users' recordings.
+
+**Reading it, decided now** (pooled English fakes passed at the served
+threshold):
+
+- **≤ 10%:** the 46% is about 2019-era synthesis. Keep the threshold and the
+  existing caveat on `/result`.
+- **10–25%:** mixed. Report the per-system table and name the systems that
+  pass most on `/result`.
+- **> 25%:** clean modern synthesis slips through as well. The `/result`
+  caveat is rewritten to say so plainly, and the next step is a model change
+  (clean modern fakes in training), not another threshold: Finding 12 was the
+  last threshold for this model.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

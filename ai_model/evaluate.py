@@ -118,7 +118,7 @@ def score_dataset(model, loader):
     return torch.cat(all_scores).numpy(), torch.cat(all_labels).numpy()
 
 
-def per_attack_eer(labels, scores, system_ids):
+def per_attack_eer(labels, scores, system_ids, served_threshold=None):
     """EER for each attack on its own, each against the full bonafide set.
 
     This is how ASVspoof papers break results down, and it is the part worth
@@ -126,17 +126,26 @@ def per_attack_eer(labels, scores, system_ids):
     most attacks and blind to one. A03 at 40% and everything else at 2% is a
     completely different finding from a uniform 5%, and only this table
     distinguishes them.
+
+    With `served_threshold` (log-odds), each attack also gets the share of its
+    fakes that score below it, i.e. pass at the threshold the server applies.
+    EER says whether the model can separate an attack; this says whether the
+    line it is actually served at does (RESULTS.md Finding 12).
     """
     bonafide = labels == 0
     out = OrderedDict()
     for attack in sorted(set(system_ids[labels == 1])):
-        mask = bonafide | ((labels == 1) & (system_ids == attack))
+        is_attack = (labels == 1) & (system_ids == attack)
+        mask = bonafide | is_attack
         eer, thr = compute_eer_np(labels[mask], scores[mask])
         out[str(attack)] = {
             "eer": eer,
             "threshold": thr,
-            "n_spoof": int(((labels == 1) & (system_ids == attack)).sum()),
+            "n_spoof": int(is_attack.sum()),
         }
+        if served_threshold is not None:
+            out[str(attack)]["passed_at_served"] = float(
+                (scores[is_attack] < served_threshold).mean())
     return out
 
 
@@ -168,13 +177,22 @@ def main():
     parser.add_argument("--ckpt", type=Path, default=None,
                         help="An explicit checkpoint path, overriding --arch, "
                              "--frontend and --dp.")
-    parser.add_argument("--dataset", default="asvspoof", choices=["asvspoof", "itw"],
+    parser.add_argument("--dataset", default="asvspoof",
+                        choices=["asvspoof", "itw", "speechfake"],
                         help="'itw' scores In-the-Wild instead: 31,779 real-world "
                              "clips from 58 public figures. ASVspoof2019's attacks "
                              "are from 2019 and predate current voice cloning, so "
                              "the gap between the two is the generalisation result. "
                              "EER only — see in_the_wild.py for what it cannot "
-                             "measure. --corpus and --partition are ignored.")
+                             "measure. --corpus and --partition are ignored. "
+                             "'speechfake' scores SpeechFake-BD's baseline test "
+                             "split: clean, modern TTS/VC/vocoder output, from the "
+                             "SAME 30 generators its train split holds, so for a "
+                             "model trained with --extra-train speechfake it is a "
+                             "seen-generator test and an optimistic one.")
+    parser.add_argument("--language", default="en", choices=["en", "zh", "all"],
+                        help="--dataset speechfake only: which language's rows to "
+                             "score. English matches In-the-Wild and the app.")
     parser.add_argument("--partition", default="eval", choices=["eval", "dev"],
                         help="Which partition to score. Defaults to eval, which "
                              "is the only one worth quoting; dev is offered to "
@@ -256,6 +274,18 @@ def main():
                                  protocol=load_itw_protocol(itw_root), suffix="")
         paths, key = {}, None
         corpus_label, partition_label = "In-the-Wild", "all"
+    elif args.dataset == "speechfake":
+        import speechfake
+        frame, sf_root = speechfake.load_protocol("test")
+        if args.language != "all":
+            # load_protocol drops the language column; read it back from the
+            # same CSV, row for row.
+            meta = speechfake.read_metadata("test", sf_root)
+            frame = frame[(meta["language"] == args.language).to_numpy()].reset_index(drop=True)
+        dataset = AVSpoofDataset(None, sf_root, build_transform(frontend),
+                                 protocol=frame, suffix="")
+        paths, key = {}, None
+        corpus_label, partition_label = "SpeechFake-BD", f"test ({args.language})"
     else:
         paths = get_corpus_paths(args.corpus)
         key = args.partition.upper()
@@ -294,7 +324,7 @@ def main():
     # a different ASV is not the same quantity.
     min_tdcf, tdcf_detail = None, None
     asv_key = f"{key}_ASV_SCORES" if key else None
-    if args.dataset == "itw":
+    if args.dataset in ("itw", "speechfake"):
         print("  (min t-DCF not defined here: it needs the organisers' ASV scores,")
         print("   which ship only with ASVspoof. A t-DCF against a different ASV is")
         print("   not the same quantity, so EER is the whole result.)")
@@ -336,16 +366,18 @@ def main():
     # In-the-Wild carries no attack taxonomy, so every spoof row is "-" and the
     # per-attack table would just restate the pooled EER under a heading that
     # implies a breakdown exists. Suppress it rather than print a fake one.
-    by_attack = per_attack_eer(labels, scores, system_ids)
+    by_attack = per_attack_eer(labels, scores, system_ids, prob_to_log_odds(dev_threshold))
     if set(by_attack) == {"-"}:
         by_attack = {}
     if by_attack:
-        print(f"\n=== EER by attack (each against all bonafide) ===")
+        print(f"\n=== By attack (EER against all bonafide; share passed at the served threshold) ===")
         worst = max(by_attack.items(), key=lambda kv: kv[1]["eer"])
         best = min(by_attack.items(), key=lambda kv: kv[1]["eer"])
+        width = max(6, *(len(a) for a in by_attack))
         for attack, r in by_attack.items():
             mark = "  <- worst" if attack == worst[0] else ("  <- best" if attack == best[0] else "")
-            print(f"  {attack:<6} {r['eer']*100:6.2f}%   n={r['n_spoof']:<6}{mark}")
+            print(f"  {attack:<{width}} EER {r['eer']*100:6.2f}%   passed {r['passed_at_served']*100:6.2f}%"
+                  f"   n={r['n_spoof']:<6}{mark}")
         print(f"\n  Spread {best[1]['eer']*100:.2f}% – {worst[1]['eer']*100:.2f}%. A wide spread means"
               f"\n  the pooled EER above is an average over attacks the model handles very"
               f"\n  differently, which is worth saying explicitly in a writeup.")
@@ -387,7 +419,8 @@ def main():
     # Slurm log, and APPROACH.md's comparison table has to be assembled from
     # several runs. A JSON per run is the smallest thing that makes that
     # mechanical rather than a matter of scrolling back.
-    tag = "itw" if args.dataset == "itw" else args.partition
+    tag = {"itw": "itw", "speechfake": f"speechfake-{args.language}"}.get(args.dataset,
+                                                                          args.partition)
     out = args.out or ckpt_path.parent / f"eval_{tag}_{strftime('%Y%m%d-%H%M%S')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2))
