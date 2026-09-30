@@ -39,6 +39,7 @@ function modelCard(model) {
     ['Trained epochs', model.epoch != null ? String(model.epoch) : null],
     ['Dev EER', model.dev_eer != null ? formatPercent(model.dev_eer) : null],
     ['Privacy', model.privacy],
+    ['Input processing', model.input_processing],
     ['Threshold from', model.threshold_source],
   ].filter(([, value]) => value);
 }

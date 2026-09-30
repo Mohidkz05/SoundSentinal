@@ -1141,6 +1141,54 @@ and noisy real speech are not on one scale. The candidates:
 3. **Report two readings** (a clean-audio and a real-world threshold, chosen
    by measured recording quality). The most honest UI, and the most machinery.
 
+## Finding 14 — degrade every input before scoring (pre-registered, not yet run)
+
+Written 30 September 2026, before anything is submitted. Option 1 from
+Finding 13. No training: the Finding 9 weights are unchanged.
+
+**Question.** If every clip passes through one fixed, deterministic channel
+before the model scores it, do clean fakes stop slipping through, without
+flagging more real speech?
+
+**Candidates, fixed now** (`model.degrade_waveform`, applied after
+truncation to 4 s): `none` (control), `opus` (Opus voice codec, libsndfile
+compression level 0.9), `tel8k` (resample to 8 kHz and back: phone-line
+bandwidth), `noise20` (white noise at 20 dB SNR, fixed seed). All four are
+deterministic, checked by `verify_setup.py`.
+
+**This is a new system, not a fifth threshold.** Each candidate changes what
+the model is shown, so each needs its own threshold, fitted by the unchanged
+Finding 12 procedure: People's Speech `clean` test, n 10,000, seed 42, 1%
+target. The motivation comes from SpeechFake and LA (Finding 13), not from
+In-the-Wild. But the weights are the ones already scored on In-the-Wild five
+times, and Stage B scores them a sixth; that is disclosed, not hidden.
+
+**Stage A — choose, without touching any test set.** For each candidate:
+calibrate as above, then score SpeechFake-BD **dev**, English, at the fitted
+threshold. Record fakes passed (A1), the People's Speech check-half real
+flagged rate (A2), and SpeechFake dev EER (A3). The `none` control must
+reproduce Finding 12's threshold (log-odds +7.98); if it does not, stop and
+find out why.
+
+- **Choice:** the candidate with the lowest A1 among those with A2 ≤ 2%.
+- **Go/no-go:** Stage B runs only if the chosen A1 is at least **10 points**
+  below `none`'s A1. Otherwise the finding is "no degradation helps" and
+  nothing is served.
+
+**Stage B — test the chosen one, once.** Score it on In-the-Wild, LA eval and
+SpeechFake **test** (English). Serve it only if **all** hold:
+
+- In-the-Wild EER < 5%;
+- In-the-Wild real flagged ≤ 2% (today 0.62%);
+- In-the-Wild fakes passed ≤ 5% (today 3.61%);
+- SpeechFake test fakes passed ≤ 20% (today 32.72%).
+
+Otherwise keep today's model and threshold, and report the numbers.
+
+**What this cannot show.** SpeechFake dev and test hold the same 26 systems
+the model trained on, so both stages are optimistic about clean fakes from
+unseen systems.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

@@ -236,6 +236,9 @@ def main():
     # network accepts either channel count, so a mismatch is a wrong number
     # rather than a crash.
     frontend = ckpt.get("frontend") or DEFAULT_FRONTEND
+    # calibrate.py records the input degradation its threshold was fitted
+    # under; scoring without it would pair that threshold with other inputs.
+    degradation = ckpt.get("input_degradation") or "none"
 
     # The threshold the checkpoint carries was calibrated on dev. It is the one
     # the server actually applies, so it is the honest deployment operating
@@ -253,6 +256,7 @@ def main():
     print(f"  arch        {arch} "
           f"({sum(p.numel() for p in model.parameters()):,} parameters)")
     print(f"  front-end   {frontend}")
+    print(f"  degradation {degradation}")
     print(f"  regime      {'DP' if ckpt.get('dp') else 'non-private'}")
     # This epoch's own dev EER, not the run's running best. They differ the
     # moment an epoch is worse than its predecessor — LFCC epoch 5 scored 5.73%
@@ -271,21 +275,25 @@ def main():
     if args.dataset == "itw":
         itw_root = get_itw_root()
         dataset = AVSpoofDataset(None, itw_root, build_transform(frontend),
-                                 protocol=load_itw_protocol(itw_root), suffix="")
+                                 protocol=load_itw_protocol(itw_root), suffix="",
+                                 degradation=degradation)
         paths, key = {}, None
         corpus_label, partition_label = "In-the-Wild", "all"
     elif args.dataset == "speechfake":
         import speechfake
-        frame, sf_root = speechfake.load_protocol("test")
+        # --partition eval means SpeechFake's test split; dev is its dev split,
+        # which Finding 14 compares candidates on so test is read once.
+        sf_part = "test" if args.partition == "eval" else "dev"
+        frame, sf_root = speechfake.load_protocol(sf_part)
         if args.language != "all":
             # load_protocol drops the language column; read it back from the
             # same CSV, row for row.
-            meta = speechfake.read_metadata("test", sf_root)
+            meta = speechfake.read_metadata(sf_part, sf_root)
             frame = frame[(meta["language"] == args.language).to_numpy()].reset_index(drop=True)
         dataset = AVSpoofDataset(None, sf_root, build_transform(frontend),
-                                 protocol=frame, suffix="")
+                                 protocol=frame, suffix="", degradation=degradation)
         paths, key = {}, None
-        corpus_label, partition_label = "SpeechFake-BD", f"test ({args.language})"
+        corpus_label, partition_label = "SpeechFake-BD", f"{sf_part} ({args.language})"
     else:
         paths = get_corpus_paths(args.corpus)
         key = args.partition.upper()
@@ -294,7 +302,8 @@ def main():
                 f"No {args.partition} partition under $ASVSPOOF_ROOT for {args.corpus}. "
                 f"Expected ASVspoof2019_{args.corpus}_{args.partition}/flac and a matching protocol.")
         dataset = AVSpoofDataset(
-            paths[f"{key}_PROTOCOL_FILE"], paths[f"{key}_AUDIO_DIR"], build_transform(frontend))
+            paths[f"{key}_PROTOCOL_FILE"], paths[f"{key}_AUDIO_DIR"], build_transform(frontend),
+            degradation=degradation)
         corpus_label, partition_label = args.corpus, args.partition
 
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False,
@@ -395,6 +404,7 @@ def main():
         "regime": "dp" if ckpt.get("dp") else "non-private",
         "arch": arch,
         "frontend": frontend,
+        "input_degradation": degradation,
         "epoch": ckpt.get("epoch"),
         "n_clips": int(len(labels)),
         "class_names": CLASS_NAMES,
@@ -419,8 +429,9 @@ def main():
     # Slurm log, and APPROACH.md's comparison table has to be assembled from
     # several runs. A JSON per run is the smallest thing that makes that
     # mechanical rather than a matter of scrolling back.
-    tag = {"itw": "itw", "speechfake": f"speechfake-{args.language}"}.get(args.dataset,
-                                                                          args.partition)
+    tag = {"itw": "itw",
+           "speechfake": f"speechfake-{args.partition}-{args.language}"}.get(args.dataset,
+                                                                            args.partition)
     out = args.out or ckpt_path.parent / f"eval_{tag}_{strftime('%Y%m%d-%H%M%S')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2))

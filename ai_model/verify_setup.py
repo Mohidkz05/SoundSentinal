@@ -19,8 +19,8 @@ import torch.nn as nn
 
 from model import (ARCH_FRONTENDS, ARCHITECTURES, DEFAULT_ARCH, DP_ARCHITECTURES,
                    DEFAULT_FRONTEND, FRONTENDS, MAX_LEN, N_LFCC, N_MELS,
-                   build_model, build_transform, check_pairing,
-                   default_frontend_for, load_audio, preprocess_waveform)
+                   DEGRADATIONS, SAMPLE_RATE, build_model, build_transform, check_pairing,
+                   default_frontend_for, degrade_waveform, load_audio, preprocess_waveform)
 
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
 
@@ -203,6 +203,23 @@ def main():
     distinct = len({d.numpy().tobytes() for d in draws})
     check("workers and epochs draw different distortions", distinct == len(draws),
           f"{distinct}/{len(draws)} distinct")
+
+    print("--- Input degradation (Finding 14) ---")
+    # Scoring-time only. Each must keep the length, stay finite, change the
+    # clip, and be deterministic: one upload has to give one reading.
+    import torchaudio.transforms as T
+    clip16 = waveform[:1] if sample_rate == SAMPLE_RATE else \
+        T.Resample(sample_rate, SAMPLE_RATE)(waveform[:1])
+    for name in DEGRADATIONS:
+        a, b = degrade_waveform(clip16, name), degrade_waveform(clip16, name)
+        changed = name == "none" or not torch.equal(a, clip16)
+        ok = (tuple(a.shape) == tuple(clip16.shape) and bool(torch.isfinite(a).all())
+              and torch.equal(a, b) and changed)
+        check(f"{name}: keeps shape, finite, deterministic"
+              + ("" if name == "none" else ", changes the clip"), ok, tuple(a.shape))
+    check("'none' is the identity", torch.equal(degrade_waveform(clip16, "none"), clip16))
+    short = degrade_waveform(clip16[:, :1000], "opus")
+    check("opus keeps a short clip's length", short.shape[1] == 1000, tuple(short.shape))
 
     print("--- ASVspoof 5 adapter (--extra-train asvspoof5) ---")
     # A two-clip corpus laid out as hpc/get_asvspoof5.slurm leaves it, with a

@@ -273,7 +273,8 @@ class AVSpoofDataset(Dataset):
     """
 
     def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE,
-                 max_len=MAX_LEN, protocol=None, suffix=".flac", augment=None):
+                 max_len=MAX_LEN, protocol=None, suffix=".flac", augment=None,
+                 degradation="none"):
         if protocol is not None:
             self.protocol = protocol.reset_index(drop=True)
         else:
@@ -289,6 +290,10 @@ class AVSpoofDataset(Dataset):
         # preprocess_waveform so the shared, deterministic preprocessing still
         # runs last — the dev set, evaluate.py and app.py never pass one.
         self.augment = augment
+        # Scoring-time input degradation (model.degrade_waveform). Set by
+        # calibrate.py and evaluate.py from the checkpoint; training never
+        # passes one.
+        self.degradation = degradation
 
     def __len__(self):
         return len(self.protocol)
@@ -304,7 +309,8 @@ class AVSpoofDataset(Dataset):
 
         # Same preprocessing the Flask server applies at inference time.
         spectrogram = preprocess_waveform(
-            waveform, sample_rate, self.transform_pipeline, max_len=self.max_len
+            waveform, sample_rate, self.transform_pipeline, max_len=self.max_len,
+            degradation=self.degradation,
         )
 
         return spectrogram, torch.tensor(label, dtype=torch.long)

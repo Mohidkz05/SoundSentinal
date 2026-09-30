@@ -50,6 +50,15 @@ LEGACY_MODEL_PATH = SCRIPT_DIR / "deepfake_audio_detector.pth"
 # reports which of the two the client got, so a UI can say so.
 DEFAULT_THRESHOLD = 0.5
 
+# How the model card names each input degradation (model.DEGRADATIONS). "none"
+# is omitted from the card rather than shown as a row saying nothing happened.
+DEGRADATION_NAMES = {
+    "none": None,
+    "opus": "Every clip passed through the Opus voice codec first",
+    "tel8k": "Every clip limited to phone-line bandwidth (4 kHz) first",
+    "noise20": "Fixed background noise added to every clip first (20 dB SNR)",
+}
+
 
 def load_model():
     if BEST_CKPT.exists():
@@ -120,6 +129,11 @@ def load_model():
     # checkpoint, never assumed. Checkpoints predating the choice are log-Mel.
     frontend = (payload.get("frontend") if isinstance(payload, dict) else None) or DEFAULT_FRONTEND
 
+    # The input degradation calibrate.py fitted the threshold under
+    # (model.degrade_waveform). Serving without it would compare clean inputs
+    # against a line drawn for degraded ones.
+    degradation = (payload.get("input_degradation") if isinstance(payload, dict) else None) or "none"
+
     # The representation and the network description are read off the
     # checkpoint for the same reason every other field here is: a hand-written
     # model card looks like provenance while describing whichever run someone
@@ -153,6 +167,7 @@ def load_model():
         "representation": representations.get(frontend, frontend),
         "network": networks.get(arch, arch),
         "parameters": sum(p.numel() for p in net.parameters()),
+        "input_processing": DEGRADATION_NAMES.get(degradation, degradation),
         "corpus": " + ".join(corpora) or None,
         "epoch": payload.get("epoch") if isinstance(payload, dict) else None,
         "dev_eer": metrics.get("dev_eer"),
@@ -172,9 +187,9 @@ def load_model():
 
     print(f"Loaded model weights from {path}")
     print(f"Decision threshold: {threshold:.4g} ({info['threshold_source']})")
-    print(f"Architecture: {arch}, front-end: {frontend}")
+    print(f"Architecture: {arch}, front-end: {frontend}, input degradation: {degradation}")
     calibration = (payload.get("calibration") or {}) if isinstance(payload, dict) else {}
-    return net, float(threshold), calibrated, info, frontend, calibration
+    return net, float(threshold), calibrated, info, frontend, calibration, degradation
 
 
 def logit(p):
@@ -183,7 +198,7 @@ def logit(p):
     return math.log(p) - math.log1p(-p)
 
 
-model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO, FRONTEND, CALIBRATION = load_model()
+model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO, FRONTEND, CALIBRATION, DEGRADATION = load_model()
 
 # ---------------------------------------------------------------------------
 # The reading's scale. SSL-AASIST pushes P(spoof) to within a hair of 0 or 1
@@ -247,6 +262,11 @@ def load_measured():
             print(f"Skipping {f.name}: measured at threshold {served['threshold']:.6g}, "
                   f"serving {THRESHOLD:.6g}")
             continue
+        # Reports predating the field were all scored on unmodified inputs.
+        if (report.get("input_degradation") or "none") != DEGRADATION:
+            print(f"Skipping {f.name}: measured with input degradation "
+                  f"{report.get('input_degradation') or 'none'}, serving {DEGRADATION}")
+            continue
         name, about = MEASURED_SETS.get(report.get("dataset"), (report.get("corpus"), None))
         measured.append({
             "set": name,
@@ -283,7 +303,8 @@ transform_pipeline = build_transform(FRONTEND)
 # ===================================================================
 def preprocess_audio(audio_file):
     waveform, sample_rate = load_audio(audio_file)
-    spectrogram = preprocess_waveform(waveform, sample_rate, transform_pipeline)
+    spectrogram = preprocess_waveform(waveform, sample_rate, transform_pipeline,
+                                      degradation=DEGRADATION)
     # Add a "batch" dimension for the model
     return spectrogram.unsqueeze(0)
 

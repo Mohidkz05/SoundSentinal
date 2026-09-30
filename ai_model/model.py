@@ -150,7 +150,65 @@ def build_transform(frontend=DEFAULT_FRONTEND):
     )
 
 
-def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_LEN):
+# --- Input degradation ------------------------------------------------------
+# A fixed, deterministic degradation applied to every clip before the model
+# sees it, at scoring time only (RESULTS.md Finding 14). Finding 13 found clean
+# audio sits ~14 log-odds lower on the served model's scale than the noisy real
+# speech its threshold was set on, so a third of clean fakes pass. Putting every
+# input through the same channel is meant to score clean and noisy audio in the
+# same conditions.
+#
+# Like the front-end, it is a property of a served model: calibrate.py writes
+# `input_degradation` into the checkpoint beside the threshold it fitted under
+# it, and app.py and evaluate.py read it back. A threshold fitted with one
+# degradation means nothing under another. "none" is every existing checkpoint.
+#
+# Deterministic by construction — a fixed codec setting, a fixed resampler, a
+# fixed noise seed — so one upload always gives one reading.
+DEGRADATIONS = ("none", "opus", "tel8k", "noise20")
+OPUS_LEVEL = 0.9          # libsndfile compression level: 1.0 is the lowest bitrate
+NOISE_SNR_DB = 20.0
+NOISE_SEED = 0
+
+
+def degrade_waveform(waveform, degradation):
+    """Apply a named degradation to a (1, N) waveform at SAMPLE_RATE."""
+    if degradation in (None, "none"):
+        return waveform
+    if degradation not in DEGRADATIONS:
+        raise ValueError(f"Unknown degradation {degradation!r}; expected one of {DEGRADATIONS}")
+    n = waveform.shape[1]
+    if n == 0:
+        return waveform
+
+    if degradation == "opus":
+        # Opus, the codec of voice calls and voice notes, round-tripped in
+        # memory. It returns exactly n samples, unlike MP3's encoder delay.
+        import io
+        buf = io.BytesIO()
+        sf.write(buf, waveform[0].clamp(-1, 1).numpy(), SAMPLE_RATE,
+                 format="OGG", subtype="OPUS", compression_level=OPUS_LEVEL)
+        buf.seek(0)
+        out, _ = sf.read(buf, dtype="float32")
+        out = torch.from_numpy(out).unsqueeze(0)
+        return F.pad(out, (0, max(0, n - out.shape[1])))[:, :n]
+
+    if degradation == "tel8k":
+        # A phone line's bandwidth: everything above 4 kHz removed.
+        down = T.Resample(orig_freq=SAMPLE_RATE, new_freq=8000)(waveform)
+        return T.Resample(orig_freq=8000, new_freq=SAMPLE_RATE)(down)[:, :n]
+
+    # noise20: white noise at a fixed SNR, the same noise for every clip.
+    rms = waveform.pow(2).mean().sqrt()
+    if rms == 0:
+        return waveform
+    gen = torch.Generator().manual_seed(NOISE_SEED)
+    noise = torch.randn(waveform.shape, generator=gen)
+    return waveform + noise * (rms / (10 ** (NOISE_SNR_DB / 20)))
+
+
+def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_LEN,
+                        degradation="none"):
     """
     Waveform -> standardized features, shape (1, C, frames).
 
@@ -168,8 +226,10 @@ def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_L
     preprocessing path is this file's whole reason for existing, and because a
     detector should not care how loud the clip is.
 
-    Downmix to mono, resample to SAMPLE_RATE, pad/truncate to max_len, apply the
-    transform, then standardize per sample.
+    Downmix to mono, resample to SAMPLE_RATE, truncate to max_len, degrade (see
+    degrade_waveform; "none" by default), pad to max_len, apply the transform,
+    then standardize per sample. Degrading after truncation keeps the codec off
+    the padding; degrading before padding keeps silence silent.
     """
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
@@ -179,6 +239,9 @@ def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_L
         waveform = resampler(waveform)
 
     if waveform.shape[1] > max_len:
+        waveform = waveform[:, :max_len]
+    waveform = degrade_waveform(waveform, degradation)
+    if waveform.shape[1] >= max_len:
         waveform = waveform[:, :max_len]
     else:
         padding = max_len - waveform.shape[1]
