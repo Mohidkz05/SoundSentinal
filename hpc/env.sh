@@ -86,7 +86,7 @@ export CHANNEL_AUG_ROOT="$SCRATCH_DIR/channel_aug"
 # SoundSentinal's own generated fakes (synth/, Finding 18) and what makes them:
 # a uv environment per generator family and those models' weights (~40 GB),
 # all on scratch — project storage is nearly full.
-export SYNTH_ROOT="$SCRATCH_DIR/synth"
+export SYNTH_ROOT="${SYNTH_ROOT:-$SCRATCH_DIR/synth}"   # smoke tests: SYNTH_ROOT=$SCRATCH_DIR/synth-smoke
 export SYNTH_ENV_DIR="$SCRATCH_DIR/synth-envs"
 export SYNTH_HF_HOME="$SCRATCH_DIR/synth-hf-cache"
 
