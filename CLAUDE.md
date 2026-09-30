@@ -4,7 +4,7 @@ Deepfake audio detector. A Next.js frontend and a Flask + PyTorch backend that
 classifies an uploaded audio clip as real or spoofed. The model is trained with
 differential privacy (Opacus) on the ASVspoof2019 corpus.
 
-University project. Active work is on branch `ssl-aasist` — see "Branching" below.
+University project. Work is on `main` — see "Branching" below.
 
 ## Where things stand (updated 29 September 2026)
 
@@ -57,8 +57,8 @@ Read this first; `RESULTS.md` has every number and its job ID.
   `--export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints`. SpeechFake's
   zips (~290 GB, `$SPEECHFAKE_ROOT/zips/`) are now safe to delete: training
   read the whole corpus four times without errors.
-- **Branch:** all of this is on `ssl-aasist`, pushed, not merged into `main`.
-  Open a PR once the threshold is fixed.
+- **Branch:** all of this is on `main` (fast-forwarded from `ssl-aasist` on
+  30 September 2026, no PR).
 
 ## Layout
 
@@ -577,13 +577,12 @@ CNN.** Reach for pretrained SSL only after dropping DP.
 
 ## Branching
 
-**Active work is on `ssl-aasist`, not `main`** (as of 26 September 2026). It
-stacks on the unmerged `rawboost` and `asvspoof5` branches, so it contains
-both, plus SSL-AASIST, the log-odds scoring fix and SpeechFake — 11 commits
-ahead of `main`. Everything is pushed; M3 runs whatever `ssl-aasist` holds.
-`aasist-port` is already in `main`. `rawboost` and `asvspoof5` have nothing
-that `ssl-aasist` lacks, so merging `ssl-aasist` into `main` brings in all
-three. Not merged yet — do that (via a PR) once the SpeechFake run is recorded.
+**Work is on `main`.** On 30 September 2026 `main` was fast-forwarded to
+`ssl-aasist` (28 commits, no PR, at the owner's request), which also brought in
+`rawboost` and `asvspoof5` — neither has anything `main` now lacks. Those three
+branches still exist on the remote and can be deleted. M3's checkout is still
+on `ssl-aasist`; switch it with `git checkout main && git pull` before the next
+job.
 
 `Alex-development` (the AI model, merged via PR #1) and `Mohid-fixes` (the
 training-loop rewrite) were both merged and deleted in August 2026.
