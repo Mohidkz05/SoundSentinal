@@ -28,6 +28,7 @@ from model import (
     build_model,
     build_transform,
     check_pairing,
+    cleanliness_db,
     default_frontend_for,
     load_audio,
     preprocess_waveform,
@@ -274,7 +275,7 @@ class AVSpoofDataset(Dataset):
 
     def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE,
                  max_len=MAX_LEN, protocol=None, suffix=".flac", augment=None,
-                 degradation="none"):
+                 degradation="none", with_cleanliness=False):
         if protocol is not None:
             self.protocol = protocol.reset_index(drop=True)
         else:
@@ -294,6 +295,9 @@ class AVSpoofDataset(Dataset):
         # calibrate.py and evaluate.py from the checkpoint; training never
         # passes one.
         self.degradation = degradation
+        # Also return model.cleanliness_db of the raw clip, for scoring with a
+        # clean-audio threshold (Finding 15). Scoring only.
+        self.with_cleanliness = with_cleanliness
 
     def __len__(self):
         return len(self.protocol)
@@ -313,6 +317,9 @@ class AVSpoofDataset(Dataset):
             degradation=self.degradation,
         )
 
+        if self.with_cleanliness:
+            return (spectrogram, torch.tensor(label, dtype=torch.long),
+                    torch.tensor(cleanliness_db(waveform, sample_rate, self.max_len)))
         return spectrogram, torch.tensor(label, dtype=torch.long)
 
 # ===================================================================

@@ -1254,6 +1254,53 @@ report per-condition readings (option 3). Both are larger pieces of work. The
 served system stays as Finding 12 left it, with Finding 13's caveat on
 `/result`.
 
+## Finding 15 — a second threshold for clean recordings (pre-registered, not yet run)
+
+Written 30 September 2026, before anything is submitted. Option 3 from
+Finding 13. No training: the Finding 9 weights are unchanged.
+
+**Question.** The model ranks clean fakes well (SpeechFake EER 6.26%) but its
+one threshold is set for noisy real speech. If clean recordings are held to a
+second threshold fitted on clean real speech, do clean-fake misses fall
+without accusing more real speakers?
+
+**The mechanism, fixed now.** `model.cleanliness_db`: the spread in dB
+between a clip's loud and quiet 20 ms frames (95th minus 10th percentile), on
+the same 4 s the model reads. Clips at or above a cutoff take the clean route.
+`calibrate_clean.py` fits, from calibration data only and using fit halves
+only:
+
+1. the **cutoff**: the value best separating LibriSpeech test-clean (clean)
+   from People's Speech (not), by balanced accuracy;
+2. the **clean threshold**: 1% of LibriSpeech clips routed clean flagged, the
+   same rule as every threshold since Finding 12.
+
+The noisy route keeps today's threshold (+7.98). LibriSpeech test-clean is
+held out of training: its 40 speakers share none with the 247 LibriTTS
+speakers SpeechFake uses (checked by `librispeech.py check`, job 60594139).
+Not held out of XLS-R's pretraining, which includes LibriVox audio.
+
+**Stage A — choose, without touching any test set.** Fit the route on the
+served checkpoint, then score SpeechFake **dev** (English) with it. Go on
+only if all hold:
+
+- SpeechFake dev fakes passed ≤ **15.49%** (the control's 25.49% minus 10);
+- People's Speech check half, real flagged under routing ≤ 2%;
+- LibriSpeech check half, real flagged under routing ≤ 2%.
+
+**Stage B — once.** Score the routed checkpoint on In-the-Wild, LA eval and
+SpeechFake **test** (English). Serve it only if all hold:
+
+- In-the-Wild real flagged ≤ 2% (today 0.62%);
+- In-the-Wild fakes passed ≤ 5% (today 3.61%);
+- SpeechFake test fakes passed ≤ 20% (today 32.72%).
+
+LA eval is reported, not a criterion: its real speech is VCTK, in training.
+
+**Known weakness, stated now.** Routing can be gamed: noise added to a clean
+fake sends it to the noisy route. If this is served, `/result` must say so.
+The same weights are scored on In-the-Wild a sixth time in Stage B.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

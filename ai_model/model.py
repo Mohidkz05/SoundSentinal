@@ -207,6 +207,43 @@ def degrade_waveform(waveform, degradation):
     return waveform + noise * (rms / (10 ** (NOISE_SNR_DB / 20)))
 
 
+def standard_waveform(waveform, sample_rate, max_len=MAX_LEN):
+    """Mono, SAMPLE_RATE, at most max_len samples: the audio the model reads,
+    before padding. Shared by preprocess_waveform and cleanliness_db so the
+    two always look at the same 4 seconds."""
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    if sample_rate != SAMPLE_RATE:
+        waveform = T.Resample(orig_freq=sample_rate, new_freq=SAMPLE_RATE)(waveform)
+    return waveform[:, :max_len]
+
+
+# --- Recording cleanliness --------------------------------------------------
+# How clean a recording is, as one number: the spread in dB between its loud
+# 20 ms frames (95th percentile) and its quiet ones (10th). Studio and
+# audiobook speech has near-silent pauses, so the spread is wide; room noise,
+# hiss and compression fill the pauses in and narrow it. RESULTS.md Finding 15
+# routes a clip to a clean-audio threshold when this is at or above a cutoff
+# stored in the checkpoint. Deterministic, and computed on the same 4 s the
+# model reads, before any degradation: it describes the recording, not the
+# channel. Frames are floored at -100 dBFS so digital silence cannot make the
+# spread unbounded.
+CLEANLINESS_FRAME = 320        # 20 ms at 16 kHz
+CLEANLINESS_FLOOR_DB = -100.0
+
+
+def cleanliness_db(waveform, sample_rate, max_len=MAX_LEN):
+    """Dynamic range of the clip in dB (p95 - p10 of 20 ms frame levels)."""
+    w = standard_waveform(waveform, sample_rate, max_len)[0]
+    n = w.shape[0] // CLEANLINESS_FRAME
+    if n < 10:
+        return 0.0          # too short to have pauses; treated as not clean
+    frames = w[: n * CLEANLINESS_FRAME].reshape(n, CLEANLINESS_FRAME)
+    level = 20 * torch.log10(frames.pow(2).mean(dim=1).sqrt().clamp_min(1e-12))
+    level = level.clamp_min(CLEANLINESS_FLOOR_DB)
+    return float(torch.quantile(level, 0.95) - torch.quantile(level, 0.10))
+
+
 def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_LEN,
                         degradation="none"):
     """
@@ -231,15 +268,7 @@ def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_L
     then standardize per sample. Degrading after truncation keeps the codec off
     the padding; degrading before padding keeps silence silent.
     """
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-
-    if sample_rate != SAMPLE_RATE:
-        resampler = T.Resample(orig_freq=sample_rate, new_freq=SAMPLE_RATE)
-        waveform = resampler(waveform)
-
-    if waveform.shape[1] > max_len:
-        waveform = waveform[:, :max_len]
+    waveform = standard_waveform(waveform, sample_rate, max_len)
     waveform = degrade_waveform(waveform, degradation)
     if waveform.shape[1] >= max_len:
         waveform = waveform[:, :max_len]

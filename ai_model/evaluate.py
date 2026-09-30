@@ -90,7 +90,7 @@ def log_odds_to_prob(s):
 
 
 @torch.no_grad()
-def score_dataset(model, loader):
+def score_dataset(model, loader, with_cleanliness=False):
     """Run the model over a loader, returning log-odds of spoof and the labels.
 
     Log-odds, not P(spoof). The two rank clips identically — P(spoof) is the
@@ -100,12 +100,19 @@ def score_dataset(model, loader):
     an arbitrary point inside it (it reported 37.82% at "threshold 1.0000").
     The logit difference never saturates, so every EER and min t-DCF here is
     computed on it and thresholds are converted, not the other way round.
+
+    With `with_cleanliness` the loader's dataset must be built with
+    with_cleanliness=True, and a third array, model.cleanliness_db per clip, is
+    returned too.
     """
     model.eval()
-    all_scores, all_labels = [], []
+    all_scores, all_labels, all_clean = [], [], []
     total = len(loader.dataset)
     seen = 0
-    for x, y in loader:
+    for batch in loader:
+        x, y = batch[0], batch[1]
+        if with_cleanliness:
+            all_clean.append(batch[2])
         x = x.to(DEVICE, non_blocking=True)
         logits = model(x).float()
         all_scores.append((logits[:, 1] - logits[:, 0]).cpu())
@@ -115,6 +122,9 @@ def score_dataset(model, loader):
         # job where stdout is a file, and a bar would write one line per update.
         if seen % (BATCH_SIZE * 50) == 0 or seen == total:
             print(f"  scored {seen}/{total}", flush=True)
+    if with_cleanliness:
+        return (torch.cat(all_scores).numpy(), torch.cat(all_labels).numpy(),
+                torch.cat(all_clean).numpy())
     return torch.cat(all_scores).numpy(), torch.cat(all_labels).numpy()
 
 
@@ -127,8 +137,9 @@ def per_attack_eer(labels, scores, system_ids, served_threshold=None):
     completely different finding from a uniform 5%, and only this table
     distinguishes them.
 
-    With `served_threshold` (log-odds), each attack also gets the share of its
-    fakes that score below it, i.e. pass at the threshold the server applies.
+    With `served_threshold` (log-odds, a scalar or one value per clip when a
+    clean-audio route applies), each attack also gets the share of its fakes
+    that score below it, i.e. pass at the threshold the server applies.
     EER says whether the model can separate an attack; this says whether the
     line it is actually served at does (RESULTS.md Finding 12).
     """
@@ -144,8 +155,9 @@ def per_attack_eer(labels, scores, system_ids, served_threshold=None):
             "n_spoof": int(is_attack.sum()),
         }
         if served_threshold is not None:
-            out[str(attack)]["passed_at_served"] = float(
-                (scores[is_attack] < served_threshold).mean())
+            thr = (served_threshold[is_attack] if np.ndim(served_threshold)
+                   else served_threshold)
+            out[str(attack)]["passed_at_served"] = float((scores[is_attack] < thr).mean())
     return out
 
 
@@ -239,6 +251,9 @@ def main():
     # calibrate.py records the input degradation its threshold was fitted
     # under; scoring without it would pair that threshold with other inputs.
     degradation = ckpt.get("input_degradation") or "none"
+    # calibrate_clean.py's clean-audio route (Finding 15): clips at or above
+    # the cleanliness cutoff are held to a second threshold.
+    routing = ckpt.get("routing")
 
     # The threshold the checkpoint carries was calibrated on dev. It is the one
     # the server actually applies, so it is the honest deployment operating
@@ -271,6 +286,9 @@ def main():
         print(f"              {fmt_pct(dev_eer_best)}  (best so far in the run)")
     print(f"  threshold   {dev_threshold:.4f} "
           f"({threshold_source})")
+    if routing:
+        print(f"  clean route log-odds {routing['threshold_clean_log_odds']:+.2f} for clips "
+              f">= {routing['cutoff_db']:.1f} dB dynamic range ({routing['source']})")
 
     if args.dataset == "itw":
         itw_root = get_itw_root()
@@ -306,6 +324,7 @@ def main():
             degradation=degradation)
         corpus_label, partition_label = args.corpus, args.partition
 
+    dataset.with_cleanliness = routing is not None
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False,
                         num_workers=args.num_workers, pin_memory=True)
 
@@ -321,7 +340,15 @@ def main():
         print(f"Attacks       {', '.join(sorted(set(dataset.protocol['system_id'])))}")
     print(f"\nScoring with {args.num_workers} workers...")
 
-    scores, labels = score_dataset(model, loader)
+    noisy_threshold = prob_to_log_odds(dev_threshold)
+    if routing:
+        scores, labels, cleanliness = score_dataset(model, loader, with_cleanliness=True)
+        routed_clean = cleanliness >= routing["cutoff_db"]
+        served_threshold = np.where(routed_clean, routing["threshold_clean_log_odds"],
+                                    noisy_threshold)
+    else:
+        scores, labels = score_dataset(model, loader)
+        cleanliness, routed_clean, served_threshold = None, None, noisy_threshold
     system_ids = dataset.protocol["system_id"].to_numpy()
 
     # Two operating points, and the distance between them is the point.
@@ -349,7 +376,7 @@ def main():
     else:
         print(f"  (min t-DCF skipped: no ASV score file for the {args.partition} partition)")
     cm_oracle, far_oracle, frr_oracle = rates_at(labels, scores, eer_threshold)
-    cm_dev, far_dev, frr_dev = rates_at(labels, scores, prob_to_log_odds(dev_threshold))
+    cm_dev, far_dev, frr_dev = rates_at(labels, scores, served_threshold)
     eer_threshold_prob = log_odds_to_prob(eer_threshold)
     acc_dev = (cm_dev["tn"] + cm_dev["tp"]) / max(1, len(labels))
 
@@ -368,6 +395,24 @@ def main():
     print(f"  false reject (real flagged)   {far_dev*100:6.2f}%")
     print(f"  confusion              bonafide {cm_dev['tn']} ok / {cm_dev['fp']} flagged | "
           f"spoof {cm_dev['tp']} caught / {cm_dev['fn']} missed")
+    routing_result = None
+    if routing:
+        cm_one, far_one, frr_one = rates_at(labels, scores, noisy_threshold)
+        real, fake = labels == 0, labels == 1
+        routing_result = {
+            "cutoff_db": routing["cutoff_db"],
+            "threshold_clean_log_odds": routing["threshold_clean_log_odds"],
+            "routed_clean_real": float(routed_clean[real].mean()) if real.any() else None,
+            "routed_clean_fake": float(routed_clean[fake].mean()) if fake.any() else None,
+            "at_single_threshold": {"false_accept_rate": frr_one, "false_reject_rate": far_one,
+                                    "confusion": cm_one},
+            "cleanliness_db_percentiles": {
+                str(q): float(np.percentile(cleanliness, q)) for q in (5, 25, 50, 75, 95)},
+        }
+        print(f"  (routed: {routing_result['routed_clean_real'] or 0:.1%} of real and "
+              f"{routing_result['routed_clean_fake'] or 0:.1%} of fake clips took the clean route)")
+        print(f"  single threshold, for comparison: spoof passed {frr_one*100:6.2f}%, "
+              f"real flagged {far_one*100:6.2f}%")
     print("\n  The distance between these two blocks is the cost of calibrating on dev")
     print("  and deploying against unseen attacks. The EER line is what compares to")
     print("  published numbers; the threshold block is what a user would experience.")
@@ -375,7 +420,7 @@ def main():
     # In-the-Wild carries no attack taxonomy, so every spoof row is "-" and the
     # per-attack table would just restate the pooled EER under a heading that
     # implies a breakdown exists. Suppress it rather than print a fake one.
-    by_attack = per_attack_eer(labels, scores, system_ids, prob_to_log_odds(dev_threshold))
+    by_attack = per_attack_eer(labels, scores, system_ids, served_threshold)
     if set(by_attack) == {"-"}:
         by_attack = {}
     if by_attack:
@@ -405,6 +450,7 @@ def main():
         "arch": arch,
         "frontend": frontend,
         "input_degradation": degradation,
+        "routing": routing_result,
         "epoch": ckpt.get("epoch"),
         "n_clips": int(len(labels)),
         "class_names": CLASS_NAMES,
