@@ -83,11 +83,6 @@ export LIBRISPEECH_ROOT="$SCRATCH_DIR/librispeech"
 # TRAINING-ONLY noise for --channel-aug (Finding 16); in no test set.
 export CHANNEL_AUG_ROOT="$SCRATCH_DIR/channel_aug"
 
-# MLAAD English fakes (~44 GB, hpc/get_mlaad.slurm): 143 TTS systems, CC BY-NC
-# 4.0, gated. Training data for its train systems, EVALUATION ONLY for its two
-# held-out splits (mlaad.py says which systems are which; Finding 17).
-export MLAAD_ROOT="$SCRATCH_DIR/mlaad"
-
 # Hugging Face cache: XLS-R's 1.27 GB of pretrained weights for ssl-aasist,
 # downloaded on first use. Project storage, not the 20 GB home quota.
 export HF_HOME="$PROJECT_DIR/.hf-cache"

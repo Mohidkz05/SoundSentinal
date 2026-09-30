@@ -157,8 +157,7 @@ def load_model():
 
     # --extra-train corpora join ASVspoof2019 in training; a card naming only
     # LA would misstate what the model has heard.
-    extra_names = {"speechfake": "SpeechFake", "asvspoof5": "ASVspoof 5",
-                   "mlaad": "MLAAD (English)"}
+    extra_names = {"speechfake": "SpeechFake", "asvspoof5": "ASVspoof 5"}
     extra = (payload.get("extra_train") if isinstance(payload, dict) else None) or ""
     corpora = [f"ASVspoof2019 {metrics['corpus']}"] if metrics.get("corpus") else []
     corpora += [extra_names.get(e, e) for e in extra.split("+") if e]
@@ -246,11 +245,6 @@ MEASURED_SETS = {
     "speechfake": ("SpeechFake test (English)", "Clean modern text-to-speech and voice "
                                                 "cloning from 26 systems — all of which "
                                                 "the model saw in training"),
-    # Unseen-generator test (RESULTS.md Finding 17): MLAAD systems held out of
-    # training by family, ElevenLabs among them; LibriSpeech as the real side.
-    "mlaad": ("MLAAD held-out systems (English)", "Modern text-to-speech from 20 "
-                                                  "systems the model never trained "
-                                                  "on, including ElevenLabs"),
 }
 
 

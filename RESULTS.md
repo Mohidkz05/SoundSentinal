@@ -1456,84 +1456,16 @@ rooms are chosen from what the literature uses, not tuned; if this fails, the
 next variant has to be argued for, not tried as a quick change of p or SNR.
 In-the-Wild has never scored these weights.
 
-## Finding 17 — MLAAD: 100 more generators, and a test of ones never heard (pre-registered)
+## Finding 17 — withdrawn before anything ran (MLAAD)
 
-Written 30 September 2026, before anything is downloaded or submitted.
-Nothing below may be changed after Stage B is scored; the result is reported
-whatever it is.
-
-**Question.** Finding 9's gain came from generator diversity (30 systems
-instead of 6). Does adding MLAAD's English fakes — 103 more TTS systems in
-training, many of them 2024–26 commercial and open models — cut the share of
-fakes from **generators the model has never heard** that pass the threshold,
-without costing In-the-Wild?
-
-**The data, and the split, fixed now** (`mlaad.py`, revision `30c3dec`,
-English only, ~1,000 clips per system). The split is by model *family*, so no
-sibling version of a held-out system is trained on: families in a seeded order
-(RandomState 42) fill `heldout-a` then `heldout-b` to at least 20 systems each;
-families SpeechFake already trains on stay in train. `python mlaad.py split`
-prints it:
-
-- **train (103 systems):** includes OpenAI TTS-1 HD, Cartesia Sonic-3,
-  MiniMax, Resemble, VibeVoice, Qwen, Llasa, XTTS and the Coqui models.
-- **heldout-a (20, Stage A):** Audio8, Chatterbox, Edge-TTS, Higgs-Audio,
-  Inworld, MatchaTTS, MiniCPM-o, NeuTTS, Soprano, SoulX, VoxCPM,
-  WhisperSpeech, F5-TTS.
-- **heldout-b (20, Stage B):** ElevenLabs (Turbo v2.5, v2 Multilingual, v3),
-  DeepGram, Echo-TTS, Kyutai, LFM2.5, MOSS-TTS, Mars5, MingTTS, MiraTTS,
-  OmniVoice, PocketTTS, Step-Audio-EditX, Sesame CSM, Coqui VITS and Overflow.
-
-The real side of each held-out split is half of LibriSpeech test-clean's 40
-speakers (20 each), never trained on.
-
-**The one change.** `--extra-train speechfake+mlaad` on top of a base recipe
-chosen by a rule fixed now: **Finding 16's recipe if its outcome is "Served"
-or "Improved, not served", otherwise Finding 9's.** Everything else held:
-SSL-AASIST, RawBoost 5, 4 epochs, batch 14, constant lr 1e-6, class weights
-from the data, selection by LA dev + SpeechFake dev. About 14% more clips, so
-about 13.5 h on an H100.
-
-**Calibration:** Finding 12's procedure unchanged (People's Speech, 1%,
-n 10,000, seed 42).
-
-**Control.** The base model at its own served threshold, scored on
-`heldout-a` before this run is scored. That is not a test set, so this
-reads nothing it should not. `heldout-b` is scored for the control and the new
-model once each, in Stage B, together.
-
-**Stage A — no test set touched.** Score `heldout-a` at the calibrated
-threshold (`evaluate.py --dataset mlaad --partition dev`).
-
-- A1, heldout-a fakes passed: must be ≤ max(control − 10 points, control / 2).
-- A2, People's Speech check half real flagged: must be ≤ 2%.
-- Reported: heldout-a EER, LibriSpeech half real flagged, SpeechFake dev
-  fakes passed.
-
-**Stage B — once.** Score In-the-Wild, SpeechFake test (English), LA eval
-and `heldout-b` (`--partition eval`), and the control on `heldout-b`. Serve
-only if **all** hold:
-
-- In-the-Wild EER < 5%, real flagged ≤ 2%, fakes passed ≤ 5%;
-- heldout-b fakes passed ≤ max(control − 10 points, control / 2);
-- SpeechFake test fakes passed no worse than the served model's 32.72%.
-
-**Outcomes, named now:** **Served** (all of Stage B); **Improved, not served**
-(Stage A passed, Stage B failed); **No effect** (A1 misses its bar — Stage B
-not run, In-the-Wild not read); **Broken** (A2 > 2%, or dev EER at selection
-above 6%).
-
-**Expected** (so it can be wrong): the control misses 30–60% of heldout-a
-fakes; the new model halves that; In-the-Wild EER between 2% and 3.5%.
-
-**Limits, stated now.** MLAAD adds fakes only; its text is audiobook
-(M-AILABS), like LibriTTS on the real side, so reading style is not a label
-cue, but no real speech is added. Families are grouped by name, not by
-architecture (F5-TTS is held out while its relative E2-TTS trains). LibriSpeech
-test-clean was a calibration set in Finding 15, which is not served. MLAAD
-comes from the lab that made In-the-Wild, but shares no audio with it. CC
-BY-NC 4.0: a model trained on it is for research and this project, not for
-sale.
+Pre-registered on 30 September (commit `0f04aa5`) and withdrawn the same
+evening, before any data was downloaded or any job submitted. The plan added
+MLAAD's English fakes (143 TTS systems) to training and held 40 of them out
+by model family as an unseen-generator test. Two constraints set by the
+owner exclude it: **data must allow commercial use**, and **no corpus may
+require an account or sign-up**. MLAAD is CC BY-NC 4.0 and gated on Hugging
+Face. The code was reverted; the pre-registration is in git history. Nothing
+was measured.
 
 ## What has not been measured
 

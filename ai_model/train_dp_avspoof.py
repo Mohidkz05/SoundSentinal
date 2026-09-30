@@ -39,7 +39,6 @@ import asvspoof5
 import commonvoice
 import voxpopuli
 import speechfake
-import mlaad
 
 # --- Hyperparameters & Constants ---
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -150,10 +149,6 @@ CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 # it on "+" to know which sources it must not calibrate on.
 BONAFIDE_SOURCES = {"commonvoice": commonvoice.load_protocol,
                     "voxpopuli": voxpopuli.load_protocol}
-# --extra-train values -> the corpora they add. "speechfake+mlaad" keeps
-# SpeechFake's dev in selection, exactly as "speechfake" alone does.
-EXTRA_TRAIN_MIXES = {"asvspoof5": ("asvspoof5",), "speechfake": ("speechfake",),
-                     "speechfake+mlaad": ("speechfake", "mlaad")}
 BONAFIDE_MIXES = {"commonvoice": ("commonvoice",),
                   "commonvoice+voxpopuli": ("commonvoice", "voxpopuli")}
 
@@ -437,7 +432,7 @@ def main():
                              "In-the-Wild collapse in RESULTS.md Finding 6. 5 is upstream's "
                              "choice for LA, 3 for codec-compressed DF. Training set only; "
                              "checkpoints go to <arch dir>/rawboost<N>/.")
-    parser.add_argument("--extra-train", default=None, choices=list(EXTRA_TRAIN_MIXES),
+    parser.add_argument("--extra-train", default=None, choices=["asvspoof5", "speechfake"],
                         help="Add another corpus's training partition to LA train. "
                              "'asvspoof5' adds 182k crowdsourced clips with newer attacks "
                              "(asvspoof5.py; fetch with hpc/get_asvspoof5.slurm) — the "
@@ -449,10 +444,7 @@ def main():
                              "fetch with hpc/get_speechfake.slurm) — ~29x the data, so "
                              "--epochs 4 is ~1.15x the LA recipe's steps; its dev split joins "
                              "LA dev for selection, because LA dev saturates at 0%% for "
-                             "ssl-aasist. 'speechfake+mlaad' also adds MLAAD English's "
-                             "train systems, ~103 TTS systems of fakes (mlaad.py; "
-                             "hpc/get_mlaad.slurm; RESULTS.md Finding 17). "
-                             "Checkpoints go to <arch dir>/plus-<name>/.")
+                             "ssl-aasist. Checkpoints go to <arch dir>/plus-<name>/.")
     parser.add_argument("--extra-bonafide", default=None, choices=list(BONAFIDE_MIXES),
                         help="Add real-world speech to training, labelled bona fide. "
                              "'commonvoice' adds Common Voice English's train split, "
@@ -543,15 +535,13 @@ def main():
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
                                    transform_pipeline, augment=augment)
     extra_parts = []
-    for source in EXTRA_TRAIN_MIXES.get(args.extra_train, ()):
+    if args.extra_train:
         # (loader, audio-file suffix): ASVspoof 5 names files without an
-        # extension like ASVspoof2019; SpeechFake's and MLAAD's paths already
-        # carry theirs.
+        # extension like ASVspoof2019; SpeechFake's paths already carry .wav.
         adapter, suffix = {"asvspoof5": (asvspoof5, ".flac"),
-                           "speechfake": (speechfake, ""),
-                           "mlaad": (mlaad, "")}[source]
+                           "speechfake": (speechfake, "")}[args.extra_train]
         extra_protocol, extra_dir = adapter.load_protocol("train")
-        print(f"Extra training data: {source} train, "
+        print(f"Extra training data: {args.extra_train} train, "
               f"{len(extra_protocol)} clips from {extra_dir}")
         extra_parts.append(AVSpoofDataset(None, extra_dir, transform_pipeline,
                                           protocol=extra_protocol, suffix=suffix,
@@ -574,7 +564,7 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True)
     dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline)
-    if "speechfake" in EXTRA_TRAIN_MIXES.get(args.extra_train, ()):
+    if args.extra_train == "speechfake":
         # SSL-AASIST hits 0.00% on LA dev within a few epochs, after which every
         # epoch ties and best.pth is just the first to tie. SpeechFake dev (117k
         # clips, same 30 generators as its train split) keeps selection and the
