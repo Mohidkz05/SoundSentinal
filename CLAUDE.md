@@ -46,8 +46,13 @@ Read this first; `RESULTS.md` has every number and its job ID.
   SpeechFake's English test split — 26 systems the model *trained on* — 32.7%
   of fakes pass the served threshold, though 20 of the 26 have EER < 1.2%.
   Clean audio sits ~14 log-odds lower on this model's scale than the noisy
-  real speech the threshold was set on. `/result` says so. Next is a model or
-  input change, not a threshold: three options argued at the end of Finding 13.
+  real speech the threshold was set on. `/result` says so.
+- **Degrading inputs before scoring does not fix it (Finding 14, 30
+  September).** Opus, phone-band and noise channels all made clean-fake misses
+  worse on SpeechFake dev (25.5% → 29.5–52.3%); Stage B never ran, nothing
+  changed in serving. The degradation code stays (`model.degrade_waveform`,
+  `calibrate.py --degradation`, `input_degradation` in checkpoints) but every
+  served checkpoint uses "none". What's left is retraining or two thresholds.
 - **Served locally since 29 September:** `ai_model/checkpoints/best.pth` is
   the Finding 9 model's `best_calibrated_peoples_speech_1pct.pth` (1.26 GB).
   `app.py` answers in ~0.5 s per clip on this laptop's CPU. Beside it:

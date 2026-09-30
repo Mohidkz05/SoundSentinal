@@ -1141,7 +1141,10 @@ and noisy real speech are not on one scale. The candidates:
 3. **Report two readings** (a clean-audio and a real-world threshold, chosen
    by measured recording quality). The most honest UI, and the most machinery.
 
-## Finding 14 — degrade every input before scoring (pre-registered, not yet run)
+## Finding 14 — degrading every input before scoring does not help
+
+The pre-registration below is unchanged. The result follows it, under
+"Result (30 September)".
 
 Written 30 September 2026, before anything is submitted. Option 1 from
 Finding 13. No training: the Finding 9 weights are unchanged.
@@ -1188,6 +1191,42 @@ Otherwise keep today's model and threshold, and report the numbers.
 **What this cannot show.** SpeechFake dev and test hold the same 26 systems
 the model trained on, so both stages are optimistic about clean fakes from
 unseen systems.
+
+### Result (30 September)
+
+Stage A, jobs 60587095–60587102 (calibration then SpeechFake dev for each),
+L40S, commit `8f2f28a`. SpeechFake dev English is 71,370 clips (6,400 real,
+64,970 fake).
+
+| Candidate | Threshold (log-odds) | A2: People's Speech real flagged, check half | A1: SpeechFake dev fakes passed | A3: SpeechFake dev EER |
+| --- | --- | --- | --- | --- |
+| `none` (control) | +7.98 | 0.60% | **25.49%** | 4.87% |
+| `opus` | +8.15 | 0.66% | 29.54% | 4.85% |
+| `tel8k` | +8.14 | 0.60% | 29.80% | 4.89% |
+| `noise20` | +7.90 | 0.68% | 52.31% | 6.91% |
+
+The control reproduced Finding 12's threshold exactly (+7.98), so the
+pipeline is sound.
+
+**Outcome: "no degradation helps".** Every candidate meets A2 ≤ 2%, so the
+choice is `opus` (lowest A1 of the three), but its A1 is 4.05 points *worse*
+than the control, not 10 better. Stage B was not run. In-the-Wild was not
+scored. Nothing is served differently.
+
+**Why it failed.** The hypothesis was that a shared channel would lift clean
+audio up the scale towards where noisy real speech sits. It did not move real
+speech: the People's Speech thresholds stayed within 0.25 log-odds of the
+control. What it moved was the fakes, downwards — codec and band-limiting
+blur the artefacts the model detects, and noise buries them (noise20 doubles
+the miss rate and worsens ranking, EER 4.87% → 6.91%). The gap between clean
+fakes and noisy real speech is in the model, not in the recording channel,
+and it cannot be closed by degrading the input.
+
+**What is left**, from Finding 13's list: retrain so that clean fakes and noisy
+real speech are on one scale (option 2), or give up on a single threshold and
+report per-condition readings (option 3). Both are larger pieces of work. The
+served system stays as Finding 12 left it, with Finding 13's caveat on
+`/result`.
 
 ## What has not been measured
 
