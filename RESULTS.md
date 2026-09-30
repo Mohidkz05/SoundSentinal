@@ -1323,8 +1323,8 @@ has not been run.
 
 Where the remaining misses are: BigVGAN 100% (EER 51.5%, the model cannot
 separate it at all), ParlerTTS 74.9%, WaveGlow 63.2%, DiffGANTTS 59.2%,
-FastSpeech2 35.8%, CosyVoice 30.3%. Twenty of the 26 systems now pass at
-under 12%; at the single threshold, 16 did.
+FastSpeech2 35.8%, CosyVoice 30.3%, HifiGAN 18.0%. The other 19 of the 26
+systems pass at under 12%.
 
 ## What has not been measured
 
