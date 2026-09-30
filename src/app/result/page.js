@@ -423,11 +423,16 @@ export default function ResultPage() {
           {measured.length > 1 && (
             <p className="mt-8 max-w-[68ch] text-small text-secondary">
               The rows disagree, and that is the finding. The threshold is set
-              for real-world audio, which is what people upload. Clean,
-              studio-quality synthetic speech in the style of older systems
-              scores lower on this model than real-world fakes do, and much of
-              it falls below the line. A low reading on a very clean recording
-              is weak evidence that it is real.
+              for real-world audio: noisy, compressed, recorded in rooms. On
+              that, it rarely accuses a real speaker and rarely misses a fake.
+              Clean synthetic speech is different. It scores far lower on this
+              model, old systems and modern ones alike, and a third or more of
+              it passes — including from systems the model trained on. If a
+              clip sounds studio-clean,{' '}
+              <span className="text-primary">
+                a low reading is not evidence that it is real
+              </span>
+              .
             </p>
           )}
         </section>

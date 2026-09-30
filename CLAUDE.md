@@ -42,11 +42,17 @@ Read this first; `RESULTS.md` has every number and its job ID.
   **3.61%** of fakes (98.27% accuracy). The cost: **46% of LA eval's clean
   studio fakes pass.** That was the last threshold tried on this model — no
   more tuning it.
+- **Clean modern fakes slip through too (Finding 13, 30 September).** On
+  SpeechFake's English test split — 26 systems the model *trained on* — 32.7%
+  of fakes pass the served threshold, though 20 of the 26 have EER < 1.2%.
+  Clean audio sits ~14 log-odds lower on this model's scale than the noisy
+  real speech the threshold was set on. `/result` says so. Next is a model or
+  input change, not a threshold: three options argued at the end of Finding 13.
 - **Served locally since 29 September:** `ai_model/checkpoints/best.pth` is
   the Finding 9 model's `best_calibrated_peoples_speech_1pct.pth` (1.26 GB).
   `app.py` answers in ~0.5 s per clip on this laptop's CPU. Beside it:
   `best_5pct.pth` (Finding 11 control) and `aasist_best.pth` (old AASIST).
-  Beside it too: `best.measured-itw.json` and `best.measured-la.json`
+  Beside it too: `best.measured-itw.json`, `-la.json` and `-speechfake.json`
   (evaluate.py's reports, scp'd from M3), which `/result` shows as "How often
   it is wrong". `/result` now draws the score in log-odds with an uncertain
   band. Still to do: the PR merging `ssl-aasist` into `main`.
@@ -580,9 +586,8 @@ CNN.** Reach for pretrained SSL only after dropping DP.
 **Work is on `main`.** On 30 September 2026 `main` was fast-forwarded to
 `ssl-aasist` (28 commits, no PR, at the owner's request), which also brought in
 `rawboost` and `asvspoof5` — neither has anything `main` now lacks. Those three
-branches still exist on the remote and can be deleted. M3's checkout is still
-on `ssl-aasist`; switch it with `git checkout main && git pull` before the next
-job.
+branches still exist on the remote and can be deleted. M3's checkout is on
+`main` too (switched 30 September).
 
 `Alex-development` (the AI model, merged via PR #1) and `Mohid-fixes` (the
 training-loop rewrite) were both merged and deleted in August 2026.

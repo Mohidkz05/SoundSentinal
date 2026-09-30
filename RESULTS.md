@@ -1023,7 +1023,10 @@ worst A10 6.63%) are unchanged from Finding 9.
 
 This was the last threshold tried on this model.
 
-## Finding 13 — do clean *modern* fakes slip through too? (pre-registered, not yet run)
+## Finding 13 — clean modern fakes slip through too: 32.7% passed
+
+The pre-registration below is unchanged. The result follows it, under
+"Result (30 September)".
 
 Written 30 September 2026, before the job is submitted. A diagnostic: it
 chooses no threshold and trains nothing.
@@ -1060,6 +1063,83 @@ threshold):
   caveat is rewritten to say so plainly, and the next step is a model change
   (clean modern fakes in training), not another threshold: Finding 12 was the
   last threshold for this model.
+
+### Result (30 September)
+
+Job 60583939, 22m27s on an L40S at commit `da86162`. JSON:
+`.../plus-speechfake/nodp/eval_speechfake-en_20260930-125040.json`.
+
+| | SpeechFake-BD test, English |
+| --- | --- |
+| EER | 6.26% (at log-odds −5.98) |
+| **Fakes passed at the served threshold (+7.98)** | **32.72%** (61,983 of 189,455) |
+| Real flagged at the served threshold | 0.01% (1 of 19,200; real rows are from training corpora) |
+
+**The outcome is "> 25%": clean modern synthesis slips through as well.**
+Nearly a third of fakes pass, from systems the model trained on. Unseen
+systems can only be expected to do worse.
+
+**The ranking is mostly fine; the threshold is in the wrong place for clean
+audio.** 20 of the 26 systems have an EER under 1.2%, yet many pass at the
+served threshold. The best balance point on this data is log-odds −5.98, and
+the served threshold is +7.98, 14 units higher. Clean audio of both kinds sits
+low on this model's scale; the threshold was set on noisy real speech, which
+sits high. The same split shows in Finding 12's LA row (46% passed at 2.12%
+EER). A single threshold cannot serve both.
+
+| System | EER | Passed at served threshold | n |
+| --- | --- | --- | --- |
+| BigVGAN | 56.07% | **100.00%** | 8,400 |
+| MeloTTS | 3.91% | **93.42%** | 8,697 |
+| ParlerTTS | 1.73% | **85.32%** | 5,417 |
+| CosyVoice | 11.65% | **80.88%** | 19,364 |
+| WaveGlow | 10.83% | **66.52%** | 3,638 |
+| DiffGANTTS | 0.50% | 64.80% | 6,000 |
+| GPTSoVITS | 3.40% | 47.15% | 6,057 |
+| FastSpeech2 | 0.51% | 40.47% | 3,000 |
+| FishSpeech | 1.19% | 39.10% | 8,757 |
+| ChatTTS | 0.21% | 24.27% | 8,744 |
+| OpenVoiceTTS | 0.28% | 19.83% | 10,167 |
+| HifiGAN | 1.12% | 15.26% | 8,321 |
+| StarGAN | 0.43% | 13.94% | 9,642 |
+| Tortoise | 0.29% | 12.97% | 12,377 |
+| FireRedTTS | 0.08% | 11.95% | 3,781 |
+| FastDiff | 0.66% | 11.07% | 8,400 |
+| StyleTTS2 | 0.19% | 10.27% | 5,715 |
+| OpenVoice | 0.04% | 5.50% | 8,697 |
+| PortaSpeech | 0.11% | 3.00% | 4,564 |
+| SeedVC | 0.11% | 2.07% | 5,995 |
+| ProDiffTTS | 0.15% | 2.03% | 9,200 |
+| Tacotron2 | 0.03% | 0.58% | 6,000 |
+| GlowTTS | 0.02% | 0.57% | 6,000 |
+| ParallelWaveGAN | 0.10% | 0.45% | 5,943 |
+| WaveNet | 0.08% | 0.42% | 2,400 |
+| FullBandMelGAN | 0.04% | 0.36% | 4,179 |
+
+BigVGAN is the one system the model cannot rank at all (56% EER): a
+high-quality neural vocoder resynthesising real speech leaves little for it to
+find. CosyVoice and WaveGlow are weak at ranking too. The rest pass because of
+where the line is, not because the model cannot tell them apart.
+
+**Done, as pre-registered:** the `/result` caveat now says plainly that clean
+synthetic speech, old and modern, passes a third of the time or more, and
+this set is a third row in its error-rate table
+(`checkpoints/best.measured-speechfake.json`).
+
+**The next step is a model change, argued rather than run.** The threshold
+stays: Finding 12 was the last for this model. The failure is that clean fakes
+and noisy real speech are not on one scale. The candidates:
+
+1. **Put clean-audio real speech near noisy real speech on the score scale**
+   by training on real speech from more recording conditions while keeping
+   clean fakes in training. Findings 10 and 11 show the risk: the model learns
+   each source's conditions rather than "real".
+2. **Degrade the input at serving time**, e.g. a fixed codec or noise pass
+   applied to every upload, so clean fakes are scored in the conditions the
+   threshold was set for. Cheap to test on these same sets, but it changes
+   what every reading means and must be applied identically in calibration.
+3. **Report two readings** (a clean-audio and a real-world threshold, chosen
+   by measured recording quality). The most honest UI, and the most machinery.
 
 ## What has not been measured
 

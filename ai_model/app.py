@@ -225,6 +225,11 @@ MEASURED_SETS = {
                            "speeches, broadcasts, and deepfakes of the same people"),
     "asvspoof": ("ASVspoof2019 LA eval", "Clean studio speech; the fakes are 2019-era "
                                          "text-to-speech and voice conversion"),
+    # A seen-generator test (RESULTS.md Finding 13): the model trained on these
+    # 26 systems and on these real corpora, so it is the friendly case.
+    "speechfake": ("SpeechFake test (English)", "Clean modern text-to-speech and voice "
+                                                "cloning from 26 systems — all of which "
+                                                "the model saw in training"),
 }
 
 
