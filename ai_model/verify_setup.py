@@ -204,6 +204,41 @@ def main():
     check("workers and epochs draw different distortions", distinct == len(draws),
           f"{distinct}/{len(draws)} distinct")
 
+    print("--- Channel augmentation (--channel-aug, Finding 16) ---")
+    # Training-only (channel_aug.py). A three-file stand-in for MUSAN and the
+    # RIRs, laid out as hpc/get_channel_aug.slurm leaves them. The output must
+    # be what preprocess_waveform expects — mono, 16 kHz, at most MAX_LEN —
+    # and every stage must be reachable: each codec, reverb and noise.
+    import tempfile
+    import soundfile as sf
+    from channel_aug import CODECS, ChannelAug, codec, reverb
+    with tempfile.TemporaryDirectory() as tmp:
+        rng = np.random.default_rng(0)
+        for sub, name, n in (("musan/noise/free-sound", "n.wav", 3 * SAMPLE_RATE),
+                             ("musan/music/fma", "m.wav", 8 * SAMPLE_RATE),
+                             ("RIRS_NOISES/simulated_rirs/smallroom/Room001", "r.wav", 4000),
+                             ("RIRS_NOISES/real_rirs_isotropic_noises", "air_rir.wav", 4000),
+                             ("RIRS_NOISES/real_rirs_isotropic_noises", "noise.wav", 4000)):
+            (Path(tmp) / sub).mkdir(parents=True, exist_ok=True)
+            sf.write(str(Path(tmp) / sub / name), 0.1 * rng.standard_normal(n), SAMPLE_RATE)
+        aug = ChannelAug(tmp, before=RawBoost(5))
+        check("indexes noise and music, and only files named as RIRs",
+              len(aug.noises) == 2 and len(aug.rirs) == 2, f"{len(aug.noises)}, {len(aug.rirs)}")
+        np.random.seed(0)
+        outs = [aug(waveform, sample_rate) for _ in range(20)]
+        ok = all(o.shape[0] == 1 and o.shape[1] <= MAX_LEN and bool(torch.isfinite(o).all())
+                 and o.abs().max() <= 1 for o in outs)
+        check("output is mono, <= MAX_LEN, finite, within [-1, 1]", ok, tuple(outs[0].shape))
+        x = outs[0][0].numpy().astype(np.float64)
+        for kind in CODECS:
+            y = codec(x, kind, 0.5)
+            check(f"codec {kind} keeps length and changes the clip",
+                  len(y) == len(x) and not np.allclose(y, x), len(y))
+        check("reverb keeps length", len(reverb(x, rng.standard_normal(4000))) == len(x))
+        spec = preprocess_waveform(outs[0], SAMPLE_RATE, build_transform("raw"))
+        check("preprocess_waveform accepts its output", tuple(spec.shape) == (1, MAX_LEN),
+              tuple(spec.shape))
+
     print("--- Input degradation (Finding 14) ---")
     # Scoring-time only. Each must keep the length, stay finite, change the
     # clip, and be deterministic: one upload has to give one reading.

@@ -34,6 +34,7 @@ from model import (
     preprocess_waveform,
 )
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
+from channel_aug import ChannelAug
 import asvspoof5
 import commonvoice
 import voxpopuli
@@ -153,7 +154,7 @@ BONAFIDE_MIXES = {"commonvoice": ("commonvoice",),
 
 def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH,
                    rawboost: int | None = None, extra_train: str | None = None,
-                   extra_bonafide: str | None = None):
+                   extra_bonafide: str | None = None, channel_aug: bool = False):
     """Each (architecture, front-end, privacy regime) triple gets its own directory.
 
     Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
@@ -172,7 +173,7 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
     Extra training data gets one more level, for the same reason again: a run
     on LA + ASVspoof 5 is a different model from the LA-only one, and the two
     must never share a last.pth. Extra bona fide speech (--extra-bonafide)
-    nests one level below that.
+    nests one level below that, and --channel-aug one below that.
     """
     ckpt_dir = CKPT_DIR if arch == DEFAULT_ARCH else CKPT_DIR / arch
     if frontend != default_frontend_for(arch):
@@ -183,6 +184,8 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
         ckpt_dir = ckpt_dir / f"plus-{extra_train}"
     if extra_bonafide:
         ckpt_dir = ckpt_dir / f"plus-{extra_bonafide}-bonafide"
+    if channel_aug:
+        ckpt_dir = ckpt_dir / "channel"
     if not use_dp:
         ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -195,7 +198,7 @@ def unwrap(model):
 def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
               is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND,
               arch=DEFAULT_ARCH, batch_size=None, scheduler=None, rawboost=None,
-              extra_train=None, extra_bonafide=None):
+              extra_train=None, extra_bonafide=None, channel_aug=False):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -229,6 +232,9 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         # Real speech added as bona fide, e.g. "commonvoice". Provenance, and
         # calibrate.py reads it to refuse calibrating on the clips trained on.
         "extra_bonafide": extra_bonafide,
+        # Training-time channel augmentation (channel_aug.py, Finding 16).
+        # Provenance only, like rawboost.
+        "channel_aug": channel_aug,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
         # Restored on resume so a cosine schedule survives a job hitting its
@@ -455,6 +461,14 @@ def main():
                              "Finding 11); calibrate it on peoples_speech. Selection "
                              "still uses the same dev set. "
                              "Checkpoints go to <dir>/plus-<name>-bonafide/.")
+    parser.add_argument("--channel-aug", action="store_true",
+                        help="Pass every training clip, real and fake alike, through a "
+                             "random recording channel: room reverb, MUSAN noise or "
+                             "music, MP3/Opus/phone band (channel_aug.py; fetch with "
+                             "hpc/get_channel_aug.slurm, found via $CHANNEL_AUG_ROOT). "
+                             "RESULTS.md Finding 16: so that noise says nothing about "
+                             "the label. Runs after --rawboost. Checkpoints go to "
+                             "<dir>/channel/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
     parser.add_argument("--batch-size", type=int, default=None,
@@ -512,6 +526,11 @@ def main():
           f"cosine floor {recipe['lr_min'] or 'none (constant lr)'}")
 
     augment = RawBoost(args.rawboost) if args.rawboost else None
+    if args.channel_aug:
+        root = os.getenv("CHANNEL_AUG_ROOT")
+        if not root:
+            raise SystemExit("ERROR: --channel-aug needs $CHANNEL_AUG_ROOT (hpc/env.sh sets it).")
+        augment = ChannelAug(root, before=augment)
     print(f"Augmentation: {augment or 'none'}")
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
                                    transform_pipeline, augment=augment)
@@ -588,7 +607,7 @@ def main():
         )
 
     paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost, args.extra_train,
-                           args.extra_bonafide)
+                           args.extra_bonafide, args.channel_aug)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
@@ -629,6 +648,12 @@ def main():
                 f"ERROR: {LAST_CKPT} was trained with extra_bonafide="
                 f"{ckpt.get('extra_bonafide')}, but this run has extra_bonafide="
                 f"{args.extra_bonafide}. Check $CKPT_ROOT, currently {CKPT_DIR}."
+            )
+        if bool(ckpt.get("channel_aug")) != args.channel_aug:
+            raise SystemExit(
+                f"ERROR: {LAST_CKPT} was trained with channel_aug="
+                f"{bool(ckpt.get('channel_aug'))}, but this run has channel_aug="
+                f"{args.channel_aug}. Check $CKPT_ROOT, currently {CKPT_DIR}."
             )
         unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
@@ -720,6 +745,7 @@ def main():
             "rawboost": args.rawboost,
             "extra_train": args.extra_train,
             "extra_bonafide": args.extra_bonafide,
+            "channel_aug": args.channel_aug,
             "lr": optimizer.param_groups[0]["lr"],
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
@@ -727,7 +753,7 @@ def main():
                   metrics=metrics, best_eer=best_eer, frontend=frontend,
                   arch=args.arch, batch_size=batch_size, scheduler=scheduler,
                   rawboost=args.rawboost, extra_train=args.extra_train,
-                  extra_bonafide=args.extra_bonafide)
+                  extra_bonafide=args.extra_bonafide, channel_aug=args.channel_aug)
         if scheduler is not None:
             scheduler.step()
 

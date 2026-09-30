@@ -79,6 +79,10 @@ export PEOPLES_SPEECH_ROOT="$SCRATCH_DIR/peoples_speech"
 # the clean-audio threshold (Finding 15).
 export LIBRISPEECH_ROOT="$SCRATCH_DIR/librispeech"
 
+# MUSAN noise + music and the OpenSLR RIRs (~12 GB, hpc/get_channel_aug.slurm).
+# TRAINING-ONLY noise for --channel-aug (Finding 16); in no test set.
+export CHANNEL_AUG_ROOT="$SCRATCH_DIR/channel_aug"
+
 # Hugging Face cache: XLS-R's 1.27 GB of pretrained weights for ssl-aasist,
 # downloaded on first use. Project storage, not the 20 GB home quota.
 export HF_HOME="$PROJECT_DIR/.hf-cache"

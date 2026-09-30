@@ -1381,6 +1381,81 @@ failed on. This finding has spent the cheap options.
 threshold, with Finding 13's caveat. The remaining route to fewer clean-fake
 misses is a model change (Finding 13, option 2).
 
+## Finding 16 — training every clip through a random recording channel (pre-registered)
+
+Written 30 September 2026, before any job is submitted. Nothing below may be
+changed after In-the-Wild is scored; the result is reported whatever it is.
+Option 2 from Finding 13: a model change.
+
+**Question.** If every training clip, real and fake alike, passes through the
+same random recording channel — room reverb, background noise or music, a
+lossy codec — does the model stop scoring clean audio far below noisy real
+speech, so that one threshold catches clean fakes without flagging more
+real-world speakers?
+
+**Why this, after Findings 10, 11 and 14.** Every training clip so far, real
+and fake, has been clean studio or audiobook audio, so nothing taught the
+model that noise is unrelated to the label. Findings 10–11 added noisy clips
+to one class only (real), and the model learned those sources' conditions as
+a sign of realness. Finding 14 degraded inputs at scoring time only, and
+blurred the artefacts that weights trained on clean fakes look for. Here the
+channel is drawn from one distribution for every clip whatever its label, so
+it carries no information about the label, and the fakes the model learns
+from are degraded as often as the real clips.
+
+**The one change.** Finding 9's run plus `--channel-aug` (`channel_aug.py`),
+applied after RawBoost to every training clip: reverb with p = 0.3 (OpenSLR 28
+simulated and real room impulse responses), MUSAN noise or music with p = 0.5
+at 5–25 dB SNR, and with p = 0.5 one of MP3, Opus (random quality) or 8 kHz
+phone band. About 17.5% of clips pass untouched. MUSAN's speech subset is not
+used. Everything else is held fixed: SSL-AASIST, RawBoost 5,
+`--extra-train speechfake`, 4 epochs, batch 14, constant lr 1e-6, class
+weights from the data, selection by LA dev + SpeechFake dev (both left clean),
+`best.pth` by dev EER. Neither MUSAN nor the RIRs appear in any test or
+calibration set. Checkpoints: `.../plus-speechfake/channel/nodp/`.
+
+**Calibration, fixed now:** Finding 12's procedure unchanged — `calibrate.py
+--calibration-set peoples_speech --target-frr 0.01`, n 10,000, seed 42.
+
+**Stage A — without touching any test set.** Score SpeechFake **dev**
+(English) at the calibrated threshold. The control is the served model at its
+threshold, measured in Finding 14: 25.49% fakes passed, EER 4.87%, People's
+Speech check half 0.60%.
+
+- A1, SpeechFake dev fakes passed: must be ≤ **15.49%** (the control minus 10
+  points, the same bar as Finding 15).
+- A2, People's Speech check half real flagged: must be ≤ 2%.
+- A3, SpeechFake dev EER: reported.
+
+Stage B runs only if A1 and A2 both hold.
+
+**Stage B — once.** Score the calibrated checkpoint on In-the-Wild, LA eval
+and SpeechFake **test** (English). Serve it in place of Finding 12's model
+only if **all** hold (the Finding 14/15 criteria):
+
+- In-the-Wild EER < 5% (today 2.65%);
+- In-the-Wild real flagged ≤ 2% (today 0.62%);
+- In-the-Wild fakes passed ≤ 5% (today 3.61%);
+- SpeechFake test fakes passed ≤ 20% (today 32.72%).
+
+LA eval is reported, not a criterion (its real speech is VCTK, in training).
+
+**Outcomes, named now:**
+
+- **Served:** Stage B's four criteria met.
+- **Improved, not served:** Stage A passed, a Stage B criterion failed.
+- **No effect:** A1 > 15.49%; Stage B is not run and In-the-Wild is not read.
+- **Broken:** A2 > 2%, or dev EER at selection worse than 6% (Finding 9: 3.01%).
+
+**Expected** (written down so it can be wrong): A1 around 15%, SpeechFake dev
+EER a little worse than 4.87%, In-the-Wild EER between 2% and 4%.
+
+**Limits, stated now.** SpeechFake dev and test hold the 26 systems trained
+on, so both are optimistic about unseen clean fakes. The noise, codecs and
+rooms are chosen from what the literature uses, not tuned; if this fails, the
+next variant has to be argued for, not tried as a quick change of p or SNR.
+In-the-Wild has never scored these weights.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
