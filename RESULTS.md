@@ -1326,6 +1326,17 @@ separate it at all), ParlerTTS 74.9%, WaveGlow 63.2%, DiffGANTTS 59.2%,
 FastSpeech2 35.8%, CosyVoice 30.3%, HifiGAN 18.0%. The other 19 of the 26
 systems pass at under 12%.
 
+### Amendment (30 September, before Stage B)
+
+The project owner chose to run Stage B despite the missed bar. Recorded here
+before any Stage B job is submitted. Reasons: the 10-point bar was a round
+number chosen without a principled basis; the improvement was 9.55 points;
+both real-speech checks passed; and Stage A read no test set. **Nothing else
+changes:** the routed checkpoint is the one Stage A fitted, Stage B scores it
+once, and its serving criteria above are applied as written. Any writeup
+quoting Finding 15 must say that Stage A's go/no-go bar was missed and
+overridden.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
