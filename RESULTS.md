@@ -1301,6 +1301,31 @@ LA eval is reported, not a criterion: its real speech is VCTK, in training.
 fake sends it to the noisy route. If this is served, `/result` must say so.
 The same weights are scored on In-the-Wild a sixth time in Stage B.
 
+### Stage A result (30 September)
+
+Jobs 60594253 (`calibrate_clean.py`) and 60594254 (SpeechFake dev, English),
+L40S, commit `fca641f`.
+
+| | Fitted / measured |
+| --- | --- |
+| Cutoff | 30.6 dB (balanced accuracy 87.5% on the fit halves) |
+| Routed clean, check halves | LibriSpeech 67.6%, People's Speech 10.3% |
+| Clean threshold | log-odds **+4.55** (noisy route stays +7.98) |
+| LibriSpeech check half, real flagged | 1.23% routed (0.00% single threshold) ✓ ≤ 2% |
+| People's Speech check half, real flagged | 0.71% routed (0.60% single) ✓ ≤ 2% |
+| **SpeechFake dev fakes passed** | **15.94%** routed (25.49% single) ✗ needed ≤ 15.49% |
+| SpeechFake dev routed clean | 72.4% of real, 79.5% of fake clips |
+
+**Outcome: no-go, by 0.45 points.** Routing cut clean-fake misses by 9.55
+points, from 25.49% to 15.94%, and both real-speech checks passed with room to
+spare. But the bar was 10 points, fixed in advance, and it was missed. Stage B
+has not been run.
+
+Where the remaining misses are: BigVGAN 100% (EER 51.5%, the model cannot
+separate it at all), ParlerTTS 74.9%, WaveGlow 63.2%, DiffGANTTS 59.2%,
+FastSpeech2 35.8%, CosyVoice 30.3%. Twenty of the 26 systems now pass at
+under 12%; at the single threshold, 16 did.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
