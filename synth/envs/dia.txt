@@ -1,0 +1,4 @@
+# python: 3.11
+torch
+transformers>=4.56
+descript-audio-codec

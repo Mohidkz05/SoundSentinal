@@ -1,0 +1,5 @@
+# python: 3.11
+torch
+transformers
+sentencepiece
+huggingface_hub

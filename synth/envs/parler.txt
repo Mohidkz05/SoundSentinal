@@ -1,0 +1,2 @@
+# python: 3.11
+parler-tts @ git+https://github.com/huggingface/parler-tts.git

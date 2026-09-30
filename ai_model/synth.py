@@ -55,7 +55,10 @@ FAMILIES = {
                    ("chatterbox-turbo", "ResembleAI/chatterbox-turbo", "MIT", "clone")],
     "dia":       [("dia-1.6b", "nari-labs/Dia-1.6B-0626", "Apache-2.0", "clone")],
     "zonos":     [("zonos-transformer", "Zyphra/Zonos-v0.1-transformer", "Apache-2.0", "clone")],
-    "vibevoice": [("vibevoice-1.5b", "microsoft/VibeVoice-1.5B", "MIT", "clone")],
+    # The 1.5B voice-cloning model's code was withdrawn by Microsoft after
+    # misuse (their README, 5 Sep 2025); the supported streaming model is used.
+    "vibevoice": [("vibevoice-realtime-0.5b", "microsoft/VibeVoice-Realtime-0.5B", "MIT",
+                   "preset")],
     "parler":    [("parler-mini-v1", "parler-tts/parler-tts-mini-v1", "Apache-2.0", "preset")],
     "kyutai":    [("kyutai-tts-1.6b", "kyutai/tts-1.6b-en_fr", "CC-BY-4.0", "preset")],
     "kitten":    [("kitten-nano-0.2", "KittenML/kitten-tts-nano-0.2", "Apache-2.0", "preset")],
@@ -68,7 +71,8 @@ FAMILIES = {
                   ("qwen3-tts-1.7b", "Qwen/Qwen3-TTS-12Hz-1.7B-Base", "Apache-2.0", "clone")],
     "voxcpm":    [("voxcpm-0.5b", "openbmb/VoxCPM-0.5B", "Apache-2.0", "clone"),
                   ("voxcpm-1.5", "openbmb/VoxCPM1.5", "Apache-2.0", "clone")],
-    "marvis":    [("marvis-250m", "Marvis-AI/marvis-tts-250m-v0.1", "Apache-2.0", "clone")],
+    "marvis":    [("marvis-250m", "Marvis-AI/marvis-tts-250m-v0.1-transformers", "Apache-2.0",
+                   "clone")],
     "maya1":     [("maya1", "maya-research/maya1", "Apache-2.0", "preset")],
     "soprano":   [("soprano-80m", "ekwek/Soprano-80M", "Apache-2.0", "preset")],
 }

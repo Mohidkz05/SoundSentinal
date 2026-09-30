@@ -1,0 +1,2 @@
+# python: 3.11
+vibevoice @ git+https://github.com/microsoft/VibeVoice.git
