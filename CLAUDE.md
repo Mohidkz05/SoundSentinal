@@ -52,7 +52,14 @@ Read this first; `RESULTS.md` has every number and its job ID.
   worse on SpeechFake dev (25.5% → 29.5–52.3%); Stage B never ran, nothing
   changed in serving. The degradation code stays (`model.degrade_waveform`,
   `calibrate.py --degradation`, `input_degradation` in checkpoints) but every
-  served checkpoint uses "none". What's left is retraining or two thresholds.
+  served checkpoint uses "none".
+- **A clean-audio threshold route was tried and not served (Finding 15, 30
+  September).** `calibrate_clean.py` + `model.cleanliness_db` (loudness range)
+  cut SpeechFake test misses 32.7% → 23.5% and LA 46% → 29%, but 61% of
+  In-the-Wild's real clips counted as "clean" and real flagged rose 0.62% →
+  4.00%. Stage A missed its bar (9.55 vs 10 points) and was overridden by the
+  owner, recorded in RESULTS.md. Serving is unchanged. Cheap options are
+  exhausted; the remaining lever is retraining.
 - **Served locally since 29 September:** `ai_model/checkpoints/best.pth` is
   the Finding 9 model's `best_calibrated_peoples_speech_1pct.pth` (1.26 GB).
   `app.py` answers in ~0.5 s per clip on this laptop's CPU. Beside it:

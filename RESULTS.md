@@ -1254,7 +1254,10 @@ report per-condition readings (option 3). Both are larger pieces of work. The
 served system stays as Finding 12 left it, with Finding 13's caveat on
 `/result`.
 
-## Finding 15 — a second threshold for clean recordings (pre-registered, not yet run)
+## Finding 15 — a clean-audio threshold catches more fakes but accuses more real speakers
+
+The pre-registration below is unchanged; Stage A, the amendment and Stage B
+follow it.
 
 Written 30 September 2026, before anything is submitted. Option 3 from
 Finding 13. No training: the Finding 9 weights are unchanged.
@@ -1336,6 +1339,47 @@ changes:** the routed checkpoint is the one Stage A fitted, Stage B scores it
 once, and its serving criteria above are applied as written. Any writeup
 quoting Finding 15 must say that Stage A's go/no-go bar was missed and
 overridden.
+
+### Stage B result (30 September)
+
+Jobs 60598372 (In-the-Wild), 60598373 (LA eval), 60598374 (SpeechFake test,
+English), L40S, commit `573ff5d`, the routed checkpoint Stage A fitted.
+
+| | Single threshold (served) | Routed | Criterion |
+| --- | --- | --- | --- |
+| In-the-Wild real flagged | 0.62% | **4.00%** | ≤ 2% ✗ |
+| In-the-Wild fakes passed | 3.61% | 2.41% | ≤ 5% ✓ |
+| SpeechFake test fakes passed | 32.72% | **23.53%** | ≤ 20% ✗ |
+| LA eval fakes passed (reported) | 46.25% | 28.68% | — |
+| LA eval real flagged (reported) | 0.00% | 0.01% | — |
+| Routed clean: In-the-Wild real / fake | — | 60.7% / 79.4% | — |
+| Routed clean: SpeechFake test real / fake | — | 71.9% / 77.8% | — |
+| Routed clean: LA eval real / fake | — | 99.4% / 81.7% | — |
+
+**Outcome: not served.** Two of three criteria fail. In-the-Wild's EER is
+unchanged at 2.65% (same scores); only the operating points moved.
+
+**Why: the cleanliness measure does not measure what matters.** It was meant to
+pick out studio-clean audio, and on the calibration sets it roughly did
+(LibriSpeech 67.6% routed clean, People's Speech 10.3%). But 60.7% of
+In-the-Wild's genuine clips — interviews, speeches, broadcasts — also have
+wide loudness range, because real speech has pauses whatever the channel.
+They were held to the clean threshold (+4.55 instead of +7.98) and six times
+as many were flagged. A loudness-range statistic separates *quiet pauses* from
+*noisy pauses*; the model's scale separates something else, and People's
+Speech was not representative of In-the-Wild in this respect (10% routed clean
+against 61%).
+
+**What it does show:** a second, stricter threshold does catch clean fakes —
+SpeechFake test misses fell 9.2 points and LA's 17.6 — so the idea is sound
+if the route can be chosen by the property the model actually responds to.
+Picking a better routing statistic is now a search, and every candidate would
+have to be judged without In-the-Wild, whose real clips were the ones it
+failed on. This finding has spent the cheap options.
+
+**Where that leaves the served system:** unchanged, Finding 12's single
+threshold, with Finding 13's caveat. The remaining route to fewer clean-fake
+misses is a model change (Finding 13, option 2).
 
 ## What has not been measured
 
