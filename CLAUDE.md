@@ -1,82 +1,111 @@
 # SoundSentinal
 
 Deepfake audio detector. A Next.js frontend and a Flask + PyTorch backend that
-classifies an uploaded audio clip as real or spoofed. The model is trained with
-differential privacy (Opacus) on the ASVspoof2019 corpus.
+scores an uploaded audio clip against a calibrated threshold. The served model
+is SSL-AASIST trained without differential privacy; DP (Opacus) was measured
+on the CNN as a research result and every architecture stays DP-compatible
+(see `APPROACH.md`).
 
 University project. Work is on `main` — see "Branching" below.
 
-## Where things stand (updated 29 September 2026)
+## Where things stand (updated 30 September 2026)
 
-Read this first; `RESULTS.md` has every number and its job ID.
+Read this first. `RESULTS.md` has every number with its job ID; its
+"Summary → The served system" section is the one-screen version.
 
-- **Goal:** In-the-Wild EER **under 5%**, without ever training, selecting or
-  calibrating on In-the-Wild. **Reached on 26 September: 2.65%** (Finding 9).
-- **Best model: SSL-AASIST + RawBoost trained on LA + SpeechFake** (XLS-R 300M
-  front-end, `--extra-train speechfake`, 4 epochs). In-the-Wild 2.65% EER, LA
-  eval 2.12% / 0.0649 (not a clean test — SpeechFake contains VCTK). Checkpoint
-  on M3 **scratch**:
-  `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/best.pth`
-  (epoch 4, 1.2 GB). Score it with
-  `sbatch --gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints hpc/evaluate.slurm --dataset itw --arch ssl-aasist --rawboost 5 --extra-train speechfake`.
-- **Threshold: still the open problem (28 September).** The dev-EER threshold
-  flags 46% of genuine In-the-Wild clips. Re-fitting it to flag 5% of unseen
-  real speech gave 15.6% (Common Voice, both splits, `best_calibrated.pth`),
-  19.3% (VoxPopuli, `best_calibrated_voxpopuli.pth`) and 8.04% (Common Voice
-  test split, `best_calibrated_commonvoice_test.pth`, the Finding 10 control).
-- **Retraining with Common Voice as bona fide made it worse** (Finding 10):
-  In-the-Wild EER held at 2.71%, but its Common Voice-test threshold flags
-  **53.7%** of real In-the-Wild clips. Common Voice was in training, so its
-  scores collapsed into a narrow band and calibrating on it failed.
-  Checkpoint: `.../plus-speechfake/plus-commonvoice-bonafide/nodp/best.pth`.
-- **Finding 11 ran (29 September): no effect.** Training on Common Voice +
-  VoxPopuli as bona fide, with the threshold set on held-out People's Speech,
-  flags **8.90%** of real In-the-Wild clips vs **8.21%** for the Finding 9
-  model calibrated the same way; In-the-Wild EER got worse (3.55%). The Finding
-  9 model is still best. Its People's Speech threshold (P = 0.9748,
-  `.../plus-speechfake/nodp/best_calibrated_peoples_speech.pth`) matches its
-  Common Voice-test one to 0.07 log-odds. `calibrate.py` refuses to fit a
-  threshold on any source the checkpoint trained on.
-- **Threshold settled (Finding 12, 29 September).** A 1% People's Speech
-  target (P = 0.999658) flags **0.62%** of real In-the-Wild clips and passes
-  **3.61%** of fakes (98.27% accuracy). The cost: **46% of LA eval's clean
-  studio fakes pass.** That was the last threshold tried on this model — no
-  more tuning it.
-- **Clean modern fakes slip through too (Finding 13, 30 September).** On
-  SpeechFake's English test split — 26 systems the model *trained on* — 32.7%
-  of fakes pass the served threshold, though 20 of the 26 have EER < 1.2%.
-  Clean audio sits ~14 log-odds lower on this model's scale than the noisy
-  real speech the threshold was set on. `/result` says so.
-- **Degrading inputs before scoring does not fix it (Finding 14, 30
-  September).** Opus, phone-band and noise channels all made clean-fake misses
-  worse on SpeechFake dev (25.5% → 29.5–52.3%); Stage B never ran, nothing
-  changed in serving. The degradation code stays (`model.degrade_waveform`,
-  `calibrate.py --degradation`, `input_degradation` in checkpoints) but every
-  served checkpoint uses "none".
-- **A clean-audio threshold route was tried and not served (Finding 15, 30
-  September).** `calibrate_clean.py` + `model.cleanliness_db` (loudness range)
-  cut SpeechFake test misses 32.7% → 23.5% and LA 46% → 29%, but 61% of
-  In-the-Wild's real clips counted as "clean" and real flagged rose 0.62% →
-  4.00%. Stage A missed its bar (9.55 vs 10 points) and was overridden by the
-  owner, recorded in RESULTS.md. Serving is unchanged. Cheap options are
-  exhausted; the remaining lever is retraining.
-- **Served locally since 29 September:** `ai_model/checkpoints/best.pth` is
-  the Finding 9 model's `best_calibrated_peoples_speech_1pct.pth` (1.26 GB).
-  `app.py` answers in ~0.5 s per clip on this laptop's CPU. Beside it:
-  `best_5pct.pth` (Finding 11 control) and `aasist_best.pth` (old AASIST).
-  Beside it too: `best.measured-itw.json`, `-la.json` and `-speechfake.json`
-  (evaluate.py's reports, scp'd from M3), which `/result` shows as "How often
-  it is wrong". `/result` now draws the score in log-odds with an uncertain
-  band. Still to do: the PR merging `ssl-aasist` into `main`.
-- **Runner-up:** SSL-AASIST + RawBoost on LA only, 11.21% on In-the-Wild
-  (Finding 8), `$CKPT_ROOT/ssl-aasist/rawboost5/nodp/best.pth` on project storage.
-- **Storage on M3:** project quota (500 GB) is **full** of Finding 8's
-  per-epoch checkpoints — new runs go to scratch (3 TB) via
-  `--export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints`. SpeechFake's
-  zips (~290 GB, `$SPEECHFAKE_ROOT/zips/`) are now safe to delete: training
-  read the whole corpus four times without errors.
-- **Branch:** all of this is on `main` (fast-forwarded from `ssl-aasist` on
-  30 September 2026, no PR).
+**State of play: the model work is done unless someone chooses to retrain.**
+The last five findings (11–15) were all about one weakness, and every cheap
+fix for it has been tried. The natural next step is the project write-up.
+
+### The served system
+
+- **Model:** SSL-AASIST (XLS-R 300M front-end + AASIST back-end) + RawBoost,
+  trained on ASVspoof2019 LA + SpeechFake, 4 epochs (Finding 9). Weights on M3
+  scratch: `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/best.pth`.
+- **Threshold:** P(spoof) = 0.999658, log-odds **+7.98**, set so 1% of held-out
+  People's Speech real clips are flagged (Finding 12). File:
+  `.../plus-speechfake/nodp/best_calibrated_peoples_speech_1pct.pth`. It is the
+  **last threshold for these weights** — do not fit another; the pre-registered
+  findings say so.
+- **Measured error rates at that threshold** (never trained, selected or
+  calibrated on any of these):
+
+  | Test set | EER | Real flagged | Fakes missed |
+  | --- | --- | --- | --- |
+  | In-the-Wild (real-world) | 2.65% | 0.62% | 3.61% |
+  | SpeechFake test, English (clean modern TTS, seen systems) | 6.26% | 0.01% | 32.72% |
+  | ASVspoof2019 LA eval (clean studio, 2019-era) | 2.12% | 0.00% | 46.25% |
+
+- **The one open problem: clean synthetic speech.** Clean audio (real or fake)
+  scores ~14 log-odds lower on this model than noisy real speech, and the
+  threshold is set for the latter (Finding 13). The model *ranks* clean fakes
+  well — it is the single threshold that misses them. `/result` states this.
+
+### What was tried for it, and failed — don't repeat without a new idea
+
+| Finding | Idea | Result |
+| --- | --- | --- |
+| 10 | Train with Common Voice as real speech | Threshold broke: 53.7% of ITW real flagged |
+| 11 | Train with Common Voice + VoxPopuli as real, calibrate on People's Speech | No effect (8.90% vs 8.21%), ranking worse |
+| 12 | Stricter 1% target | Adopted: ITW 0.62% / 3.61%, but clean fakes pass |
+| 14 | Degrade every input (Opus / 8 kHz / noise) before scoring | All worse on clean fakes; not served |
+| 15 | Second threshold for "clean" recordings (loudness-range cutoff) | Clean-fake misses fell (SF 32.7%→23.5%, LA 46%→29%) but 61% of ITW real routed "clean", real flagged 0.62%→4.00%; not served. Stage A's bar was missed and overridden by the owner — disclosed in RESULTS.md |
+
+**If continuing:** the remaining lever is retraining (≈12–13 h per run on an
+H100) so that clean fakes and noisy real speech share one scale; or a better
+"is this clean?" statistic for Finding 15's routing, judged without
+In-the-Wild. Every new experiment has been **pre-registered in RESULTS.md
+before submission** — outcome categories and serving criteria written first,
+In-the-Wild scored once. Keep doing that; the owner may override a bar, but
+the override is written down before the next job runs.
+
+### Running it locally
+
+`ai_model/checkpoints/` (gitignored) must hold, all copied from M3's
+`.../plus-speechfake/nodp/`:
+
+- `best.pth` ← `best_calibrated_peoples_speech_1pct.pth` (1.26 GB, ~5 min scp)
+- `best.measured-itw.json` ← `eval_itw_20260929-120334.json`
+- `best.measured-la.json` ← `eval_eval_20260929-120817.json`
+- `best.measured-speechfake.json` ← `eval_speechfake-en_20260930-125040.json`
+
+Also there locally: `best_5pct.pth` (Finding 11 control) and `aasist_best.pth`
+(the old AASIST). Without the three JSONs, `/result` says no error rates were
+measured; `app.py` also ignores any JSON measured at a different threshold or
+input degradation. Then `cd ai_model && ../venv/bin/python app.py` and
+`npm run dev`. ~0.5 s per prediction on this laptop's CPU.
+
+### How the app presents a reading (changed 29 September)
+
+`/result` draws the model's **score in log-odds**, not a percentage, from −11.25
+to +13.75, with the threshold (+8.0) marked and four bands placed around it
+(Clear / Uncertain / Flagged / Strong). The Uncertain band starts at the 95th
+percentile of held-out People's Speech scores (read from the checkpoint). A
+"How often it is wrong" section shows the three rows above. Why: at P =
+0.99966 a percentage scale put every high reading on the last pixel and
+headlined real clips "Very likely AI generated". Details in DESIGN.md.
+
+### M3 facts that bite
+
+- Project quota (500 GB) is **full**; new runs go to scratch via
+  `--export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints`. Score SSL
+  models with `--gres=gpu:L40S:1`.
+- Data on scratch: SpeechFake (`$SPEECHFAKE_ROOT`; its ~290 GB `zips/` can be
+  deleted), In-the-Wild, People's Speech, VoxPopuli, LibriSpeech test-clean
+  (`$LIBRISPEECH_ROOT`, calibration only, speaker-disjoint from training).
+- M3's checkout is on `main`; `git pull` there before submitting.
+- Inside `ssh m3 "..."`, `~` expands locally — use `$HOME` in single quotes.
+- Locally, never `pkill -f <pattern>` from a Bash command containing that
+  pattern: it matches its own shell and kills the command (exit 144).
+
+### Branch and housekeeping
+
+Everything is on `main` (fast-forwarded from `ssl-aasist` on 30 September, no
+PR). The `ssl-aasist`, `rawboost` and `asvspoof5` branches are fully merged and
+can be deleted from GitHub. A collaborator invite went to `Farhan3135` (write
+access) on 29 September. A detached tmux session `claude-side` may be running
+`claude remote-control` for a second chat; stop it with
+`tmux kill-session -t claude-side`.
 
 ## Layout
 
@@ -87,6 +116,7 @@ ai_model/
                          build_transform(frontend) picks log-Mel, LFCC or raw;
                          build_model(arch) picks the CNN or AASIST. Both
                          choices are stored in the checkpoint and read back.
+                         Also degrade_waveform (F14) and cleanliness_db (F15).
   aasist.py              AASIST, ported from the official implementation with
                          BatchNorm swapped for GroupNorm. Its header lists nine
                          deviations from upstream; read them before editing.
@@ -100,21 +130,30 @@ ai_model/
                          shards) and the Findings 9-10 calibration set.
   peoples_speech.py      Adapter: People's Speech, CALIBRATION ONLY (Finding
                          11). Drops recordings named after ITW speakers.
+  librispeech.py         Adapter: LibriSpeech test-clean, CALIBRATION ONLY
+                         (Finding 15). `check` verifies speaker-disjointness.
   calibrate.py           Sets a checkpoint's threshold from real speech.
                          Refuses any source the checkpoint trained on.
+                         `--degradation` fits under an input channel (F14).
+  calibrate_clean.py     Adds a clean-audio threshold route (Finding 15; tried,
+                         not served).
   rawboost.py            RawBoost waveform augmentation, TRAINING ONLY
                          (`--rawboost N`). Never imported by app.py or
                          evaluate.py. Bit-identical to upstream.
   evaluate.py            Scores a checkpoint on the eval partition: EER,
-                         min t-DCF, per-attack breakdown, JSON out.
-                         `--dataset itw` scores In-the-Wild instead.
+                         min t-DCF, per-attack EER and pass rate at the served
+                         threshold, JSON out. `--dataset itw` / `speechfake`
+                         (`--partition dev` for its dev split). Applies the
+                         checkpoint's input degradation and routing.
   in_the_wild.py         Adapter for In-the-Wild (Müller et al.) — the
                          generalisation test set. EVALUATION ONLY; read its
                          header before using it for anything else.
   tdcf.py                min t-DCF, ASVspoof2019's primary metric.
   summarise_results.py   Tabulates evaluate.py's JSON files.
   train_dp_avspoof.py    DP training loop (Opacus), dev-set eval, checkpointing.
-  app.py                 Flask server, POST /predict.
+  app.py                 Flask server, POST /predict. Returns spoof_score
+                         (log-odds), threshold_score, uncertain_band and the
+                         measured error rates beside the checkpoint.
   verify_setup.py        Smoke test for the model/serving contract.
   test_api.py            Sends a sample .flac to a running server.
   LA_T_*.flac            Two sample clips (one bonafide, one spoof).
@@ -353,45 +392,19 @@ was untracked (the file may still be on disk locally, and is now covered by the
 
 Be honest about these rather than assuming they work:
 
-1. **Models are trained and measured — see `RESULTS.md`.** Four runs exist on
-   M3 (CNN log-Mel non-private, CNN LFCC non-private, CNN DP at ε=0.48, and
-   AASIST non-private), scored on the eval partition with EER and min t-DCF.
-   Best result is **AASIST at 3.17% EER / 0.0909 min t-DCF** (`best.pth`,
-   epoch 42). That beats every CNN run (best 9.60% / 0.2124) and both official
-   GMM baselines, but is about 3.3× off the paper's 0.83%, probably partly
-   because of the GroupNorm swap. **AASIST's `best.pth` was copied to
-   `ai_model/checkpoints/best.pth` on 23 September 2026**, so `app.py` serves
-   it locally (gitignored — a fresh clone has no weights; `scp` it from M3's
-   `checkpoints/aasist/nodp/`). Use host `m3`, not `m3-dtn`: the latter's host
-   key isn't in `known_hosts` on this laptop. The corpus lives on M3, not here —
-   `data/` is still absent and `$ASVSPOOF_ROOT` unset locally.
-
-   **In-the-Wild is scored (21 September 2026): the models collapse.** 31,779
-   clips at `$ITW_ROOT` on M3. AASIST goes from 3.17% to **37.15% EER**; the
-   log-Mel CNN scores **58.54%**, i.e. worse than chance. At the dev-calibrated
-   thresholds both models flag most *real* clips as fake (AASIST 73%, CNN
-   97%), so the product as it stands would mislabel most genuine modern audio.
-   Finding 6 in `RESULTS.md`. It is an **evaluation set only** — never train,
-   select or calibrate on it, or every LA row in `APPROACH.md` stops being
-   comparable to published work and the CC-BY-SA licence reaches a model
-   artifact.
-
-   **Two fixes tried on 24 September 2026 did not help In-the-Wild** (Finding 7):
-   RawBoost gives the best LA result yet (1.74% EER / 0.0531 min t-DCF) but
-   48.78% on In-the-Wild; adding ASVspoof 5 train (`--extra-train asvspoof5`,
-   branch `asvspoof5`) scores 38.14%. The served `best.pth` is still the
-   unaugmented AASIST. The next candidate is an SSL front-end.
-
-   **SSL-AASIST + RawBoost is the first model that works on real-world
-   audio** (25 September 2026, Finding 8): 11.21% on In-the-Wild, 0.79% /
-   0.0143 on LA eval. **Adding SpeechFake to training brought In-the-Wild
-   to 2.65%** (26 September, Finding 9), but its dev-calibrated threshold
-   flags 46% of real-world clips — see "Where things stand" at the top.
-   `evaluate.py` now scores on log-odds, because these models saturate
-   float32 softmax (Finding 8).
-
-   **AASIST is trained (20–21 September 2026)**, non-private only. There is no
-   DP AASIST run yet, so the cost of privacy has only been measured on the CNN.
+1. **The history, in one paragraph** (numbers and job IDs in `RESULTS.md`).
+   CNNs (log-Mel, LFCC, DP) and AASIST were trained on LA in August and
+   September 2026; AASIST reached 3.17% on LA eval. In-the-Wild then showed
+   every one of them collapsing on real-world audio (AASIST 37.15%, Finding 6);
+   RawBoost and ASVspoof 5 did not help (Finding 7). An SSL front-end with
+   RawBoost did (11.21%, Finding 8), and adding SpeechFake reached **2.65%**
+   (Finding 9). Everything since has been about the threshold, not the ranking
+   — see "Where things stand" at the top. In-the-Wild is an **evaluation set
+   only**: never train, select or calibrate on it (licence and comparability,
+   see `in_the_wild.py`). `evaluate.py` scores on log-odds because these
+   models saturate float32 softmax. Use host `m3`, not `m3-dtn`, from this
+   laptop (host key). There is no DP AASIST or DP SSL run; the cost of privacy
+   is measured on the CNN only.
 2. **Model selection is known-broken.** `save_ckpt` picks `best.pth` by dev
    EER, and dev reuses the training attacks; measured, it selects a worse model
    than an earlier epoch. Finding 1 in `RESULTS.md`. AASIST suffers less —

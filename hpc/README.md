@@ -102,7 +102,17 @@ request needs no partition named.
 | `requirements-rest.txt` | Everything else, PyPI only. Split on purpose — see its header. |
 | `get_la.slurm` | ASVspoof2019 LA → `~/df37_scratch/data/LA`. Resumable. |
 | `train.slurm` | `verify_setup.py`, then training. Forwards its arguments. |
-| `evaluate.slurm` | Scores a checkpoint on the eval partition — the quotable number. |
+| `evaluate.slurm` | Scores a checkpoint on the eval partition — the quotable number. `--dataset itw` / `speechfake`. |
+| `sweep_epochs.slurm` | Scores every saved epoch of a run. |
+| `calibrate.slurm` | Sets a checkpoint's threshold from held-out real speech (`calibrate.py`). |
+| `calibrate_clean.slurm` | Adds a clean-audio threshold route (`calibrate_clean.py`, Finding 15). |
+| `get_speechfake.slurm`, `get_asvspoof5.slurm`, `get_in_the_wild.slurm` | Extra training / evaluation corpora → scratch. |
+| `get_voxpopuli.slurm`, `get_peoples_speech.slurm`, `get_librispeech.slurm` | Real-speech corpora for training (VoxPopuli) or calibration only (People's Speech, LibriSpeech). |
+
+Since 25 September the SSL runs live on **scratch**, not `~/df37`: submit with
+`--export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints`, because the
+project quota is full. The served model's files are listed in the root
+`CLAUDE.md`, "Where things stand".
 
 Two environment variables carry the layout into the Python, so no path is
 written down twice:
