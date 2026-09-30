@@ -75,6 +75,10 @@ export VOXPOPULI_ROOT="$SCRATCH_DIR/voxpopuli"
 # training (Finding 11).
 export PEOPLES_SPEECH_ROOT="$SCRATCH_DIR/peoples_speech"
 
+# LibriSpeech test-clean: clean read speech, CC BY 4.0. CALIBRATION only, for
+# the clean-audio threshold (Finding 15).
+export LIBRISPEECH_ROOT="$SCRATCH_DIR/librispeech"
+
 # Hugging Face cache: XLS-R's 1.27 GB of pretrained weights for ssl-aasist,
 # downloaded on first use. Project storage, not the 20 GB home quota.
 export HF_HOME="$PROJECT_DIR/.hf-cache"
