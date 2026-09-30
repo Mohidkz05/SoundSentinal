@@ -1,0 +1,4 @@
+# Every generator environment: what generate.py and jobs.py need.
+numpy
+pandas
+soundfile
