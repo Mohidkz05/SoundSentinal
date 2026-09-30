@@ -1456,6 +1456,26 @@ rooms are chosen from what the literature uses, not tuned; if this fails, the
 next variant has to be argued for, not tried as a quick change of p or SNR.
 In-the-Wild has never scored these weights.
 
+### Amendment (30 September, before training)
+
+Recorded after the noise was downloaded and before any training job ran.
+Nothing has been scored. The owner requires data that allows commercial use,
+so the augmentation's material is narrowed; nothing else in the
+pre-registration changes.
+
+- **Noise and music:** MUSAN licenses each file separately. Only files whose
+  own licence is public domain, CC BY or CC BY-SA are used (`channel_aug.py`,
+  `licence_classes`): 878 of 930 noise files and 609 of 660 music tracks.
+  Excluded: 32 CC BY-ND tracks, 12 whose licence the parser cannot read and
+  8 with no licence entry. Checked with `channel_aug.py check` on M3.
+- **Reverb:** the 60,000 simulated room impulse responses only (OpenSLR 28,
+  Apache 2.0). The package's real RIRs come from other databases under their
+  own terms and are not used.
+- **Resources:** 16 CPUs and 64 GB for the training job rather than 8 and
+  32 GB. The augmentation measured 89 ms per clip on M3, which 8 DataLoader
+  workers would only just keep ahead of the GPU. This changes speed, not the
+  model.
+
 ## Finding 17 — withdrawn before anything ran (MLAAD)
 
 Pre-registered on 30 September (commit `0f04aa5`) and withdrawn the same

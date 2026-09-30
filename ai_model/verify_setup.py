@@ -214,16 +214,28 @@ def main():
     from channel_aug import CODECS, ChannelAug, codec, reverb
     with tempfile.TemporaryDirectory() as tmp:
         rng = np.random.default_rng(0)
-        for sub, name, n in (("musan/noise/free-sound", "n.wav", 3 * SAMPLE_RATE),
-                             ("musan/music/fma", "m.wav", 8 * SAMPLE_RATE),
+        for sub, name, n in (("musan/noise/free-sound", "noise-free-sound-0000.wav", 3 * SAMPLE_RATE),
+                             ("musan/music/fma", "music-fma-0000.wav", 8 * SAMPLE_RATE),
+                             ("musan/music/fma", "music-fma-0001.wav", 8 * SAMPLE_RATE),
+                             ("musan/music/fma", "music-fma-0002.wav", 8 * SAMPLE_RATE),
                              ("RIRS_NOISES/simulated_rirs/smallroom/Room001", "r.wav", 4000),
                              ("RIRS_NOISES/real_rirs_isotropic_noises", "air_rir.wav", 4000),
                              ("RIRS_NOISES/real_rirs_isotropic_noises", "noise.wav", 4000)):
             (Path(tmp) / sub).mkdir(parents=True, exist_ok=True)
             sf.write(str(Path(tmp) / sub / name), 0.1 * rng.standard_normal(n), SAMPLE_RATE)
+        # Licences as MUSAN writes them: one file CC BY, one CC BY-NC-SA, one
+        # with no entry at all. Only the first may be used. free-sound's
+        # LICENSE names no files: one statement for the whole directory.
+        (Path(tmp) / "musan/music/fma/LICENSE").write_text(
+            "music-fma-0000\n\"A\" (by B)\nCC BY 4.0\n" + "=" * 20 + "\n"
+            "music-fma-0001\n\"C\" (by D)\nCC BY-NC-SA 3.0\n")
+        (Path(tmp) / "musan/noise/free-sound/LICENSE").write_text(
+            "All selected recordings were marked as in the Public Domain\n")
         aug = ChannelAug(tmp, before=RawBoost(5))
-        check("indexes noise and music, and only files named as RIRs",
-              len(aug.noises) == 2 and len(aug.rirs) == 2, f"{len(aug.noises)}, {len(aug.rirs)}")
+        used = sorted(Path(p).name for p, _ in aug.noises)
+        check("uses only commercially licensed noise and music",
+              used == ["music-fma-0000.wav", "noise-free-sound-0000.wav"], used)
+        check("uses only the simulated RIRs", len(aug.rirs) == 1, len(aug.rirs))
         np.random.seed(0)
         outs = [aug(waveform, sample_rate) for _ in range(20)]
         ok = all(o.shape[0] == 1 and o.shape[1] <= MAX_LEN and bool(torch.isfinite(o).all())
