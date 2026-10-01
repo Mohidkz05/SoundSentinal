@@ -41,8 +41,14 @@ if [ ! -f "$STAMP" ]; then
   rm -rf "$ENV"
   PYVER=$(sed -n 's/^# python: *//p' "$REQ"); PYVER=${PYVER:-3.11}
   uv venv --python "$PYVER" "$ENV"
-  UV_CACHE_DIR="$SCRATCH_DIR/.uv-cache" uv pip install --python "$ENV/bin/python" \
-    -r synth/envs/base.txt -r "$REQ"
+  export UV_CACHE_DIR="$SCRATCH_DIR/.uv-cache"
+  # Base first, so packages that import numpy in setup.py (pkuseg, for
+  # Chatterbox) can be built against it: list them on a "# no-build-isolation:"
+  # line in the family's requirements file.
+  uv pip install --python "$ENV/bin/python" -r synth/envs/base.txt setuptools wheel cython
+  NBI=$(sed -n 's/^# no-build-isolation: *//p' "$REQ")
+  uv pip install --python "$ENV/bin/python" -r synth/envs/base.txt -r "$REQ" \
+    $(for p in $NBI; do echo --no-build-isolation-package "$p"; done)
   touch "$STAMP"
 fi
 
