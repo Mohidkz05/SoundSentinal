@@ -1,28 +1,28 @@
 'use client';
 
-import React from 'react';
-import Link from 'next/link';
+import React, { useEffect, useState } from 'react';
 import Header from '../../components/header';
+import Footer from '../../components/footer';
 import { Button } from '../../components/ui/button';
 import { SpectralField } from '../../components/three/lazy';
 import { VerdictScale } from '../../components/ui/verdict-scale';
+import { SectionHead } from '../../components/ui/section-head';
+import { ErrorRates } from '../../components/ui/error-rates';
+import { Notice } from '../../components/ui/notice';
 
 /* The thesis, stated three ways. These mirror the three rules in DESIGN.md —
    if one of them stops being true of the product, it should come off this page
    rather than quietly become marketing. */
 const PRINCIPLES = [
   {
-    label: 'Reading',
     title: 'A score, not a verdict',
     body: 'The model returns a score. We show you that number, and the band where it is unsure, instead of stamping REAL or FAKE over a clip.',
   },
   {
-    label: 'Threshold',
     title: 'The cutoff is on screen',
     body: 'Every detector has a decision threshold. Ours is calibrated on held-out data and drawn on the scale, so you can see how close a reading sits to it.',
   },
   {
-    label: 'Uncertainty',
     title: 'The colour drains when we are unsure',
     body: 'The scale loses its saturation near the boundary. Where the model is least confident, the interface stops looking confident too.',
   },
@@ -36,7 +36,26 @@ const PRINCIPLES = [
 const FIELD_MASK =
   'radial-gradient(80% 92% at 50% 50%, #000 0%, #000 40%, transparent 78%)';
 
+/* The served model's measured error rates, fetched rather than written
+   down: a number on a home page is a claim, and this one is only allowed to be
+   the one the live checkpoint was measured at (see /api/model). */
+function useMeasured() {
+  const [state, setState] = useState({ status: 'loading', measured: [] });
+  useEffect(() => {
+    let live = true;
+    fetch('/api/model')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((d) => live && setState({ status: 'ready', measured: d.measured ?? [] }))
+      .catch(() => live && setState({ status: 'offline', measured: [] }));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return state;
+}
+
 export default function Home() {
+  const rates = useMeasured();
   return (
     /* `clip` rather than `hidden`: it stops the full-bleed field below from
        producing a horizontal scrollbar without creating a scroll container,
@@ -57,10 +76,8 @@ export default function Home() {
             heading resolves against the display font size and came out far
             narrower than the headline needs, breaking "not a verdict machine."
             across three lines. 44rem is the width that line wants at 68px. */}
-        <section className="shell relative isolate grid gap-y-12 pb-20 pt-16 sm:pt-24 lg:min-h-[36rem] lg:grid-cols-[minmax(0,44rem)_minmax(0,1fr)] lg:gap-x-12">
+        <section className="shell relative isolate grid gap-y-12 pb-[var(--space-section)] pt-[calc(var(--space-section)*0.9)] lg:min-h-[36rem] lg:grid-cols-[minmax(0,44rem)_minmax(0,1fr)] lg:gap-x-12">
           <div className="relative flex flex-col items-start gap-6">
-            <p className="tick-label">Audio authenticity analysis</p>
-
             <h1 className="text-display text-balance">
               An instrument,
               <br />
@@ -74,16 +91,12 @@ export default function Home() {
             </p>
 
             <div className="mt-2 flex flex-wrap items-center gap-3">
-              <Link href="/upload">
-                <Button variant="primary" size="lg">
-                  Analyse a clip
-                </Button>
-              </Link>
-              <Link href="/design">
-                <Button variant="quiet" size="lg">
-                  Design system
-                </Button>
-              </Link>
+              <Button href="/upload" variant="primary" size="lg">
+                Analyse a clip
+              </Button>
+              <Button href="#how-it-works" variant="quiet" size="lg">
+                How a reading works
+              </Button>
             </div>
 
             {/* Naming the field is the honest move: it stops being decoration
@@ -108,17 +121,24 @@ export default function Home() {
             The scale runs the full bleed, which is the honest way to show it:
             on a graduated scale width is resolution, so this is what it looks
             like at the size the result page actually gives it. */}
-        <section className="rule-full shell py-14">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2">
-            <h2 className="text-h2">How a reading is shown</h2>
-            <p className="tick-label">Illustration — not a result</p>
-          </div>
+        <section className="band">
+          <SectionHead
+            id="how-it-works"
+            title="How a reading is shown"
+            aside={<p className="tick-label">Illustration — not a result</p>}
+          >
+            <p>
+              Every clip gets a score. The scale below is the one a result is
+              read off: the score on the axis, the threshold drawn as a line,
+              the band where genuine speech sometimes reaches bracketed under it.
+            </p>
+          </SectionHead>
 
-          <div className="mt-10">
+          <div className="mt-[var(--space-head)]">
             <VerdictScale threshold={8} bandLow={2.5} height="h-16" />
           </div>
 
-          <div className="mt-10 grid gap-8 lg:grid-cols-3 lg:gap-14">
+          <div className="mt-[var(--space-head)] grid gap-[var(--space-group)] lg:grid-cols-3 lg:gap-14">
             <p className="text-small text-secondary">
               A neutral face and a coloured pointer, the way an instrument is
               built. The graduations say nothing on their own — fifty of them,
@@ -139,29 +159,58 @@ export default function Home() {
           </div>
         </section>
 
+        {/* Measured, not claimed ------------------------------------------
+            The trust signal competitors give as one "accuracy" figure. Here it
+            is the two mistakes separately, per test set, for the live model —
+            including the row that does not flatter it. */}
+        <section className="band">
+          <SectionHead title="Measured, not claimed">
+            <p>
+              How often the model being served right now is wrong, at the
+              threshold it is served at, on recordings it never trained on.
+              Two mistakes, counted separately: a real voice flagged is an
+              accusation, a fake let through is a miss.
+            </p>
+          </SectionHead>
+
+          <div className="mt-[var(--space-head)] min-h-[16rem]">
+            {rates.status === 'ready' && rates.measured.length > 0 ? (
+              <>
+                <ErrorRates measured={rates.measured} />
+                <Notice className="mt-[var(--space-group)]">
+                  Strong on real-world audio; weak on clean studio fakes. The
+                  threshold is set for noisy, compressed recordings, and a third
+                  or more of studio-clean synthetic speech passes it. If a clip
+                  sounds studio-clean, a low reading is not evidence it is real.
+                </Notice>
+              </>
+            ) : rates.status === 'loading' ? (
+              <p className="tick-label" aria-live="polite">Reading the model&apos;s measurements…</p>
+            ) : (
+              <Notice>
+                The model server isn&apos;t running, so its measured error rates
+                can&apos;t be shown. They are only ever shown for the model that
+                is actually live.
+              </Notice>
+            )}
+          </div>
+        </section>
+
         {/* Principles ----------------------------------------------------- */}
-        <section className="rule-full shell py-14">
-          <h2 className="text-h2 text-balance">Three rules the interface keeps</h2>
-          <div className="mt-10 grid gap-10 sm:grid-cols-3 sm:gap-12">
+        <section className="band">
+          <SectionHead title="Three rules the interface keeps" />
+          <div className="mt-[var(--space-head)] grid gap-[var(--space-group)] sm:grid-cols-3 sm:gap-12">
             {PRINCIPLES.map((p) => (
-              <article key={p.label} className="flex flex-col gap-3">
-                <p className="tick-label">{p.label}</p>
+              <article key={p.title} className="flex flex-col gap-[var(--space-stack)]">
                 <h3 className="text-h3 text-balance">{p.title}</h3>
                 <p className="text-small text-secondary">{p.body}</p>
               </article>
             ))}
           </div>
         </section>
-
-        {/* Honesty note --------------------------------------------------- */}
-        <section className="rule-full shell py-12">
-          <p className="max-w-[68ch] text-small text-muted">
-            SoundSentinal is a university research project. The detector is
-            still being trained and evaluated, so readings should be treated as
-            experimental — not as evidence.
-          </p>
-        </section>
       </main>
+
+      <Footer />
     </div>
   );
 }

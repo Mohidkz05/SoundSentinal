@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 
 /**
  * Buttons.
@@ -9,18 +10,29 @@ import React from 'react';
  * if two things are primary, neither is. `quiet` is the default for anything
  * that isn't the point of the screen.
  *
+ * Pass `href` and the same control renders as a link. Navigation must be a
+ * link (it opens in a new tab, it shows its destination); an action must be a
+ * button. Wrapping a <button> in an <a> — which every CTA here used to do — is
+ * both at once: invalid nesting, two tab stops, and a screen reader announcing
+ * a button that navigates.
+ *
  * Press feedback is a 1px downward nudge rather than a scale, so text stays on
  * the pixel grid and doesn't soften mid-press.
+ *
+ * Sizes are drawn at 36 / 44 / 52px, and every size has at least a 44px hit
+ * area (--hit): `sm` draws smaller than that and extends its target with an
+ * invisible ::after, so the look stays compact and the thumb still lands.
  */
 
 const base = [
-  'inline-flex items-center justify-center gap-2 select-none',
-  'font-sans font-semibold whitespace-nowrap',
+  'relative inline-flex items-center justify-center gap-2 select-none',
+  'font-sans font-semibold whitespace-nowrap no-underline',
   'rounded-[var(--radius-md)] border',
   'transition-[background-color,border-color,color,box-shadow,translate]',
   'duration-[var(--duration-fast)] ease-[var(--ease-instrument)]',
   'active:translate-y-px',
   'disabled:pointer-events-none disabled:opacity-45',
+  'aria-disabled:pointer-events-none aria-disabled:opacity-45',
 ].join(' ');
 
 const variants = {
@@ -52,23 +64,39 @@ const variants = {
 };
 
 const sizes = {
-  sm: 'h-9 px-3.5 text-[0.8125rem]',
+  sm: 'h-9 px-3.5 text-[0.8125rem] after:absolute after:inset-x-0 after:-inset-y-1 after:content-[""]',
   md: 'h-11 px-5 text-[0.9375rem]',
   lg: 'h-[3.25rem] px-7 text-base',
 };
+
+export function buttonClasses({ variant = 'secondary', size = 'md', className = '' } = {}) {
+  return `${base} ${variants[variant]} ${sizes[size]} ${className}`;
+}
 
 export function Button({
   variant = 'secondary',
   size = 'md',
   className = '',
   loading = false,
+  href,
   children,
   ...props
 }) {
+  const classes = buttonClasses({ variant, size, className });
+
+  if (href) {
+    return (
+      <Link href={href} className={classes} {...props}>
+        {children}
+      </Link>
+    );
+  }
+
   return (
     <button
+      type="button"
       {...props}
-      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+      className={classes}
       aria-busy={loading || undefined}
       /* After the spread: a loading button is disabled whatever else was
          passed, so the click cannot land twice. */

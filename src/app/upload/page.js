@@ -3,7 +3,11 @@
 import React, { useCallback, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '../../../components/header';
+import Footer from '../../../components/footer';
 import { Button } from '../../../components/ui/button';
+import { Stat } from '../../../components/ui/stat';
+import { Notice } from '../../../components/ui/notice';
+import { Stepper } from '../../../components/ui/stepper';
 import { IntakeField } from '../../../components/three/lazy';
 import { storeClip, formatBytes } from '../../lib/clip';
 import {
@@ -42,17 +46,6 @@ function validate(file) {
     )} — try a shorter excerpt.`;
   }
   return null;
-}
-
-/** One measured value from the decoded clip. */
-function Readout({ label, value, note }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <p className="tick-label">{label}</p>
-      <p className="tabular text-h3 leading-none text-primary">{value}</p>
-      {note && <p className="text-small text-muted">{note}</p>}
-    </div>
-  );
 }
 
 export default function UploadPage() {
@@ -271,9 +264,9 @@ export default function UploadPage() {
             aria-hidden="true"
           />
 
-          <div className="shell pb-40 pt-20">
+          <div className="shell pb-40 pt-[calc(var(--space-section)*0.6)]">
             <div className="animate-rise flex flex-col gap-4">
-              <p className="tick-label">Step 1 of 2</p>
+              <Stepper current={0} />
               <h1 className="max-w-[18ch] text-display text-balance">
                 Drop a clip on the surface.
               </h1>
@@ -294,26 +287,28 @@ export default function UploadPage() {
                     >
                       {submitting ? 'Analysing…' : 'Analyse clip'}
                     </Button>
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-body font-semibold text-primary">
-                        {file.name}
-                      </p>
-                      {/* One line, three states, in the order they happen:
-                          decoding for the preview, waiting on the model, done. */}
-                      <p className="tick-label" aria-live="polite">
-                        {formatBytes(file.size)} ·{' '}
-                        {submitting
-                          ? 'sending to the model'
-                          : decoding
-                            ? 'reading waveform'
-                            : 'ready'}
-                      </p>
+                    {/* The file, its state, and the way to change it, on one
+                        raised chip. The line used to sit straight on the
+                        intake surface, where the bars rose through it and took
+                        its contrast — and so did the "change file" control. */}
+                    <div className="panel-raised flex min-h-[var(--hit)] items-center gap-4 py-1.5 pl-4 pr-1.5">
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <p className="truncate text-small font-semibold text-primary">{file.name}</p>
+                        <p className="tick-label" aria-live="polite">
+                          {formatBytes(file.size)} ·{' '}
+                          {submitting
+                            ? 'sending to the model'
+                            : decoding
+                              ? 'reading waveform'
+                              : 'ready'}
+                        </p>
+                      </div>
+                      {!submitting && (
+                        <Button variant="quiet" size="sm" onClick={clear}>
+                          Change file
+                        </Button>
+                      )}
                     </div>
-                    {!submitting && (
-                      <Button variant="quiet" size="sm" onClick={clear}>
-                        Choose a different file
-                      </Button>
-                    )}
                   </>
                 ) : (
                   <>
@@ -339,32 +334,17 @@ export default function UploadPage() {
               </div>
 
               {error && (
-                <p
-                  role="alert"
-                  className="mt-2 flex items-start gap-2 text-small text-danger"
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="mt-0.5 h-4 w-4 flex-none"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="12" cy="12" r="9" />
-                    <path d="M12 7.5v5M12 16.2v.1" />
-                  </svg>
+                <Notice tone="danger" className="mt-2">
                   {error}
-                </p>
+                </Notice>
               )}
 
               {previewFailed && file && (
-                <p className="mt-2 max-w-[62ch] text-small text-muted">
+                <Notice className="mt-2">
                   This browser couldn&apos;t decode the file for a preview —
                   often the case for FLAC outside Chrome. It can still be
                   analysed; the server decodes it separately.
-                </p>
+                </Notice>
               )}
             </div>
           </div>
@@ -375,6 +355,9 @@ export default function UploadPage() {
             type="file"
             accept={ACCEPT}
             className="sr-only"
+            /* Out of the tab order: "Choose a file" is the keyboard path to
+               it, and a second, invisible stop right after it is a trap. */
+            tabIndex={-1}
             onChange={(e) => {
               const picked = e.target.files?.[0];
               if (picked) accept(picked);
@@ -384,10 +367,10 @@ export default function UploadPage() {
 
         {/* What we measured ---------------------------------------------- */}
         {analysis && (
-          <section className="rule-full animate-rise shell py-10">
-            <p className="tick-label mb-6">Measured from your file</p>
-            <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-              <Readout
+          <section className="band animate-rise">
+            <h2 className="text-h3">Measured from your file</h2>
+            <div className="mt-[var(--space-group)] grid gap-[var(--space-group)] sm:grid-cols-2 lg:grid-cols-4">
+              <Stat
                 label="Duration"
                 value={formatDuration(analysis.duration)}
                 note={truncated}
@@ -396,7 +379,7 @@ export default function UploadPage() {
                   An unreadable header means we don't know it, and a guess on
                   this screen would be a made-up measurement. */}
               {analysis.sampleRate && (
-                <Readout
+                <Stat
                   label="Sample rate"
                   value={formatSampleRate(analysis.sampleRate)}
                   note={
@@ -406,19 +389,19 @@ export default function UploadPage() {
                   }
                 />
               )}
-              <Readout
+              <Stat
                 label="Channels"
                 value={String(analysis.channels)}
                 note={analysis.channels > 1 ? 'Mixed down to mono' : 'Mono'}
               />
-              <Readout label="File size" value={formatBytes(file?.size ?? NaN)} />
+              <Stat label="File size" value={formatBytes(file?.size ?? NaN)} />
             </div>
           </section>
         )}
 
         {/* Standing explanation ------------------------------------------- */}
-        <section className="rule-full shell grid gap-10 py-12 lg:grid-cols-3">
-          <div className="flex flex-col gap-3">
+        <section className="band grid gap-[var(--space-group)] lg:grid-cols-3 lg:gap-14">
+          <div className="flex flex-col gap-[var(--space-stack)]">
             <h2 className="text-h3">What the model reads</h2>
             <p className="text-small text-secondary">
               A fixed {MODEL_WINDOW_SECONDS}-second window of mono audio at{' '}
@@ -429,29 +412,27 @@ export default function UploadPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-[var(--space-stack)]">
             <h2 className="text-h3">Where your clip goes</h2>
             <p className="text-small text-secondary">
               Clips are processed in memory and never written to disk or logged.
               The surface above was decoded in this browser and never left it.
             </p>
-            <p className="text-small text-muted">
-              That is a separate guarantee from the differential privacy used
-              during training, which protects the corpus the model learned from.
-            </p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-[var(--space-stack)]">
             <h2 className="text-h3">What it can&apos;t do</h2>
             <p className="text-small text-secondary">
-              It was trained on one corpus of one kind of attack. A clip that is
-              noisy, heavily compressed, or produced by a system newer than that
-              corpus is outside what it has seen, and the reading will be worth
-              less than the number suggests.
+              It learned from 2019-era and open-source synthetic speech. A clip
+              from a commercial cloning service it never heard, or one that is
+              studio-clean, is where it is weakest — clean fakes often score
+              below the threshold. The result page shows how often it is wrong.
             </p>
           </div>
         </section>
       </main>
+
+      <Footer />
     </div>
   );
 }

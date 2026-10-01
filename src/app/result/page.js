@@ -1,9 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
 import Header from '../../../components/header';
+import Footer from '../../../components/footer';
 import { Button } from '../../../components/ui/button';
+import { Stat } from '../../../components/ui/stat';
+import { Notice } from '../../../components/ui/notice';
+import { Stepper } from '../../../components/ui/stepper';
+import { SectionHead } from '../../../components/ui/section-head';
+import { ErrorRates } from '../../../components/ui/error-rates';
 import { VerdictScale } from '../../../components/ui/verdict-scale';
 import { WaveformDisplay } from '../../../components/three/lazy';
 import { readClip, formatBytes } from '../../lib/clip';
@@ -44,16 +49,6 @@ function modelCard(model) {
   ].filter(([, value]) => value);
 }
 
-function Stat({ label, value, note }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <p className="tick-label">{label}</p>
-      <p className="tabular text-h3 leading-none text-primary">{value}</p>
-      {note && <p className="text-small text-muted">{note}</p>}
-    </div>
-  );
-}
-
 export default function ResultPage() {
   const [clip, setClip] = useState(null);
   /* Separate from `clip` because "we haven't looked yet" and "there is nothing
@@ -89,9 +84,9 @@ export default function ResultPage() {
             where that is a functional choice rather than a stylistic one: on a
             graduated scale, width is resolution. Across a whole screen, two
             readings a tenth of a unit apart are visibly different positions. */}
-        <section className="shell pb-16 pt-14">
-          <div className="animate-rise flex flex-col gap-3">
-            <p className="tick-label">Step 2 of 2 · Reading</p>
+        <section className="shell pb-[var(--space-section)] pt-[calc(var(--space-section)*0.6)]">
+          <div className="animate-rise flex flex-col gap-[var(--space-stack)]">
+            <Stepper current={1} />
             <p className="text-small text-muted">
               {clip?.name ? (
                 <>
@@ -110,7 +105,7 @@ export default function ResultPage() {
                   <p className="tick-label">Model score</p>
                   <output
                     data-readout
-                    className="block text-[clamp(4rem,11vw,9rem)] font-medium leading-[0.85] tracking-[-0.04em]"
+                    className="block text-score font-medium"
                     style={{ color: tier.token }}
                   >
                     {formatScore(score)}
@@ -144,16 +139,27 @@ export default function ResultPage() {
                 {tier.detail}
               </p>
 
+              {/* The next thing to do sits with the reading, not under eight
+                  screens of explanation. */}
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Button href="/upload" variant="primary">
+                  Analyse another clip
+                </Button>
+                <Button href="#how-often-wrong" variant="quiet">
+                  How often it is wrong
+                </Button>
+              </div>
+
               {/* An uncalibrated cutoff is still a cutoff, and the page draws it
                   as confidently either way. Saying where it came from is the
                   difference between a threshold and a number someone typed. */}
               {reading.threshold_calibrated === false && (
-                <p className="mt-4 max-w-[68ch] text-small text-muted">
+                <Notice className="mt-6">
                   This threshold is the default score of 0, not a calibrated
                   one — the checkpoint being served carries no operating point.
                   Treat the side of the line this reading falls on as
                   provisional.
-                </p>
+                </Notice>
               )}
             </>
           ) : (
@@ -172,11 +178,9 @@ export default function ResultPage() {
                     Everything below still describes how a reading is produced
                     and what it is worth.
                   </p>
-                  <Link href="/upload">
-                    <Button variant="primary" size="lg">
-                      Analyse a clip
-                    </Button>
-                  </Link>
+                  <Button href="/upload" variant="primary" size="lg">
+                    Analyse a clip
+                  </Button>
                 </>
               )}
             </div>
@@ -185,9 +189,9 @@ export default function ResultPage() {
 
         {/* The clip ------------------------------------------------------- */}
         {clip && (
-        <section className="rule-full shell py-12">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-14">
-            <div className="flex flex-col gap-5">
+        <section className="band">
+          <div className="grid gap-[var(--space-group)] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] lg:gap-14">
+            <div className="flex flex-col gap-[var(--space-group)]">
               <h2 className="text-h2">The clip this describes</h2>
               {clip?.peaks ? (
                 <>
@@ -214,7 +218,7 @@ export default function ResultPage() {
             </div>
 
             {clip && (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-8 self-start">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-[var(--space-group)] self-start">
                 <Stat
                   label="Duration"
                   value={formatDuration(clip.duration ?? NaN)}
@@ -246,15 +250,8 @@ export default function ResultPage() {
         )}
 
         {/* Where the reading falls ---------------------------------------- */}
-        <section className="rule-full shell py-12">
-          {/* Heading left, its own explanation right. At full bleed a heading
-              with a paragraph under it leaves most of the row empty, because
-              the paragraph is held to a readable measure and the heading is
-              not — pairing them across the row is what uses the width without
-              stretching a line of text to 200 characters. */}
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-14">
-            <h2 className="text-h2 text-balance">Where this reading falls</h2>
-            <div className="flex max-w-[80ch] flex-col gap-3 text-small text-secondary">
+        <section className="band">
+          <SectionHead title="Where this reading falls">
               <p>
                 The bands are placed around the threshold, so they move with
                 it. The uncertain band starts where genuine speech stops being
@@ -279,20 +276,15 @@ export default function ResultPage() {
                   measured one.
                 </p>
               )}
-            </div>
-          </div>
+          </SectionHead>
 
-          <div className="mt-10 overflow-x-auto">
-            <table className="w-full border-collapse text-left sm:min-w-[44rem]">
+          <div className="mt-[var(--space-head)] overflow-x-auto">
+            <table className="data-table sm:min-w-[44rem]">
               <thead>
-                <tr className="border-b border-line">
-                  <th scope="col" className="tick-label pb-3 pr-6 font-normal">
-                    Band
-                  </th>
-                  <th scope="col" className="tick-label pb-3 pr-6 font-normal">
-                    Range
-                  </th>
-                  <th scope="col" className="tick-label pb-3 font-normal max-sm:hidden">
+                <tr>
+                  <th scope="col">Band</th>
+                  <th scope="col">Range</th>
+                  <th scope="col" className="max-sm:hidden">
                     What it means
                   </th>
                 </tr>
@@ -306,13 +298,10 @@ export default function ResultPage() {
                       ? `${formatScore(band.from)} and above`
                       : `${formatScore(band.from)} to ${formatScore(band.to)}`;
                   return (
-                    <tr
-                      key={band.id}
-                      className="border-b border-line align-top last:border-0"
-                    >
+                    <tr key={band.id}>
                       <th
                         scope="row"
-                        className="py-4 pr-6 font-semibold"
+                        className="font-semibold"
                         style={{ color: here ? band.token : 'var(--text-muted)' }}
                       >
                         <span className="flex items-center gap-2.5">
@@ -336,10 +325,10 @@ export default function ResultPage() {
                           {band.detail}
                         </span>
                       </th>
-                      <td className="tabular whitespace-nowrap py-4 pr-6 text-small text-secondary max-sm:pr-0">
+                      <td className="tabular whitespace-nowrap text-small text-secondary">
                         {range}
                       </td>
-                      <td className="py-4 text-small text-secondary max-sm:hidden">
+                      <td className="text-small text-secondary max-sm:hidden">
                         {band.detail}
                       </td>
                     </tr>
@@ -355,66 +344,23 @@ export default function ResultPage() {
             the API from evaluate.py's own reports — the server drops any
             report measured at a different threshold, so these numbers cannot
             describe a model other than the one that produced the reading. */}
-        <section className="rule-full shell py-12">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-14">
-            <h2 className="text-h2 text-balance">How often it is wrong</h2>
-            <p className="max-w-[80ch] text-small text-secondary">
+        <section className="band">
+          <SectionHead id="how-often-wrong" title="How often it is wrong">
+            <p>
               Two mistakes, measured separately, because they cost different
               things: a genuine recording wrongly flagged is an accusation, a
               fake let through is a miss. Both were measured at the threshold
               this reading was compared against, on recordings the model never
               trained on and that played no part in choosing the threshold.
             </p>
-          </div>
+          </SectionHead>
 
           {measured.length > 0 ? (
-            <div className="mt-10 overflow-x-auto">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-line">
-                    <th scope="col" className="tick-label pb-3 pr-6 font-normal">
-                      Tested on
-                    </th>
-                    <th scope="col" className="tick-label pb-3 pr-6 font-normal">
-                      Real recordings flagged
-                    </th>
-                    <th scope="col" className="tick-label pb-3 font-normal">
-                      Fakes missed
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {measured.map((m) => (
-                    <tr key={m.set} className="border-b border-line align-top last:border-0">
-                      <th scope="row" className="max-w-[34ch] py-5 pr-6 font-normal">
-                        <span className="block font-semibold text-primary">{m.set}</span>
-                        {m.about && (
-                          <span className="mt-1 block text-small text-muted">{m.about}</span>
-                        )}
-                      </th>
-                      <td className="py-5 pr-6">
-                        <span className="tabular block text-h3 leading-none text-primary">
-                          {formatPercent(m.real_flagged)}
-                        </span>
-                        <span className="tabular mt-2 block text-small text-muted">
-                          of {m.n_real.toLocaleString('en-GB')}
-                        </span>
-                      </td>
-                      <td className="py-5">
-                        <span className="tabular block text-h3 leading-none text-primary">
-                          {formatPercent(m.fakes_passed)}
-                        </span>
-                        <span className="tabular mt-2 block text-small text-muted">
-                          of {m.n_fake.toLocaleString('en-GB')}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-[var(--space-head)]">
+              <ErrorRates measured={measured} />
             </div>
           ) : (
-            <p className="mt-10 max-w-[68ch] text-small text-muted">
+            <p className="mt-[var(--space-head)] max-w-[68ch] text-small text-muted">
               {hasReading
                 ? 'No error rates have been measured for this model at this threshold, so none are shown. A rate measured at another threshold would describe a different operating point.'
                 : 'The error rates are measured for the model and threshold that produced a reading, so they appear once a clip has been analysed.'}
@@ -422,7 +368,7 @@ export default function ResultPage() {
           )}
 
           {measured.length > 1 && (
-            <p className="mt-8 max-w-[68ch] text-small text-secondary">
+            <p className="mt-[var(--space-group)] max-w-[72ch] text-small text-secondary">
               The rows disagree, and that is the finding. The threshold is set
               for real-world audio: noisy, compressed, recorded in rooms. On
               that, it rarely accuses a real speaker and rarely misses a fake.
@@ -439,8 +385,8 @@ export default function ResultPage() {
         </section>
 
         {/* How to read it, and the model card ----------------------------- */}
-        <section className="rule-full shell grid gap-10 py-12 lg:grid-cols-3 lg:gap-14">
-          <div className="flex flex-col gap-3">
+        <section className="band grid gap-[var(--space-group)] lg:grid-cols-3 lg:gap-14">
+          <div className="flex flex-col gap-[var(--space-stack)]">
             <h2 className="text-h3">What this number is</h2>
             <p className="text-small text-secondary">
               A score, not a fact.{' '}
@@ -471,7 +417,7 @@ export default function ResultPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-[var(--space-stack)]">
             <h2 className="text-h3">Where the threshold comes from</h2>
             {/* Two kinds of checkpoint exist: recalibrated by calibrate.py on
                 held-out real speech (they carry the band's data), and the
@@ -488,7 +434,7 @@ export default function ResultPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-[var(--space-stack)]">
             <h2 className="text-h3">The model</h2>
             {card.length > 0 ? (
               <dl className="mt-1 flex flex-col">
@@ -514,23 +460,23 @@ export default function ResultPage() {
         </section>
 
         {/* Limits --------------------------------------------------------- */}
-        <section className="rule-full shell py-12">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:gap-14">
+        <section className="band">
+          <div className="grid gap-x-14 gap-y-[var(--space-group)] lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
             <h2 className="text-h2 text-balance">
               What this reading does not tell you
             </h2>
-            <div className="grid gap-8 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <p className="tick-label">Unseen attacks</p>
+            <div className="grid gap-[var(--space-group)] sm:grid-cols-2">
+              <div className="flex flex-col gap-[var(--space-tight)]">
+                <p className="text-small font-semibold text-primary">Unseen attacks</p>
                 <p className="text-small text-secondary">
-                  The training corpus predates current neural codec and
-                  commercial voice-cloning systems. A clip from one of those is
-                  outside everything the model has seen, and a low reading is
-                  not evidence it is real.
+                  The model learned from 2019-era and open-source generators.
+                  Commercial voice-cloning services it never heard are outside
+                  that, and a low reading on one of them is not evidence the
+                  clip is real.
                 </p>
               </div>
-              <div className="flex flex-col gap-2">
-                <p className="tick-label">Recording conditions</p>
+              <div className="flex flex-col gap-[var(--space-tight)]">
+                <p className="text-small font-semibold text-primary">Recording conditions</p>
                 <p className="text-small text-secondary">
                   Noise, phone codecs and heavy compression all shift a clip
                   away from the clean corpus the model learned on. They push
@@ -538,16 +484,16 @@ export default function ResultPage() {
                   whether the speech was synthesised.
                 </p>
               </div>
-              <div className="flex flex-col gap-2">
-                <p className="tick-label">Four seconds</p>
+              <div className="flex flex-col gap-[var(--space-tight)]">
+                <p className="text-small font-semibold text-primary">Four seconds</p>
                 <p className="text-small text-secondary">
                   Only the first {MODEL_WINDOW_SECONDS} seconds are read. A clip
                   that is real for that window and synthetic afterwards reads as
                   real, because the rest was never looked at.
                 </p>
               </div>
-              <div className="flex flex-col gap-2">
-                <p className="tick-label">Who spoke</p>
+              <div className="flex flex-col gap-[var(--space-tight)]">
+                <p className="text-small font-semibold text-primary">Who spoke</p>
                 <p className="text-small text-secondary">
                   This is not speaker verification. It estimates whether speech
                   was synthesised, and says nothing at all about whose voice it
@@ -557,21 +503,17 @@ export default function ResultPage() {
             </div>
           </div>
 
-          <p className="mt-12 max-w-[68ch] text-small text-muted">
-            SoundSentinal is a university research project and the detector is
-            still being trained and evaluated. Treat a reading as a signal worth
-            following up, never as proof.
-          </p>
-
-          <div className="mt-8">
-            <Link href="/upload">
-              <Button variant="primary" size="lg">
-                Analyse another clip
-              </Button>
-            </Link>
+          {/* Secondary: the primary for this screen is the same action next
+              to the reading. One primary per screen. */}
+          <div className="mt-[var(--space-head)]">
+            <Button href="/upload" variant="secondary" size="lg">
+              Analyse another clip
+            </Button>
           </div>
         </section>
       </main>
+
+      <Footer />
     </div>
   );
 }

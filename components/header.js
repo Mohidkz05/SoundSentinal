@@ -6,11 +6,13 @@ import { usePathname } from 'next/navigation';
 import { useTheme } from './theme';
 import { SignalMark } from './three/lazy';
 
+/* The product's navigation, not the site map. /result is the second step of
+   the analyse flow and empty when visited directly, so it is reached through
+   the flow (the stepper links back to it); /design is a reference for whoever
+   builds this, and lives in the footer. */
 const NAV = [
-  { href: '/', label: 'Home' },
-  { href: '/upload', label: 'Upload' },
-  { href: '/result', label: 'Result' },
-  { href: '/design', label: 'Design' },
+  { href: '/upload', label: 'Analyse', match: ['/upload', '/result'] },
+  { href: '/#how-it-works', label: 'How it works', match: [] },
 ];
 
 /* Both icons render every time and the `dark:` variant picks one. Deriving
@@ -39,35 +41,31 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-line bg-canvas/85 backdrop-blur-md">
-      <div className="shell flex h-16 items-center gap-2 sm:gap-6">
+      <div className="shell flex h-16 items-center gap-3 sm:gap-6">
         <Link
           href="/"
-          className="flex items-center gap-2.5 rounded-sm text-primary"
+          className="flex min-h-[var(--hit)] items-center gap-2.5 rounded-sm text-primary"
           aria-label="SoundSentinal home"
         >
           <SignalMark />
-          {/* The wordmark is what goes below `sm`, not the navigation. The
-              header used to drop the nav entirely on a phone, which left the
-              mark and the theme toggle and no way to reach /result or /design
-              at all — a brand asset kept at the cost of the only navigation on
-              the page. The mark still goes home, so nothing is lost. */}
-          <span
-            className="hidden text-small font-bold tracking-[0.02em] sm:inline"
-            style={{ fontVariationSettings: '"wdth" 112' }}
-          >
+          {/* Below `sm` the mark stands alone: at 390px the wordmark, two
+              nav links and a 44px toggle do not fit on one row, and the nav is
+              the thing a phone user can't do without. The mark still goes home
+              and the footer carries the full wordmark. */}
+          <span className="wordmark hidden text-small sm:inline" aria-hidden="true">
             SOUNDSENTINAL
           </span>
         </Link>
 
-        <nav className="ml-auto flex items-center gap-0.5 sm:gap-1" aria-label="Main">
-          {NAV.map(({ href, label }) => {
-            const active = pathname === href;
+        <nav className="ml-auto flex items-center gap-1" aria-label="Main">
+          {NAV.map(({ href, label, match }) => {
+            const active = match.includes(pathname);
             return (
               <Link
                 key={href}
                 href={href}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-md px-2 py-2 text-small transition-colors duration-fast ease-instrument sm:px-3 ${
+                className={`flex min-h-[var(--hit)] items-center rounded-md px-3 text-small transition-colors duration-fast ease-instrument ${
                   active
                     ? 'bg-overlay text-primary'
                     : 'text-secondary hover:bg-overlay hover:text-primary'
@@ -83,7 +81,7 @@ export default function Header() {
           type="button"
           onClick={toggleDarkMode}
           aria-label="Toggle dark mode"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-line text-secondary transition-colors duration-fast ease-instrument hover:border-accent hover:text-accent"
+          className="grid h-[var(--hit)] w-[var(--hit)] shrink-0 place-items-center rounded-md border border-line text-secondary transition-colors duration-fast ease-instrument hover:border-accent hover:text-accent"
         >
           <ThemeIcon />
         </button>

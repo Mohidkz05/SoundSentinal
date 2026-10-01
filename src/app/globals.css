@@ -77,12 +77,18 @@
   --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
 
   /* Display sizes use a 1.26 ratio and tighten as they grow. Readouts and
-     body text stay on a calmer 1.2. */
-  --text-display: 4.25rem;   --text-display--line-height: 0.94;
+     body text stay on a calmer 1.2. The three display steps are fluid between
+     a 360px phone and a 1440px desktop: at a fixed 68px the home headline
+     overflowed a phone ("instrumen|t"). Body sizes stay fixed — they are
+     already the reading size at every width. */
+  --text-display: clamp(2.625rem, 1.75rem + 3.9vw, 4.25rem);
+  --text-display--line-height: 0.96;
   --text-display--letter-spacing: -0.03em;
-  --text-h1: 3rem;           --text-h1--line-height: 1.02;
+  --text-h1: clamp(2.125rem, 1.6rem + 2.2vw, 3rem);
+  --text-h1--line-height: 1.04;
   --text-h1--letter-spacing: -0.025em;
-  --text-h2: 2rem;           --text-h2--line-height: 1.1;
+  --text-h2: clamp(1.5rem, 1.25rem + 1.1vw, 2rem);
+  --text-h2--line-height: 1.12;
   --text-h2--letter-spacing: -0.02em;
   --text-h3: 1.375rem;       --text-h3--line-height: 1.25;
   --text-h3--letter-spacing: -0.01em;
@@ -90,6 +96,11 @@
   --text-small: 0.875rem;    --text-small--line-height: 1.5;
   --text-readout: 3.5rem;    --text-readout--line-height: 1;
   --text-readout--letter-spacing: -0.04em;
+  /* The reading on /result: the largest type in the product, because it is
+     the product. */
+  --text-score: clamp(4.5rem, 2.5rem + 9vw, 9rem);
+  --text-score--line-height: 0.85;
+  --text-score--letter-spacing: -0.04em;
   --text-tick: 0.6875rem;    --text-tick--line-height: 1.2;
   --text-tick--letter-spacing: 0.14em;
 
@@ -106,6 +117,26 @@
         `instrument` — decisive, no bounce. Every UI transition.
         `needle`     — overshoots ~4% and settles, the way a real meter
                        needle does. Reserved for the reading itself. -------- */
+  /* -- Space. One 4px-based scale, named by role rather than by size, so a
+        section's rhythm is decided once here instead of once per page. Tight
+        inside a group, generous between groups, and always more room above a
+        heading than below it.
+
+        --space-section   block padding of a page band (between rules)
+        --space-head      a band's heading block to its content
+        --space-group     between sibling groups inside a band
+        --space-stack     between items inside one group (label, value, note)
+        --space-tight     label to the thing it labels                   -- */
+  --space-section: clamp(3.5rem, 2.75rem + 3.2vw, 6rem);
+  --space-head: clamp(2rem, 1.75rem + 1.1vw, 2.75rem);
+  --space-group: clamp(1.75rem, 1.5rem + 1.1vw, 2.5rem);
+  --space-stack: 0.75rem;
+  --space-tight: 0.375rem;
+
+  /* -- Hit area. Every control's touchable area is at least this, whatever
+        its drawn size (WCAG 2.5.5; Apple and Material both say 44). -------- */
+  --hit: 2.75rem;
+
   /* -- Gutter: the app runs full-bleed, so the only horizontal constraint is
         how far content stays off the viewport edge. Prose inside it is held to
         its own ch-based measure — full-bleed must never mean a 200-character
@@ -271,6 +302,17 @@
     background: var(--accent-quiet);
     color: var(--text-primary);
   }
+
+  /* The parts of the page the browser draws still carry the palette. */
+  html {
+    scrollbar-color: var(--line-strong) var(--canvas);
+    accent-color: var(--accent);
+  }
+  input, textarea { caret-color: var(--accent); }
+  a { text-underline-offset: 0.22em; text-decoration-thickness: 1px; }
+
+  /* Anchor targets clear the sticky header. */
+  [id] { scroll-margin-top: 5rem; }
 }
 
 /* ============================================================================
@@ -303,6 +345,14 @@
   /* --text-muted, not --text-faint: at 11px this is small text and has to
      clear 4.5:1. `faint` measures 3.4:1 and is only valid for decoration. */
   color: var(--text-muted);
+}
+
+/* The wordmark: expanded width, bold, slightly open caps. One definition for
+   the header and the footer. */
+@utility wordmark {
+  font-weight: 700;
+  font-variation-settings: "wdth" 112;
+  letter-spacing: 0.04em;
 }
 
 /* Hairline rule that fades at both ends, like a scale engraved on a panel. */
@@ -338,6 +388,40 @@
    structural device — it does the job a container edge used to. */
 @utility rule-full {
   border-top: 1px solid var(--line);
+}
+
+/* A page band: the unit every page below its first screen is built from — a
+   full-bleed rule, the gutter, and the section rhythm. One utility, so the
+   space between bands is the same on every page. */
+@utility band {
+  border-top: 1px solid var(--line);
+  padding-inline: var(--gutter);
+  padding-block: var(--space-section);
+}
+
+/* Data tables: hairline rows, mono tick-label headers, generous row padding.
+   One definition for every table in the product (bands on /result, error
+   rates on /result and /, tokens on /design). */
+@utility data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+
+  & thead tr { border-bottom: 1px solid var(--line); }
+  & thead th {
+    padding: 0 1.5rem var(--space-stack) 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-tick);
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    vertical-align: bottom;
+  }
+  & tbody tr { border-bottom: 1px solid var(--line); vertical-align: top; }
+  & tbody tr:last-child { border-bottom: 0; }
+  & tbody th, & tbody td { padding: 1.125rem 1.5rem 1.125rem 0; }
+  & thead th:last-child, & tbody th:last-child, & tbody td:last-child { padding-right: 0; }
 }
 
 /* ---------------------------------------------------------------------------

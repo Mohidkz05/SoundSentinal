@@ -160,7 +160,16 @@ this app shows is a measurement: probabilities, thresholds, sample rates,
 durations. Tabular stops a changing readout from reflowing.
 
 Use the generated utilities — `text-display`, `text-h1`, `text-h2`, `text-h3`,
-`text-body`, `text-small`, `text-readout`, `text-tick`. They carry the paired
+`text-body`, `text-small`, `text-readout`, `text-score`, `text-tick`.
+`display`, `h1`, `h2` and `score` are fluid (`clamp()` between a 360px phone
+and a 1440px desktop); body sizes are fixed. A fixed 68px display once
+overflowed a phone.
+
+**The font variables live on `<html>`.** `--font-sans` is declared in
+`@theme`, which Tailwind emits on `:root`, and a custom property resolves its
+`var()` where it is declared. With `archivo.variable` on `<body>`, the brand
+font was undefined at `:root` and every page rendered in the system sans until
+1 October 2026 — check the computed `font-family` if type ever looks generic. They carry the paired
 line-height and letter-spacing. **Do not write `text-[length:var(--text-h1)]`** —
 the arbitrary-value form sets font-size only and silently drops both.
 
@@ -224,16 +233,67 @@ than it looks. Size hero text columns in rem.
 
 ---
 
+## Space
+
+One 4px-based scale, **named by role**, in `globals.css`:
+
+| Token | Size | Separates |
+| --- | --- | --- |
+| `--space-tight` | 0.375rem | a label from the thing it labels |
+| `--space-stack` | 0.75rem | items inside one group |
+| `--space-group` | 1.75–2.5rem | sibling groups inside a band |
+| `--space-head` | 2–2.75rem | a band's heading block from its content |
+| `--space-section` | 3.5–6rem | block padding of a band |
+
+Pages below their first screen are built from **`band`** — a full-bleed rule,
+the gutter and `--space-section` — so the distance between sections is the same
+on every page. Use the tokens (`mt-[var(--space-head)]`), not ad-hoc `py-12` /
+`mt-10`; that drift is what this scale replaced.
+
 ## Controls
 
 Four button variants in `components/ui/button.js`: `primary`, `secondary`,
-`quiet`, `danger`.
+`quiet`, `danger`. Three sizes drawn at 36 / 44 / 52px.
 
 **One `primary` per screen.** If two things are primary, neither is. Default to
 `quiet` for anything that isn't the point of the screen.
 
+**`<Button href>` renders a link.** Navigation is a link, an action is a
+button. Never wrap a `<Button>` in a `<Link>` — that is a button inside an
+anchor: invalid nesting and two tab stops.
+
+**Every control has a 44px hit area** (`--hit`), whatever it is drawn at. `sm`
+buttons extend their target with an invisible `::after`; nav links, the theme
+toggle and stepper links set `min-h-[var(--hit)]`.
+
 Press feedback is a 1px downward nudge, never a scale — text stays on the pixel
 grid instead of softening mid-press.
+
+## Shared components
+
+Each pattern exists once, in `components/ui/`:
+
+- `SectionHead` — every band heading: title left (24rem), explanation right
+  at `lg`, stacked below it.
+- `Stat` — one measured value (tick label, tabular value, note).
+- `Notice` — `caveat` (muted, qualifies a result) or `danger` (`role=alert`,
+  the danger token). Icon plus text, never colour alone.
+- `Stepper` — the two-step analyse flow; an ordered list with
+  `aria-current="step"`.
+- `ErrorRates` — measured error rates per test set; a table from `sm`, stacked
+  blocks on phones. Fed only from the API, never typed in.
+- `data-table` (utility) — every table's hairlines, header type and padding.
+
+**No eyebrows.** A tick label above a heading is decoration posing as
+structure; the heading carries its own weight. Tick labels label values,
+scales and table columns.
+
+## Navigation and page frame
+
+Header nav is the product, not a site map: **Analyse** and **How it works**.
+`/result` is reached through the flow (the stepper links back to it); `/design`
+is for builders and lives in the footer. Every page ends with `Footer`, which
+carries the standing disclaimer and the training data's licence credits.
 
 ---
 
@@ -381,6 +441,11 @@ Not negotiable, and already verified for every token pair in the system:
 
 ## Open items
 
+- **Refined 1 Oct 2026** (`UI-PLAN.md`): fonts actually load; fluid display
+  type; the space scale and `band`; 44px hit areas; `Button href`; shared
+  components; nav and footer; the home page's live "Measured, not claimed"
+  error rates via `/api/model`; stale copy corrected (the served model was not
+  trained with DP, and learned from LA + SpeechFake, not one corpus).
 - **Migrated 17 Aug 2026.** `header.js` and the `/`, `/upload`, `/result` pages
   now use the tokens; the pre-system palette (`bg-white dark:bg-black`,
   `text-gray-600`) is gone from `src/` and `components/`. `/result` renders the

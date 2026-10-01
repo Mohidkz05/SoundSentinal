@@ -1,10 +1,15 @@
 'use client';
 
 import React from 'react';
+import Header from '../../../components/header';
+import Footer from '../../../components/footer';
 import { Button } from '../../../components/ui/button';
+import { Stat } from '../../../components/ui/stat';
+import { Notice } from '../../../components/ui/notice';
+import { Stepper } from '../../../components/ui/stepper';
+import { SectionHead } from '../../../components/ui/section-head';
 import { CalibrationMeter } from '../../../components/ui/calibration-meter';
 import { VerdictScale } from '../../../components/ui/verdict-scale';
-import { useTheme } from '../../../components/theme';
 import {
   SpectralField,
   UncertaintyField,
@@ -20,32 +25,29 @@ import {
  * tokens: it renders from the same CSS the product does.
  */
 
-export default function DesignSystem() {
-  const { darkMode, toggleDarkMode } = useTheme() ?? {};
+const SPACE = [
+  ['tight', '--space-tight', '0.375rem', 'label to the thing it labels'],
+  ['stack', '--space-stack', '0.75rem', 'items inside one group'],
+  ['group', '--space-group', '1.75–2.5rem', 'sibling groups inside a band'],
+  ['head', '--space-head', '2–2.75rem', "a band's heading to its content"],
+  ['section', '--space-section', '3.5–6rem', 'block padding of a band'],
+];
 
+export default function DesignSystem() {
   return (
-    <div className="shell min-h-screen py-16">
-      <div className="max-w-[76rem]">
-        <header className="mb-20">
-          <p className="tick-label mb-4">SoundSentinal — design system v1</p>
-          <h1
-            className="mb-5 text-h1 font-bold"
-            style={{ fontVariationSettings: '"wdth" 112' }}
-          >
-            An instrument, not a verdict machine
-          </h1>
-          <p className="max-w-prose text-[var(--text-secondary)]">
-            The detector reports a probability, not a fact. Every decision here
-            follows from that: the brand colour never renders a result, the
-            result scale loses its colour where the model is least sure, and the
-            decision threshold is drawn on screen instead of hidden behind a
-            label.
+    <div className="flex min-h-screen flex-col">
+      <Header />
+      <main className="flex-1">
+        <header className="shell pb-[var(--space-section)] pt-[calc(var(--space-section)*0.9)]">
+          <h1 className="text-h1 text-balance">Design system</h1>
+          <p className="mt-5 max-w-[68ch] text-body text-secondary">
+            An instrument, not a verdict machine. The detector reports a score,
+            not a fact, and every decision here follows from that: the brand
+            colour never renders a result, the result scale loses its colour
+            where the model is least sure, and the decision threshold is drawn
+            on screen instead of hidden behind a label. This page renders from
+            the same CSS as the product, so it cannot drift from it.
           </p>
-          <div className="mt-8">
-            <Button size="sm" variant="quiet" onClick={toggleDarkMode}>
-              {darkMode ? 'Switch to light' : 'Switch to dark'}
-            </Button>
-          </div>
         </header>
 
         <Section
@@ -215,15 +217,15 @@ export default function DesignSystem() {
           title="One gesture, spent once"
           note="Everything uses the instrument easing — decisive, no bounce. The needle easing overshoots 4% and settles, the way a real meter does, and is reserved for the reading. Using it elsewhere would spend the gesture and it would stop meaning 'a measurement landed'."
         >
-          <table className="w-full text-left text-small">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-[var(--line)]">
-                <th className="tick-label py-2">Token</th>
-                <th className="tick-label py-2">Value</th>
-                <th className="tick-label py-2">Use</th>
+              <tr>
+                <th scope="col">Token</th>
+                <th scope="col">Value</th>
+                <th scope="col">Use</th>
               </tr>
             </thead>
-            <tbody className="font-mono text-[var(--text-secondary)]">
+            <tbody className="font-mono text-small text-secondary">
               {[
                 ['tap', '100ms', 'press states'],
                 ['fast', '160ms', 'hover, focus'],
@@ -233,10 +235,10 @@ export default function DesignSystem() {
                 ['ease-instrument', '0.2, 0.8, 0.2, 1', 'everything'],
                 ['ease-needle', '0.34, 1.28, 0.44, 1', 'the reading only'],
               ].map(([a, b, c]) => (
-                <tr key={a} className="border-b border-[var(--line)]">
-                  <td className="py-2">{a}</td>
-                  <td className="py-2">{b}</td>
-                  <td className="py-2 font-sans">{c}</td>
+                <tr key={a}>
+                  <td>{a}</td>
+                  <td>{b}</td>
+                  <td className="font-sans">{c}</td>
                 </tr>
               ))}
             </tbody>
@@ -290,14 +292,14 @@ export default function DesignSystem() {
             ))}
           </div>
 
-          <table className="w-full text-left text-small">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-[var(--line)]">
-                <th className="tick-label py-2">Rule</th>
-                <th className="tick-label py-2">Why</th>
+              <tr>
+                <th scope="col">Rule</th>
+                <th scope="col">Why</th>
               </tr>
             </thead>
-            <tbody className="text-[var(--text-secondary)]">
+            <tbody className="text-small text-secondary">
               {[
                 ['Colour comes from tokens', 'Shaders read the resolved custom properties, so both themes and any future palette change reach the geometry.'],
                 ['Teal for chrome, verdict scale for results', 'The colour rules do not stop at the edge of a canvas. Only the uncertainty field is allowed a verdict colour.'],
@@ -306,36 +308,123 @@ export default function DesignSystem() {
                 ['Reduced motion keeps the frame', 'One render on demand, then still — the composition survives, the movement does not.'],
                 ['Loaded after the page', 'three.js is ~250 kB and arrives in a deferred chunk, so it never decides how fast the interface appears.'],
               ].map(([rule, why]) => (
-                <tr key={rule} className="border-b border-[var(--line)] align-top">
-                  <td className="w-[16rem] py-2.5 pr-4 font-semibold text-[var(--text-primary)]">
+                <tr key={rule}>
+                  <th scope="row" className="w-[16rem] font-semibold text-primary">
                     {rule}
-                  </td>
-                  <td className="py-2.5">{why}</td>
+                  </th>
+                  <td>{why}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </Section>
-      </div>
+
+        <Section
+          n="Space"
+          title="Space is named by role"
+          note="One 4px-based scale, named for what it separates rather than how big it is, so a page's rhythm is decided once in globals.css. Tight inside a group, generous between groups, always more room above a heading than below it. The larger steps are fluid between phone and desktop."
+        >
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Role</th>
+                <th scope="col">Token</th>
+                <th scope="col">Size</th>
+                <th scope="col">Separates</th>
+              </tr>
+            </thead>
+            <tbody className="text-small text-secondary">
+              {SPACE.map(([role, token, size, use]) => (
+                <tr key={role}>
+                  <th scope="row" className="font-semibold text-primary">{role}</th>
+                  <td className="tabular">{token}</td>
+                  <td>
+                    <span className="flex items-center gap-3">
+                      <span
+                        className="block h-3 rounded-[var(--radius-tick)] bg-accent-quiet"
+                        style={{ width: `var(${token})` }}
+                        aria-hidden="true"
+                      />
+                      <span className="tabular">{size}</span>
+                    </span>
+                  </td>
+                  <td>{use}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-[var(--space-group)] max-w-[72ch] text-small text-secondary">
+            Pages are built from <code className="tabular text-primary">band</code>:
+            a full-bleed rule, the gutter and the section padding. Every control
+            has at least a 44px hit area (<code className="tabular text-primary">--hit</code>),
+            whatever size it is drawn.
+          </p>
+        </Section>
+
+        <Section
+          n="Components"
+          title="Shared parts"
+          note="Each pattern exists once. A second copy styled slightly differently is how a product stops looking like one product."
+        >
+          <div className="grid gap-[var(--space-group)] lg:grid-cols-2 lg:gap-14">
+            <Spec name="Stepper" use="The two-step analyse flow. A real ordered list; the finished step links back.">
+              <Stepper current={1} />
+            </Spec>
+            <Spec name="Stat" use="One measured value. Clip readouts on /upload and /result.">
+              <div className="flex gap-12">
+                <Stat label="Duration" value="2.50 s" note="Mono" />
+                <Stat label="Sample rate" value="16.0 kHz" note="Matches the model" />
+              </div>
+            </Spec>
+            <Spec name="Notice — caveat" use="Qualifies what is next to it. Must not look like an error.">
+              <Notice>
+                This browser couldn&apos;t decode the file for a preview. It can
+                still be analysed.
+              </Notice>
+            </Spec>
+            <Spec name="Notice — danger" use="Something failed. Says what, and what to do.">
+              <Notice tone="danger">
+                That clip is 7.2 MB. The limit is 5 MB — try a shorter excerpt.
+              </Notice>
+            </Spec>
+          </div>
+          <div className="mt-[var(--space-head)]">
+            <Spec name="SectionHead" use="Every band heading: title left, explanation right at desktop, stacked below it.">
+              <SectionHead title="How often it is wrong">
+                <p>
+                  Two mistakes, measured separately, because they cost different
+                  things.
+                </p>
+              </SectionHead>
+            </Spec>
+          </div>
+        </Section>
+      </main>
+      <Footer />
     </div>
   );
 }
 
 function Section({ n, title, note, children }) {
   return (
-    <section className="mb-20">
-      <p className="tick-label mb-3">{n}</p>
-      <h2
-        className="mb-3 text-h2 font-bold"
-        style={{ fontVariationSettings: '"wdth" 112' }}
-      >
-        {title}
-      </h2>
-      <p className="mb-8 max-w-prose text-small text-[var(--text-muted)]">
-        {note}
-      </p>
-      {children}
+    <section className="band" id={n.toLowerCase()}>
+      <SectionHead title={title}>
+        <p>{note}</p>
+      </SectionHead>
+      <div className="mt-[var(--space-head)]">{children}</div>
     </section>
+  );
+}
+
+function Spec({ name, use, children }) {
+  return (
+    <div className="flex flex-col gap-[var(--space-stack)]">
+      <div>
+        <p className="text-small font-semibold text-primary">{name}</p>
+        <p className="text-small text-muted">{use}</p>
+      </div>
+      <div className="panel px-6 py-5">{children}</div>
+    </div>
   );
 }
 
