@@ -35,6 +35,13 @@ fix for it has been tried. The natural next step is the project write-up.
   | In-the-Wild (real-world) | 2.65% | 0.62% | 3.61% |
   | SpeechFake test, English (clean modern TTS, seen systems) | 6.26% | 0.01% | 32.72% |
   | ASVspoof2019 LA eval (clean studio, 2019-era) | 2.12% | 0.00% | 46.25% |
+  | Own fakes, held-out open TTS (Finding 18 Stage 0, never trained on) | 28.57% | 0.08% | **88.45%** |
+
+- **The served model does not detect modern open TTS it has never heard**
+  (Finding 18 Stage 0, 2 October): Qwen3-TTS and VoxCPM pass 100% with EER
+  39–45% (near chance — a ranking failure no threshold can fix); Chatterbox and
+  SpeechT5 rank well (EER 4–5%) but ~75% still pass (the clean-audio threshold
+  problem). `/result` and the home page show this row.
 
 - **The one open problem: clean synthetic speech.** Clean audio (real or fake)
   scores ~14 log-odds lower on this model than noisy real speech, and the
@@ -49,6 +56,7 @@ fix for it has been tried. The natural next step is the project write-up.
 | 11 | Train with Common Voice + VoxPopuli as real, calibrate on People's Speech | No effect (8.90% vs 8.21%), ranking worse |
 | 12 | Stricter 1% target | Adopted: ITW 0.62% / 3.61%, but clean fakes pass |
 | 14 | Degrade every input (Opus / 8 kHz / noise) before scoring | All worse on clean fakes; not served |
+| 16 | Train every clip through a random channel (noise, reverb, codecs) | Clean-fake misses 25.5% → 23.5% on SpeechFake dev; bar was 15.5%. No effect; not served |
 | 15 | Second threshold for "clean" recordings (loudness-range cutoff) | Clean-fake misses fell (SF 32.7%→23.5%, LA 46%→29%) but 61% of ITW real routed "clean", real flagged 0.62%→4.00%; not served. Stage A's bar was missed and overridden by the owner — disclosed in RESULTS.md |
 
 **If continuing:** the remaining lever is retraining (≈12–13 h per run on an
@@ -68,6 +76,7 @@ the override is written down before the next job runs.
 - `best.measured-itw.json` ← `eval_itw_20260929-120334.json`
 - `best.measured-la.json` ← `eval_eval_20260929-120817.json`
 - `best.measured-speechfake.json` ← `eval_speechfake-en_20260930-125040.json`
+- `best.measured-synth.json` ← `eval_synth-dev_20261002-010957.json`
 
 Also there locally: `best_5pct.pth` (Finding 11 control) and `aasist_best.pth`
 (the old AASIST). Without the three JSONs, `/result` says no error rates were

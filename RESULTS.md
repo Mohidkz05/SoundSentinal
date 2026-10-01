@@ -1611,6 +1611,43 @@ GPU-hours for 6,000 clips), while M3 allows 4 GPUs per user. It is capped at
 **2,000 clips**, the first 2,000 of the same seeded job list. The train split
 is then ~44,000 fakes rather than ~48,000. Nothing else changes.
 
+### Stage 0 result (2 October): the served model against open TTS it never heard
+
+Job 60644034 (H100, commit after `0b89ef7`), the served checkpoint
+(`best_calibrated_peoples_speech_1pct.pth`, threshold +7.98) on `heldout-a`:
+4,000 fakes from 7 models in 4 families, all passing the Whisper gate (median
+WER 0.0), and 1,281 genuine LibriSpeech test-clean clips from the same 20
+speakers.
+
+| Model | EER | Fakes passed at the served threshold |
+| --- | --- | --- |
+| Chatterbox | 3.81% | 75.20% |
+| Chatterbox-Turbo | 4.21% | 81.40% |
+| SpeechT5 | 4.91% | 75.50% |
+| VoxCPM 1.5 | 38.62% | **100.00%** |
+| VoxCPM 0.5B | 40.77% | **100.00%** |
+| Qwen3-TTS 0.6B | 44.77% | **100.00%** |
+| Qwen3-TTS 1.7B | 45.42% | **100.00%** |
+| **Pooled** | **28.57%** | **88.45%** (real flagged 0.08%) |
+
+**The served model does not detect modern open-source TTS it has not heard.**
+Two failure modes, cleanly separated:
+
+- **Ranking failure** (Qwen3-TTS, VoxCPM — both 2025–26 LLM-based models with
+  neural codecs): EER 39–45%, near chance. The model cannot tell these fakes
+  from real speech at any threshold. No threshold, routing or calibration can
+  fix this; only training data that teaches what they sound like can.
+- **Threshold failure** (Chatterbox, SpeechT5): EER 4–5%, the ranking works,
+  but three quarters still score below a threshold set for noisy real-world
+  speech — Finding 13's clean-audio problem again.
+
+This is Stage 0's control for Finding 18's Stage A: **A1 control = 88.45%**,
+so the pre-registered bar is ≤ max(88.45 − 10, 88.45 / 2) = **78.45%**.
+
+This set is now shown on `/result` and the home page (copied beside the
+served checkpoint as `best.measured-synth.json`): the served model was never
+trained, selected or calibrated on it, so it is an honest measured rate.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

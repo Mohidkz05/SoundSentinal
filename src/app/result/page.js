@@ -373,9 +373,9 @@ export default function ResultPage() {
               for real-world audio: noisy, compressed, recorded in rooms. On
               that, it rarely accuses a real speaker and rarely misses a fake.
               Clean synthetic speech is different. It scores far lower on this
-              model, old systems and modern ones alike, and a third or more of
-              it passes — including from systems the model trained on. If a
-              clip sounds studio-clean,{' '}
+              model, and a third or more of it passes even from systems the
+              model trained on; from recent text-to-speech models it never
+              heard, nearly all of it does. If a clip sounds studio-clean,{' '}
               <span className="text-primary">
                 a low reading is not evidence that it is real
               </span>
