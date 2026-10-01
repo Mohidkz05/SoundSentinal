@@ -2,3 +2,6 @@
 kokoro>=0.9.4
 transformers>=4.45
 torch>=2.4
+# misaki's English G2P loads spaCy's small model (MIT) and would otherwise try
+# to pip-install it at run time, which a uv environment has no pip for.
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

@@ -1,7 +1,7 @@
 """The deterministic list of what each generator says, and in whose voice.
 
 Every clip is one LibriSpeech transcript read by one speaker. For voice-cloning
-models the prompt is another utterance by that speaker (4-10 s, never the one
+models the prompt is another utterance by that speaker (5.5-10 s, never the one
 whose text is read), with its transcript for models that want it. Preset-voice
 models ignore the prompt and pick a voice from their own list by clip index.
 
@@ -17,7 +17,8 @@ import pandas as pd
 import soundfile as sf
 
 MIN_CHARS, MAX_CHARS = 40, 240        # text: a sentence or two
-PROMPT_S = (4.0, 10.0)                # prompt duration window, seconds
+PROMPT_S = (5.5, 10.0)                # prompt duration window, seconds; Chatterbox-Turbo
+                                      # refuses prompts under 5 s
 SUBSET = {"train": "train-clean-100", "heldout-a": "test-clean", "heldout-b": "test-clean"}
 
 

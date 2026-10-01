@@ -40,7 +40,7 @@ def synthesize(m, job):
     if job["prompt_path"] not in m["speakers"]:
         wav, sr = load_mono(job["prompt_path"])
         m["speakers"][job["prompt_path"]] = model.make_speaker_embedding(
-            torch.from_numpy(wav).unsqueeze(0), sr)
+            torch.from_numpy(wav).unsqueeze(0).to("cuda"), sr)
     cond = make_cond_dict(text=job["text"], speaker=m["speakers"][job["prompt_path"]],
                           language="en-us")
     with torch.no_grad():
