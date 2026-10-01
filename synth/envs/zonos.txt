@@ -1,3 +1,7 @@
 # python: 3.11
 zonos @ git+https://github.com/Zyphra/Zonos.git
 espeakng-loader
+# torchaudio 2.11's filterbank mixes devices under Zonos's torch.device()
+# context; Zonos was built against the 2.5-2.8 series.
+torch==2.8.*
+torchaudio==2.8.*
