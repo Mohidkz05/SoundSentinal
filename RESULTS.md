@@ -1574,6 +1574,13 @@ LibriSpeech test-clean was a calibration set in Finding 15, which was not
 served. Chatterbox output carries Resemble's Perth watermark, as it does in
 the wild.
 
+### Amendment (1 October, during generation, before any training or scoring)
+
+OuteTTS generates at 0.02 clips/s through its Hugging Face backend (about 55
+GPU-hours for 6,000 clips), while M3 allows 4 GPUs per user. It is capped at
+**2,000 clips**, the first 2,000 of the same seeded job list. The train split
+is then ~44,000 fakes rather than ~48,000. Nothing else changes.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
