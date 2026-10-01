@@ -90,6 +90,9 @@ def main():
             except Exception as exc:  # noqa: BLE001 — one bad clip must not end the run
                 failures += 1
                 print(f"  clip {job['index']}: {type(exc).__name__}: {exc}", flush=True)
+                if failures == 1:
+                    import traceback
+                    traceback.print_exc()
                 if failures > max(20, len(todo) // 10):
                     sys.exit(f"ERROR: {failures} failures; stopping. Fix the backend.")
                 continue
