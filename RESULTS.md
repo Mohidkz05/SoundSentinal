@@ -1513,10 +1513,15 @@ account. Voices and text come from LibriSpeech (CC BY 4.0).
 | heldout-a (Stage A) | Chatterbox (+Turbo), Qwen3-TTS (0.6B, 1.7B), SpeechT5, VoxCPM (0.5B, 1.5) — 1,000 per family | test-clean speakers 1–20; real side: their genuine test-clean clips |
 | heldout-b (Stage B) | Dia, Kitten, Marvis, Piper (3 voices) — 1,000 per family | test-clean speakers 21–40; real side likewise |
 
-Clips per family are split evenly across its models. Two deviations from the
-first registry, made after smoke tests and before generation: VibeVoice uses
-the 0.5B streaming model, because Microsoft withdrew the 1.5B's code; Marvis
-uses its transformers checkpoint, same weights.
+Clips per family are split evenly across its models (Piper: 334 per voice).
+Changes from the first registry, made after the smoke tests and before any
+bulk generation: VibeVoice uses the 0.5B streaming model, because Microsoft
+withdrew the 1.5B's code; Marvis uses its transformers checkpoint, same
+weights; voice prompts are 5.5–10 s (Chatterbox-Turbo refuses shorter); and
+Marvis's 10-second output cap is raised with the text's length. All 17 models
+passed a 3-clip smoke test with Whisper WER 0–7%, except four sibling models
+(Qwen3-TTS 1.7B, VoxCPM 1.5, Piper LJSpeech and Cori), first checked at bulk
+QC.
 
 **Quality gate, fixed now.** Each model's output is checked by `synth/qc.py`:
 Whisper small transcribes 50 clips and the word error rate against the
