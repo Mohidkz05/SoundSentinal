@@ -22,5 +22,8 @@ def synthesize(m, job):
     inputs = m["processor"].apply_chat_template(conversation, tokenize=True,
                                                 return_dict=True).to("cuda")
     with torch.no_grad():
-        audio = m["model"].generate(**inputs, output_audio=True)
+        # The checkpoint's default is 125 frames (10 s at 12.5 Hz), which cuts
+        # long sentences off; allow ~1 s per 10 characters plus 3 s, up to 30 s.
+        frames = int(12.5 * min(30, 3 + len(job["text"]) / 10))
+        audio = m["model"].generate(**inputs, output_audio=True, max_new_tokens=frames)
     return to_numpy(audio[0]), 24000, job["speaker"]

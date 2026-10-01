@@ -24,4 +24,4 @@ if [ ! -f "$STAMP" ]; then
   uv pip install --python "$ENV/bin/python" -r synth/envs/base.txt -r synth/envs/qc.txt
   touch "$STAMP"
 fi
-for d in "$@"; do "$ENV/bin/python" synth/qc.py "$d"; done
+for d in "$@"; do "$ENV/bin/python" synth/qc.py "$d" || echo "QC FAILED: $d"; done

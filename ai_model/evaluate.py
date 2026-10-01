@@ -37,6 +37,7 @@ from tdcf import compute_min_tdcf
 from train_dp_avspoof import (
     AVSpoofDataset,
     BONAFIDE_MIXES,
+    EXTRA_TRAIN_MIXES,
     CKPT_DIR,
     compute_eer_np,
     get_ckpt_paths,
@@ -180,7 +181,7 @@ def main():
                         help="Score the run trained with this RawBoost algo — it lives "
                              "in its own checkpoint directory. Picks the checkpoint "
                              "only; no augmentation is applied while scoring.")
-    parser.add_argument("--extra-train", default=None, choices=["asvspoof5", "speechfake"],
+    parser.add_argument("--extra-train", default=None, choices=list(EXTRA_TRAIN_MIXES),
                         help="Score the run trained with this extra corpus (its own "
                              "checkpoint directory, plus-<name>/). Picks the checkpoint only.")
     parser.add_argument("--extra-bonafide", default=None, choices=list(BONAFIDE_MIXES),
@@ -190,7 +191,7 @@ def main():
                         help="An explicit checkpoint path, overriding --arch, "
                              "--frontend and --dp.")
     parser.add_argument("--dataset", default="asvspoof",
-                        choices=["asvspoof", "itw", "speechfake"],
+                        choices=["asvspoof", "itw", "speechfake", "synth"],
                         help="'itw' scores In-the-Wild instead: 31,779 real-world "
                              "clips from 58 public figures. ASVspoof2019's attacks "
                              "are from 2019 and predate current voice cloning, so "
@@ -312,6 +313,18 @@ def main():
                                  protocol=frame, suffix="", degradation=degradation)
         paths, key = {}, None
         corpus_label, partition_label = "SpeechFake-BD", f"{sf_part} ({args.language})"
+    elif args.dataset == "synth":
+        import synth
+        # Our own fakes from held-out generator families, never trained on,
+        # with the same LibriSpeech test-clean speakers' genuine clips as the
+        # real side (Finding 18). --partition dev is heldout-a (Stage A), eval
+        # is heldout-b (Stage B, read once).
+        split = "heldout-b" if args.partition == "eval" else "heldout-a"
+        frame, root = synth.load_heldout(split)
+        dataset = AVSpoofDataset(None, root, build_transform(frontend),
+                                 protocol=frame, suffix="", degradation=degradation)
+        paths, key = {}, None
+        corpus_label, partition_label = "Own fakes, held-out families", split
     else:
         paths = get_corpus_paths(args.corpus)
         key = args.partition.upper()
@@ -360,7 +373,7 @@ def main():
     # a different ASV is not the same quantity.
     min_tdcf, tdcf_detail = None, None
     asv_key = f"{key}_ASV_SCORES" if key else None
-    if args.dataset in ("itw", "speechfake"):
+    if args.dataset in ("itw", "speechfake", "synth"):
         print("  (min t-DCF not defined here: it needs the organisers' ASV scores,")
         print("   which ship only with ASVspoof. A t-DCF against a different ASV is")
         print("   not the same quantity, so EER is the whole result.)")
@@ -476,7 +489,8 @@ def main():
     # several runs. A JSON per run is the smallest thing that makes that
     # mechanical rather than a matter of scrolling back.
     tag = {"itw": "itw",
-           "speechfake": f"speechfake-{args.partition}-{args.language}"}.get(args.dataset,
+           "speechfake": f"speechfake-{args.partition}-{args.language}",
+           "synth": f"synth-{args.partition}"}.get(args.dataset,
                                                                             args.partition)
     out = args.out or ckpt_path.parent / f"eval_{tag}_{strftime('%Y%m%d-%H%M%S')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)

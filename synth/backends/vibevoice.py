@@ -14,8 +14,6 @@ def load(model_id, repo):
     import os
     import urllib.request
     import torch
-    from transformers.cache_utils import DynamicCache
-    from transformers.modeling_outputs import BaseModelOutputWithPast
     from vibevoice.modular.modeling_vibevoice_streaming_inference import (
         VibeVoiceStreamingForConditionalGenerationInference)
     from vibevoice.processor.vibevoice_streaming_processor import VibeVoiceStreamingProcessor
@@ -26,8 +24,10 @@ def load(model_id, repo):
         path = os.path.join(cache, f"{v}.pt")
         if not os.path.exists(path):
             urllib.request.urlretrieve(VOICE_URL.format(v), path)
-        with torch.serialization.safe_globals([BaseModelOutputWithPast, DynamicCache]):
-            prompts[v] = torch.load(path, map_location="cuda", weights_only=True)
+        # weights_only=False: the prompts pickle transformers output objects,
+        # which the safe loader refuses. They are Microsoft's own files from
+        # the MIT repository, fetched over HTTPS from a fixed path.
+        prompts[v] = torch.load(path, map_location="cuda", weights_only=False)
     model = VibeVoiceStreamingForConditionalGenerationInference.from_pretrained(
         repo, torch_dtype=torch.bfloat16, device_map="cuda", attn_implementation="sdpa")
     model.eval()

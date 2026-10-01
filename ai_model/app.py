@@ -157,7 +157,8 @@ def load_model():
 
     # --extra-train corpora join ASVspoof2019 in training; a card naming only
     # LA would misstate what the model has heard.
-    extra_names = {"speechfake": "SpeechFake", "asvspoof5": "ASVspoof 5"}
+    extra_names = {"speechfake": "SpeechFake", "asvspoof5": "ASVspoof 5",
+                   "synth": "own generated fakes (8 open TTS families)"}
     extra = (payload.get("extra_train") if isinstance(payload, dict) else None) or ""
     corpora = [f"ASVspoof2019 {metrics['corpus']}"] if metrics.get("corpus") else []
     corpora += [extra_names.get(e, e) for e in extra.split("+") if e]
@@ -245,6 +246,11 @@ MEASURED_SETS = {
     "speechfake": ("SpeechFake test (English)", "Clean modern text-to-speech and voice "
                                                 "cloning from 26 systems — all of which "
                                                 "the model saw in training"),
+    # Unseen-generator test (RESULTS.md Finding 18): our own fakes from four
+    # open TTS families held out of training; LibriSpeech as the real side.
+    "synth": ("Unseen open TTS (held-out families)", "Clean fakes from four open "
+                                                     "text-to-speech families the model "
+                                                     "never trained on"),
 }
 
 

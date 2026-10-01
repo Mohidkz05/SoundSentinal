@@ -1487,6 +1487,88 @@ require an account or sign-up**. MLAAD is CC BY-NC 4.0 and gated on Hugging
 Face. The code was reverted; the pre-registration is in git history. Nothing
 was measured.
 
+## Finding 18 — our own fakes: 8 more generators to train on, 8 never heard (pre-registered)
+
+Written 1 October 2026, after 3-clip smoke tests of each generator and before
+any bulk generation, training or scoring. Nothing below may be changed after
+Stage B is scored; the result is reported whatever it is.
+
+**Question.** Finding 9's gain came from generator diversity. Does training on
+fakes from 8 more open TTS families cut the share of fakes from **families the
+model has never heard** that pass the threshold, without costing In-the-Wild?
+And, before any training: how many such fakes does the served model miss?
+
+**Why our own.** The project requires data that allows commercial use and
+needs no account (Finding 17). No public corpus of modern fakes meets both, so
+the fakes are generated here (`synth/`, `ai_model/synth.py`) with models whose
+code and weights are MIT, Apache 2.0 or CC BY 4.0, all downloadable without an
+account. Voices and text come from LibriSpeech (CC BY 4.0).
+
+**The split, fixed in `synth.py` before generation** (by family, RandomState
+42; Parler stays in train because SpeechFake trains on it):
+
+| Split | Families (models) | Voices and text |
+| --- | --- | --- |
+| train | Kokoro, Kyutai TTS, Maya1, OuteTTS, Parler, Soprano, VibeVoice-Realtime, Zonos — 6,000 clips per family | train-clean-100 transcripts; cloning models clone its 251 speakers, who are already in training as real speech (LibriTTS via SpeechFake) |
+| heldout-a (Stage A) | Chatterbox (+Turbo), Qwen3-TTS (0.6B, 1.7B), SpeechT5, VoxCPM (0.5B, 1.5) — 1,000 per family | test-clean speakers 1–20; real side: their genuine test-clean clips |
+| heldout-b (Stage B) | Dia, Kitten, Marvis, Piper (3 voices) — 1,000 per family | test-clean speakers 21–40; real side likewise |
+
+Clips per family are split evenly across its models. Two deviations from the
+first registry, made after smoke tests and before generation: VibeVoice uses
+the 0.5B streaming model, because Microsoft withdrew the 1.5B's code; Marvis
+uses its transformers checkpoint, same weights.
+
+**Quality gate, fixed now.** Each model's output is checked by `synth/qc.py`:
+Whisper small transcribes 50 clips and the word error rate against the
+requested text is measured. A model whose **median WER exceeds 30%** is
+dropped as broken, and so is any model that cannot be made to generate. A
+dropped model's clips are not replaced by another model; a family with no
+surviving model is removed from its split, not refilled. Every drop is
+reported. Clips are never filtered one by one.
+
+**Stage 0 — before any training (diagnostic).** Score the served model at its
+threshold on `heldout-a` (the control for Stage A). `heldout-b` is not read.
+
+**The training run.** `--extra-train speechfake+synth` (the train split's
+~48,000 fakes) on top of a base recipe chosen by rule: **Finding 16's recipe
+if its outcome is "Served" or "Improved, not served", otherwise Finding 9's.**
+Everything else held: SSL-AASIST, RawBoost 5, 4 epochs, batch 14, constant lr
+1e-6, class weights from the data, selection by LA dev + SpeechFake dev.
+Calibration: Finding 12's procedure (People's Speech, 1%, n 10,000, seed 42).
+
+**Stage A — no test set touched.** Score `heldout-a` at the calibrated
+threshold. The control is Stage 0's number for the served model, or the base
+model's if Finding 16's recipe is used.
+
+- A1, heldout-a fakes passed: ≤ max(control − 10 points, control / 2).
+- A2, People's Speech check half real flagged: ≤ 2%.
+- Reported: heldout-a EER and real flagged, SpeechFake dev fakes passed.
+
+**Stage B — once.** Score In-the-Wild, SpeechFake test (English), LA eval and
+`heldout-b`, and the control on `heldout-b`. Serve only if **all** hold:
+
+- In-the-Wild EER < 5%, real flagged ≤ 2%, fakes passed ≤ 5%;
+- heldout-b fakes passed ≤ max(control − 10 points, control / 2);
+- SpeechFake test fakes passed no worse than the served model's 32.72%.
+
+**Outcomes:** **Served**; **Improved, not served** (Stage A passed, Stage B
+failed); **No effect** (A1 misses its bar; Stage B not run); **Broken** (A2 >
+2%, or dev EER at selection above 6%).
+
+**Expected** (so it can be wrong): the served model misses 20–50% of
+heldout-a fakes; training on our fakes halves that; In-the-Wild EER
+2–3.5%.
+
+**Limits, stated now.** The held-out families are open models, not the
+commercial services (ElevenLabs and the like) that cannot be used here. All
+fakes read audiobook text in clean conditions, so they test clean-fake
+detection, the open problem, not noisy real-world fakes. The split is by
+family name; related architectures may still share components (Marvis is
+built on the Sesame CSM design; several models share audio codecs).
+LibriSpeech test-clean was a calibration set in Finding 15, which was not
+served. Chatterbox output carries Resemble's Perth watermark, as it does in
+the wild.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

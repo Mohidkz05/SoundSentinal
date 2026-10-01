@@ -1,2 +1,6 @@
 # python: 3.11
+# torchaudio 2.9 loads only through TorchCodec, which needs system FFmpeg
+# (absent on M3); 2.8 still reads FLAC through soundfile.
 outetts
+torch<2.9
+torchaudio<2.9

@@ -4,9 +4,30 @@ embedding of the prompt."""
 from ._util import load_mono, to_numpy
 
 
+# The pip-installed package omits zonos/backbone, so the source at a pinned
+# commit is put first on sys.path; pip still supplies the dependencies.
+ZONOS_COMMIT = "bc40d98e1e1ab54fc65c483be127a90e3c7c0645"
+
+
+def _zonos_source():
+    import os
+    import sys
+    import tarfile
+    import urllib.request
+    root = os.path.join(os.environ.get("HF_HOME", "."), f"zonos-src-{ZONOS_COMMIT[:12]}")
+    if not os.path.isdir(root):
+        tgz = root + ".tar.gz"
+        urllib.request.urlretrieve(
+            f"https://github.com/Zyphra/Zonos/archive/{ZONOS_COMMIT}.tar.gz", tgz)
+        with tarfile.open(tgz) as t:
+            t.extractall(root)
+    sys.path.insert(0, os.path.join(root, f"Zonos-{ZONOS_COMMIT}"))
+
+
 def load(model_id, repo):
     from ._util import use_bundled_espeak
     use_bundled_espeak()
+    _zonos_source()
     from zonos.model import Zonos
     return dict(model=Zonos.from_pretrained(repo, device="cuda"), speakers={})
 
