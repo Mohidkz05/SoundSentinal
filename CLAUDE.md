@@ -43,10 +43,12 @@ fix for it has been tried. The natural next step is the project write-up.
   SpeechT5 rank well (EER 4–5%) but ~75% still pass (the clean-audio threshold
   problem). `/result` and the home page show this row.
 
-- **The one open problem: clean synthetic speech.** Clean audio (real or fake)
-  scores ~14 log-odds lower on this model than noisy real speech, and the
-  threshold is set for the latter (Finding 13). The model *ranks* clean fakes
-  well — it is the single threshold that misses them. `/result` states this.
+- **The open problems: clean synthetic speech, and generators it has not
+  heard.** Clean audio (real or fake) scores ~14 log-odds lower on this model
+  than noisy real speech, and the threshold is set for the latter (Finding 13),
+  so clean fakes it *ranks* well still pass. And for recent LLM-codec TTS it has
+  never heard (Qwen3-TTS, VoxCPM) it cannot rank them at all (Finding 18 Stage
+  0). Finding 18's training run — 8 more open TTS families — tests the second.
 
 ### What was tried for it, and failed — don't repeat without a new idea
 
