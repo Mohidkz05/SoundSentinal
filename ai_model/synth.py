@@ -34,6 +34,7 @@
 #     python synth.py split                 # the fixed split
 #     python synth.py check <root>          # what has been generated
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -109,9 +110,19 @@ def load_manifests(split, root=None):
     frames = []
     for family in splits()[split]:
         for model, *_ in FAMILIES[family]:
-            m = root / split / family / model / "manifest.csv"
-            if m.is_file():
-                frames.append(pd.read_csv(m, dtype=str).assign(family=family, model=model))
+            d = root / split / family / model
+            m = d / "manifest.csv"
+            if not m.is_file():
+                continue
+            # The pre-registered quality gate (Finding 18): a model is used
+            # only once synth/qc.py has passed it. No report, or a failing
+            # one, and its clips stay out — reported, never silently mixed in.
+            qc = d / "qc.json"
+            if not qc.is_file() or not json.loads(qc.read_text()).get("passes"):
+                print(f"synth: skipping {split}/{family}/{model} "
+                      f"({'no QC report' if not qc.is_file() else 'failed QC'})")
+                continue
+            frames.append(pd.read_csv(m, dtype=str).assign(family=family, model=model))
     if not frames:
         raise FileNotFoundError(f"No manifests for {split} under {root}.")
     return pd.concat(frames, ignore_index=True), root
