@@ -28,8 +28,16 @@ def load(model_id, repo):
     from ._util import use_bundled_espeak
     use_bundled_espeak()
     _zonos_source()
+    import torch
     from zonos.model import Zonos
-    return dict(model=Zonos.from_pretrained(repo, device="cuda"), speakers={})
+    from zonos.speaker_cloning import SpeakerEmbeddingLDA
+    model = Zonos.from_pretrained(repo, device="cuda")
+    # Built lazily by Zonos with tensors split between CPU and GPU, which the
+    # current torchaudio's filterbank refuses; built here with every tensor
+    # defaulting to the GPU instead.
+    with torch.device("cuda"):
+        model.spk_clone_model = SpeakerEmbeddingLDA()
+    return dict(model=model, speakers={})
 
 
 def synthesize(m, job):
