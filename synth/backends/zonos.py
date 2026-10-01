@@ -28,7 +28,21 @@ def load(model_id, repo):
     from ._util import use_bundled_espeak
     use_bundled_espeak()
     _zonos_source()
+    import torch
+    import zonos.speaker_cloning as sc
     from zonos.model import Zonos
+    # Zonos builds its speaker encoder's mel filterbank inside nested
+    # torch.device() contexts, where torchaudio ends up mixing CPU and GPU
+    # tensors (seen with torchaudio 2.8 and 2.11). Build just the filterbank
+    # on the CPU, then move it to the GPU with the rest of the encoder.
+    orig_init = sc.logFbankCal.__init__
+
+    def init_on_cpu(self, *args, **kwargs):
+        with torch.device("cpu"):
+            orig_init(self, *args, **kwargs)
+        self.to("cuda")
+
+    sc.logFbankCal.__init__ = init_on_cpu
     return dict(model=Zonos.from_pretrained(repo, device="cuda"), speakers={})
 
 
