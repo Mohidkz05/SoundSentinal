@@ -5,12 +5,14 @@
 #
 #SBATCH --job-name=synth-qc
 #SBATCH --account=df37
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+# CPU only: Whisper small on 50 clips takes minutes on 8 cores, and M3 caps
+# a user at 4 GPUs, which the generators already hold — a GPU QC job waited
+# hours behind them.
+#SBATCH --partition=comp
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=16G
-#SBATCH --time=01:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=%x-%j.out
 
 set -euo pipefail
