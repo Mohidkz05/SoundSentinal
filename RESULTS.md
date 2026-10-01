@@ -1476,6 +1476,36 @@ pre-registration changes.
   workers would only just keep ahead of the GPU. This changes speed, not the
   model.
 
+### Stage A result (1 October)
+
+Jobs 60602024 (training, 11h43m on an H100 at 5.25 steps/s, commit `4b0ab98`),
+60602025 (calibration) and 60602026 (SpeechFake dev, English), L40S. Dev EER
+by epoch: 10.51%, 5.71%, 4.31%, **3.20%** (`best.pth` = epoch 4; Finding 9:
+3.01%).
+
+| | Control (Finding 12's model) | **Channel augmentation** | Bar |
+| --- | --- | --- | --- |
+| Threshold (log-odds, People's Speech 1%) | +7.98 | +6.60 | — |
+| A2: People's Speech check half, real flagged | 0.60% | 0.56% | ≤ 2% ✓ |
+| **A1: SpeechFake dev fakes passed** | 25.49% | **23.48%** | ≤ 15.49% ✗ |
+| A3: SpeechFake dev EER | 4.87% | 4.61% | reported |
+
+**Outcome: No effect.** Clean-fake misses fell by 2.01 points, not the 10
+required. Stage B was not run and In-the-Wild was not scored.
+
+What moved: the threshold fell 1.4 log-odds, so noisy real speech now scores
+lower relative to everything else — the augmentation did shrink the gap it was
+aimed at, a little. Ranking improved slightly (EER 4.87% → 4.61%). But the
+clean fakes that pass are still the same kind: vocoder-only systems pass most
+(BigVGAN 100%, HifiGAN 74%, FastDiff 63%, DiffGANTTS 56%), while full TTS
+systems are mostly caught (ChatTTS 1%, FireRedTTS 0.7%, GlowTTS 0.1%). The
+misses are concentrated in resynthesis by neural vocoders, which a recording
+channel neither creates nor hides.
+
+**Consequence for Finding 18**, by its pre-registered rule: Finding 16's
+outcome is "No effect", so Finding 18 trains on **Finding 9's recipe** (no
+channel augmentation). Nothing is served differently.
+
 ## Finding 17 — withdrawn before anything ran (MLAAD)
 
 Pre-registered on 30 September (commit `0f04aa5`) and withdrawn the same
