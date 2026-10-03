@@ -1730,6 +1730,24 @@ audio as well — Finding 13's scale problem, now on the real side.
 
 Expected was "halves the misses, In-the-Wild EER 2–3.5%"; both held.
 
+### Override (3 October, written before the checkpoint was swapped)
+
+**The owner overrides the In-the-Wild real-flagged bar and serves the Finding
+18 model.** The bar was missed by 0.18 points (2.18% against 2%); every other
+criterion passed with a wide margin. The trade, stated plainly: about 1.6 more
+genuine In-the-Wild clips flagged per 100 (0.62% → 2.18%), and LibriSpeech
+test-clean real flagged 0.00% → 3.51%, in exchange for fakes passed falling
+on every test set — In-the-Wild 3.61% → 1.89%, SpeechFake test 32.72% →
+13.65%, LA eval 46.25% → 20.65%, unseen open TTS 74–88% → 15–37%. The
+pre-registered outcome stays "Improved, not served"; the served model is
+served by override, and any writeup must say so, as with Finding 15.
+
+Served: `.../plus-speechfake+synth/nodp/best_calibrated_peoples_speech_1pct.pth`
+(threshold +7.07). The `/result` unseen-TTS row is `heldout-b` (job
+60695904): it played no part in training, selection, calibration or the
+Stage A gate, unlike `heldout-a`. The previous served checkpoint is kept on M3
+unchanged.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
