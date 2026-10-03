@@ -1648,6 +1648,46 @@ This set is now shown on `/result` and the home page (copied beside the
 served checkpoint as `best.measured-synth.json`): the served model was never
 trained, selected or calibrated on it, so it is an honest measured rate.
 
+### Training and Stage A (3 October): passed
+
+Finding 16's outcome was "No effect", so the base recipe is Finding 9's.
+Training job 60661487 (H100, 12 h 40 min, `--extra-train speechfake+synth`):
+dev EER fell every epoch (5.72%, 4.46%, 2.89%, **2.19%**) so `best.pth` is
+epoch 4, well under the 6% "Broken" bar. Checkpoints:
+`.../plus-speechfake+synth/nodp/`.
+
+Calibration, job 60689639 (Finding 12's procedure): threshold P(spoof) =
+0.999153, log-odds **+7.07**; People's Speech fit half 1.01%, **check half
+1.05%** flagged. A2 (≤ 2%) passes.
+
+Stage A, job 60694935, `heldout-a` at that threshold (same 5,281 clips as
+Stage 0):
+
+| Model | EER, control → new | Fakes passed, control → new |
+| --- | --- | --- |
+| Chatterbox | 3.81% → 1.80% | 75.20% → 1.80% |
+| Chatterbox-Turbo | 4.21% → 2.19% | 81.40% → 2.40% |
+| SpeechT5 | 4.91% → 1.40% | 75.50% → 0.90% |
+| VoxCPM 1.5 | 38.62% → 24.24% | 100.00% → 67.00% |
+| VoxCPM 0.5B | 40.77% → 24.42% | 100.00% → 64.00% |
+| Qwen3-TTS 0.6B | 44.77% → 28.23% | 100.00% → 83.80% |
+| Qwen3-TTS 1.7B | 45.42% → 24.99% | 100.00% → 78.40% |
+| **Pooled** | **28.57% → 16.78%** | **88.45% → 37.40%** (real flagged 0.08% → 1.64%) |
+
+**A1 passes**: 37.40% against a bar of 78.45%. Reported, job 60694936:
+SpeechFake dev (English) fakes passed **10.94%** (control 25.49%, Finding
+14), EER 3.95%.
+
+What it says, before Stage B: the threshold-failure families (Chatterbox,
+SpeechT5) are essentially solved — their ranking was already good, and
+training on clean open-TTS fakes moved them above the threshold. The
+ranking-failure families (Qwen3-TTS, VoxCPM) improved from chance to EER
+~25%, but two thirds or more still pass: training on other modern TTS
+teaches only part of what these LLM-codec models sound like. Expected was
+"halves the misses"; the pooled rate fell by 58%.
+
+Stage B is submitted next, unchanged from the registration above.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
