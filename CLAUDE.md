@@ -8,47 +8,50 @@ on the CNN as a research result and every architecture stays DP-compatible
 
 University project. Work is on `main` — see "Branching" below.
 
-## Where things stand (updated 30 September 2026)
+## Where things stand (updated 3 October 2026)
 
 Read this first. `RESULTS.md` has every number with its job ID; its
 "Summary → The served system" section is the one-screen version.
 
 **State of play: the model work is done unless someone chooses to retrain.**
-The last five findings (11–15) were all about one weakness, and every cheap
-fix for it has been tried. The natural next step is the project write-up.
+Finding 18 (training on our own generated fakes) was the last run; its model
+is now served by owner override. The natural next step is the project write-up.
 
-### The served system
+### The served system (changed 3 October — Finding 18, by override)
 
 - **Model:** SSL-AASIST (XLS-R 300M front-end + AASIST back-end) + RawBoost,
-  trained on ASVspoof2019 LA + SpeechFake, 4 epochs (Finding 9). Weights on M3
-  scratch: `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake/nodp/best.pth`.
-- **Threshold:** P(spoof) = 0.999658, log-odds **+7.98**, set so 1% of held-out
-  People's Speech real clips are flagged (Finding 12). File:
-  `.../plus-speechfake/nodp/best_calibrated_peoples_speech_1pct.pth`. It is the
-  **last threshold for these weights** — do not fit another; the pre-registered
-  findings say so.
+  trained on ASVspoof2019 LA + SpeechFake + ~44,000 of our own fakes from 8
+  open TTS families (`synth/`), 4 epochs, Finding 9's recipe. Weights on M3
+  scratch: `~/df37_scratch/mkha0155/checkpoints/ssl-aasist/rawboost5/plus-speechfake+synth/nodp/best.pth`.
+- **Threshold:** P(spoof) = 0.999153, log-odds **+7.07**, set so 1% of held-out
+  People's Speech real clips are flagged (Finding 12's procedure). File:
+  `.../plus-speechfake+synth/nodp/best_calibrated_peoples_speech_1pct.pth`. It
+  is the **last threshold for these weights** — do not fit another.
+- **Served by override.** Finding 18's pre-registered outcome is "Improved, not
+  served": In-the-Wild real flagged was 2.18% against a 2% bar. The owner
+  overrode it on 3 October, written in RESULTS.md before the swap; any
+  writeup must say so. The previous model (Finding 9/12, threshold +7.98) is
+  kept on M3 in `.../plus-speechfake/nodp/` and locally in
+  `ai_model/checkpoints/f12/`.
 - **Measured error rates at that threshold** (never trained, selected or
-  calibrated on any of these):
+  calibrated on any of these; previous model in brackets):
 
   | Test set | EER | Real flagged | Fakes missed |
   | --- | --- | --- | --- |
-  | In-the-Wild (real-world) | 2.65% | 0.62% | 3.61% |
-  | SpeechFake test, English (clean modern TTS, seen systems) | 6.26% | 0.01% | 32.72% |
-  | ASVspoof2019 LA eval (clean studio, 2019-era) | 2.12% | 0.00% | 46.25% |
-  | Own fakes, held-out open TTS (Finding 18 Stage 0, never trained on) | 28.57% | 0.08% | **88.45%** |
+  | In-the-Wild (real-world) | 2.02% (2.65) | 2.18% (0.62) | 1.89% (3.61) |
+  | SpeechFake test, English (clean modern TTS, seen systems) | 4.15% (6.26) | 0.00% (0.01) | 13.65% (32.72) |
+  | ASVspoof2019 LA eval (clean studio, 2019-era) | 0.53% (2.12) | 0.00% (0.00) | 20.65% (46.25) |
+  | Own fakes, heldout-b: Dia, Kitten, Marvis, Piper (never heard) | 7.70% (12.09) | 3.51% (0.00) | 15.27% (73.86) |
 
-- **The served model does not detect modern open TTS it has never heard**
-  (Finding 18 Stage 0, 2 October): Qwen3-TTS and VoxCPM pass 100% with EER
-  39–45% (near chance — a ranking failure no threshold can fix); Chatterbox and
-  SpeechT5 rank well (EER 4–5%) but ~75% still pass (the clean-audio threshold
-  problem). `/result` and the home page show this row.
+  `heldout-b` is the `/result` row because it played no part in anything;
+  `heldout-a` (Chatterbox, SpeechT5, Qwen3-TTS, VoxCPM) gated Stage A: 88.45%
+  → 37.40% passed.
 
-- **The open problems: clean synthetic speech, and generators it has not
-  heard.** Clean audio (real or fake) scores ~14 log-odds lower on this model
-  than noisy real speech, and the threshold is set for the latter (Finding 13),
-  so clean fakes it *ranks* well still pass. And for recent LLM-codec TTS it has
-  never heard (Qwen3-TTS, VoxCPM) it cannot rank them at all (Finding 18 Stage
-  0). Finding 18's training run — 8 more open TTS families — tests the second.
+- **The open problems.** Recent LLM-codec TTS it has never heard is still only
+  partly caught: Qwen3-TTS 78–84% and VoxCPM 64–67% still pass (EER ~25%,
+  from chance). And the new model is more suspicious of clean *real* speech
+  (LibriSpeech real flagged 0% → 3.5%) — Finding 13's clean-vs-noisy scale
+  problem, now on the real side.
 
 ### What was tried for it, and failed — don't repeat without a new idea
 
@@ -59,6 +62,7 @@ fix for it has been tried. The natural next step is the project write-up.
 | 12 | Stricter 1% target | Adopted: ITW 0.62% / 3.61%, but clean fakes pass |
 | 14 | Degrade every input (Opus / 8 kHz / noise) before scoring | All worse on clean fakes; not served |
 | 16 | Train every clip through a random channel (noise, reverb, codecs) | Clean-fake misses 25.5% → 23.5% on SpeechFake dev; bar was 15.5%. No effect; not served |
+| 18 | Train on 8 more open TTS families we generated | Improved everything; ITW real flagged 2.18% missed the 2% bar by 0.18. **Served by owner override** |
 | 15 | Second threshold for "clean" recordings (loudness-range cutoff) | Clean-fake misses fell (SF 32.7%→23.5%, LA 46%→29%) but 61% of ITW real routed "clean", real flagged 0.62%→4.00%; not served. Stage A's bar was missed and overridden by the owner — disclosed in RESULTS.md |
 
 **If continuing:** the remaining lever is retraining (≈12–13 h per run on an
@@ -72,16 +76,16 @@ the override is written down before the next job runs.
 ### Running it locally
 
 `ai_model/checkpoints/` (gitignored) must hold, all copied from M3's
-`.../plus-speechfake/nodp/`:
+`.../plus-speechfake+synth/nodp/`:
 
 - `best.pth` ← `best_calibrated_peoples_speech_1pct.pth` (1.26 GB, ~5 min scp)
-- `best.measured-itw.json` ← `eval_itw_20260929-120334.json`
-- `best.measured-la.json` ← `eval_eval_20260929-120817.json`
-- `best.measured-speechfake.json` ← `eval_speechfake-en_20260930-125040.json`
-- `best.measured-synth.json` ← `eval_synth-dev_20261002-010957.json`
+- `best.measured-itw.json` ← `eval_itw_20261003-164501.json`
+- `best.measured-la.json` ← `eval_eval_20261003-165318.json`
+- `best.measured-speechfake.json` ← `eval_speechfake-eval-en_20261003-170427.json`
+- `best.measured-synth.json` ← `eval_synth-eval_20261003-165159.json` (heldout-b)
 
 Also there locally: `best_5pct.pth` (Finding 11 control) and `aasist_best.pth`
-(the old AASIST). Without the three JSONs, `/result` says no error rates were
+(the old AASIST). Without the JSONs, `/result` says no error rates were
 measured; `app.py` also ignores any JSON measured at a different threshold or
 input degradation. Then `cd ai_model && ../venv/bin/python app.py` and
 `npm run dev`. ~0.5 s per prediction on this laptop's CPU.
@@ -89,10 +93,10 @@ input degradation. Then `cd ai_model && ../venv/bin/python app.py` and
 ### How the app presents a reading (changed 29 September)
 
 `/result` draws the model's **score in log-odds**, not a percentage, from −11.25
-to +13.75, with the threshold (+8.0) marked and four bands placed around it
+to +13.75, with the threshold (+7.07 since 3 October) marked and four bands placed around it
 (Clear / Uncertain / Flagged / Strong). The Uncertain band starts at the 95th
 percentile of held-out People's Speech scores (read from the checkpoint). A
-"How often it is wrong" section shows the three rows above. Why: at P =
+"How often it is wrong" section shows the four rows above. Why: at P =
 0.99966 a percentage scale put every high reading on the last pixel and
 headlined real clips "Very likely AI generated". Details in DESIGN.md.
 

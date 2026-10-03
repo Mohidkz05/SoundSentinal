@@ -372,10 +372,10 @@ export default function ResultPage() {
               The rows disagree, and that is the finding. The threshold is set
               for real-world audio: noisy, compressed, recorded in rooms. On
               that, it rarely accuses a real speaker and rarely misses a fake.
-              Clean synthetic speech is different. It scores far lower on this
-              model, and a third or more of it passes even from systems the
-              model trained on; from recent text-to-speech models it never
-              heard, nearly all of it does. If a clip sounds studio-clean,{' '}
+              Clean synthetic speech is harder. It scores lower on this model,
+              and between one in eight and one in five clean fakes pass; some
+              recent text-to-speech models it never heard still pass most of
+              the time. If a clip sounds studio-clean,{' '}
               <span className="text-primary">
                 a low reading is not evidence that it is real
               </span>

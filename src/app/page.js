@@ -178,12 +178,12 @@ export default function Home() {
               <>
                 <ErrorRates measured={rates.measured} />
                 <Notice className="mt-[var(--space-group)]">
-                  Strong on real-world audio; weak on clean synthetic speech.
+                  Strong on real-world audio; weaker on clean synthetic speech.
                   The threshold is set for noisy, compressed recordings, and
-                  between a third and nearly all studio-clean fakes pass it —
-                  nearly all when they come from a recent text-to-speech model
-                  it never trained on. If a clip sounds studio-clean, a low
-                  reading is not evidence it is real.
+                  between one in eight and one in five studio-clean fakes pass
+                  it — and some recent text-to-speech models it never trained
+                  on still pass most of the time. If a clip sounds
+                  studio-clean, a low reading is not evidence it is real.
                 </Notice>
               </>
             ) : rates.status === 'loading' ? (

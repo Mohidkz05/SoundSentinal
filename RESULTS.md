@@ -44,6 +44,7 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | --- | --- | --- | --- | --- |
 | AASIST (published, **not ours**) | raw waveform | non-private | 0.83% | 0.0275 |
 | **Our SSL-AASIST + RawBoost, `best.pth` (epoch 91)** | XLS-R 300M | non-private | **0.79%** | **0.0143** |
+| **Our SSL-AASIST + RawBoost, LA + SpeechFake + own fakes (epoch 4)†, served** | XLS-R 300M | non-private | **0.53%** | **0.0173** |
 | Our SSL-AASIST + RawBoost, LA + SpeechFake + Common Voice bona fide (epoch 4)† | XLS-R 300M | non-private | 1.39% | 0.0415 |
 | Our SSL-AASIST + RawBoost, LA + SpeechFake + CV + VoxPopuli bona fide (epoch 4)† | XLS-R 300M | non-private | 2.76% | 0.0718 |
 | Our SSL-AASIST + RawBoost, LA + SpeechFake (epoch 4)† | XLS-R 300M | non-private | 2.12% | 0.0649 |
@@ -61,38 +62,44 @@ paper. Ours are measured here; raw JSON lives beside each checkpoint in
 | Our CNN, `best.pth` | log-Mel | DP, ε=0.48 | 17.80% | 0.2696 |
 
 † Not a clean held-out number: SpeechFake trains on VCTK, the corpus LA's
-bona fide speech comes from (Finding 9). Their point is In-the-Wild: **2.65%**,
-2.71% and 3.55% respectively (Findings 9, 10 and 11).
+bona fide speech comes from (Finding 9). Their point is In-the-Wild: 2.02% for the served
+model (Finding 18), then **2.65%**, 2.71% and 3.55% (Findings 9, 10 and 11).
 
 Our AASIST's best single epoch on eval reaches 2.98% EER (epochs 59, 64) and
 0.0807 min t-DCF (epochs 85, 95), but those are picked by looking at eval, so
 the `best.pth` row is the one to quote. See Finding 5.
 
-### The served system, and where it stands (30 September 2026)
+### The served system, and where it stands (3 October 2026)
 
-SSL-AASIST + RawBoost trained on LA + SpeechFake (Finding 9), threshold set so
-1% of held-out People's Speech is flagged (Finding 12). The model was never
-trained, selected or calibrated on any test set below.
+SSL-AASIST + RawBoost trained on LA + SpeechFake + ~44,000 of our own fakes
+from 8 open TTS families (Finding 18), threshold set so 1% of held-out
+People's Speech is flagged (log-odds +7.07). **Served by owner override**:
+Finding 18's pre-registered outcome is "Improved, not served", because
+In-the-Wild real flagged was 2.18% against a 2% bar. The model was never
+trained, selected or calibrated on any test set below. Previous served model
+(Findings 9 and 12) in brackets.
 
 | Test set | What it is | EER | Real flagged | Fakes missed |
 | --- | --- | --- | --- | --- |
-| In-the-Wild | real-world recordings and deepfakes of public figures | 2.65% | **0.62%** | **3.61%** |
-| SpeechFake test (English) | clean modern TTS/VC, 26 systems seen in training | 6.26% | 0.01% | **32.72%** |
-| ASVspoof2019 LA eval | clean studio speech, 2019-era fakes | 2.12% | 0.00% | **46.25%** |
+| In-the-Wild | real-world recordings and deepfakes of public figures | 2.02% (2.65) | **2.18%** (0.62) | **1.89%** (3.61) |
+| SpeechFake test (English) | clean modern TTS/VC, 26 systems seen in training | 4.15% (6.26) | 0.00% (0.01) | **13.65%** (32.72) |
+| ASVspoof2019 LA eval | clean studio speech, 2019-era fakes | 0.53% (2.12) | 0.00% (0.00) | **20.65%** (46.25) |
+| Own fakes, heldout-b | Dia, Kitten, Marvis, Piper: open TTS never heard | 7.70% (12.09) | 3.51% (0.00) | **15.27%** (73.86) |
 
-**On real-world audio the detector is strong; on clean synthetic speech it
-misses a third to a half of fakes.** The EER column shows it can still rank
-clean fakes well; the misses come from one threshold having to serve two kinds
-of audio. Clean audio, real and fake, sits about 14 log-odds lower on its
-scale than noisy real-world speech (Finding 13), and the threshold is set for
-the latter.
+**Strong on real-world audio; on clean synthetic speech it now misses one in
+eight to one in five fakes, down from a third to a half.** The cost is on the
+real side: it flags more genuine speech, 2.18% of In-the-Wild and 3.51% of
+clean LibriSpeech. Two weaknesses remain. Recent LLM-codec TTS it has never
+heard is only partly caught (Qwen3-TTS and VoxCPM: 64–84% still pass, EER
+~25%, Finding 18 Stage A). And clean audio still sits on a different part of
+its scale from noisy real speech (Finding 13), so one threshold serves two
+kinds of audio.
 
-What was tried and did not close that gap: adding real-world speech to
-training (Findings 10, 11: the model learned each source's recording
-conditions), and degrading every input through a codec, phone band or noise
-(Finding 14: it blurred the fakes' artefacts instead of lifting clean audio).
-What has not been tried: a separate threshold for clean audio, and scoring
-the whole clip rather than its first 4 seconds.
+What was tried before Finding 18 and did not close the clean-audio gap:
+real-world speech in training (Findings 10, 11), degrading every input
+(Finding 14), a separate threshold for clean audio (Finding 15), and training
+through a random channel (Finding 16). Not tried: scoring the whole clip
+rather than its first 4 seconds.
 
 ## Finding 1 — dev EER does not select the best model
 
