@@ -23,10 +23,14 @@
 #   heldout-a   prompts and text from test-clean speakers 1-20 (sorted)
 #   heldout-b   the other 20; each held-out split's real side is the same
 #               speakers' genuine test-clean clips
+#   probe-a     Finding 19's Stage 0 only: heldout-a's speakers' genuine
+#               clips re-encoded through each codec. Diagnostic, never trained
 #
 # Voice-cloning models clone the prompt speaker; the rest use their own
 # preset voices (Kokoro, Kitten, Piper, Soprano, SpeechT5's CMU ARCTIC
 # x-vectors, Parler/Maya1 text descriptions, Kyutai's CC0 and VCTK voices).
+# The codec "family" (Finding 19) is not a TTS model: it re-encodes the
+# genuine utterance whose transcript the job names ("resynth" voices).
 #
 # Generated audio lives on scratch under $SYNTH_ROOT/<split>/<family>/<model>/
 # with a manifest.csv per model; synth/ holds the generator scripts.
@@ -46,10 +50,13 @@ SEED = 42
 N_HELDOUT_FAMILIES = 4          # per held-out split
 CLIPS_TRAIN = 6000              # per family, spread over its models
 CLIPS_HELDOUT = 1000            # per family
-SPLITS = ("train", "heldout-a", "heldout-b")
+SPLITS = ("train", "heldout-a", "heldout-b", "probe-a")
+# Diagnostic splits: which held-out split's speakers they draw from.
+PROBES = {"probe-a": "heldout-a"}
 
 # family -> [(model id, Hugging Face repo, licence, voice source)]
-# voice source: "clone" (LibriSpeech prompt), "preset" (the model's own voices)
+# voice source: "clone" (LibriSpeech prompt), "preset" (the model's own voices),
+# "resynth" (the genuine utterance itself, through a neural codec)
 FAMILIES = {
     "kokoro":    [("kokoro-82m", "hexgrad/Kokoro-82M", "Apache-2.0", "preset")],
     "chatterbox": [("chatterbox", "ResembleAI/chatterbox", "MIT", "clone"),
@@ -76,9 +83,17 @@ FAMILIES = {
                    "clone")],
     "maya1":     [("maya1", "maya-research/maya1", "Apache-2.0", "preset")],
     "soprano":   [("soprano-80m", "ekwek/Soprano-80M", "Apache-2.0", "preset")],
+    # Finding 19: genuine speech through open neural codecs, labelled spoof.
+    # Never a codec a held-out family decodes with (DAC: Dia; Mimi: Marvis;
+    # the Qwen3-TTS tokenizer; VoxCPM's audio VAE).
+    "codec":     [("snac-24khz", "hubertsiuzdak/snac_24khz", "MIT", "resynth"),
+                  ("wavtokenizer-75", "novateur/WavTokenizer-large-speech-75token", "MIT",
+                   "resynth")],
 }
-# Families SpeechFake already trains on: never held out.
-ALWAYS_TRAIN = ("parler",)
+# Never held out: Parler because SpeechFake already trains on it; codec
+# because it is Finding 19's training data, added after the split was drawn —
+# listing it here keeps the seeded split exactly as Finding 18 drew it.
+ALWAYS_TRAIN = ("parler", "codec")
 
 
 def splits():
@@ -88,11 +103,12 @@ def splits():
     order = [pool[i] for i in np.random.RandomState(SEED).permutation(len(pool))]
     a, b = order[:N_HELDOUT_FAMILIES], order[N_HELDOUT_FAMILIES:2 * N_HELDOUT_FAMILIES]
     return {"train": sorted(set(FAMILIES) - set(a) - set(b)),
-            "heldout-a": sorted(a), "heldout-b": sorted(b)}
+            "heldout-a": sorted(a), "heldout-b": sorted(b), "probe-a": ["codec"]}
 
 
 def split_of(family):
-    return next(s for s, fams in splits().items() if family in fams)
+    """The split a family trains or is tested in (probes are extra, not its split)."""
+    return next(s for s, fams in splits().items() if family in fams and s not in PROBES)
 
 
 def get_synth_root():
@@ -155,6 +171,7 @@ def load_heldout(split, synth_root=None, librispeech_root=None):
 
 def heldout_speakers(split, clips):
     """test-clean speaker ids for a held-out split: first or second half, sorted."""
+    split = PROBES.get(split, split)
     speakers = sorted(clips["speaker_id"].unique())
     half = len(speakers) // 2
     return set(speakers[:half] if split == "heldout-a" else speakers[half:])

@@ -19,7 +19,8 @@ import soundfile as sf
 MIN_CHARS, MAX_CHARS = 40, 240        # text: a sentence or two
 PROMPT_S = (5.5, 10.0)                # prompt duration window, seconds; Chatterbox-Turbo
                                       # refuses prompts under 5 s
-SUBSET = {"train": "train-clean-100", "heldout-a": "test-clean", "heldout-b": "test-clean"}
+SUBSET = {"train": "train-clean-100", "heldout-a": "test-clean", "heldout-b": "test-clean",
+          "probe-a": "test-clean"}
 
 
 def utterances(librispeech_root, subset):
@@ -35,7 +36,9 @@ def utterances(librispeech_root, subset):
 
 
 def build(split, model_id, n, librispeech_root, speakers=None):
-    """n jobs: (index, speaker, text, text_utt, prompt_path, prompt_text)."""
+    """n jobs: (index, speaker, text, text_utt, text_path, prompt_path, prompt_text).
+    text_path is the genuine utterance of the text, which only the codec
+    backend reads (it re-encodes that recording; Finding 19)."""
     utts = utterances(librispeech_root, SUBSET[split])
     if speakers is not None:
         utts = utts[utts["speaker"].isin(speakers)]
@@ -62,5 +65,5 @@ def build(split, model_id, n, librispeech_root, speakers=None):
         if prompt is None:
             continue
         jobs.append(dict(index=i, speaker=t["speaker"], text=t["text"], text_utt=t["utt"],
-                         prompt_path=prompt["path"], prompt_text=prompt["text"]))
+                         text_path=t["path"], prompt_path=prompt["path"], prompt_text=prompt["text"]))
     return jobs

@@ -45,7 +45,10 @@ def main():
     entry = {m[0]: m for m in synth.FAMILIES[args.family]}.get(args.model)
     if entry is None:
         sys.exit(f"{args.model} is not a {args.family} model: {list(synth.FAMILIES[args.family])}")
-    if synth.split_of(args.family) != args.split:
+    if args.split in synth.PROBES:
+        if args.family not in synth.splits()[args.split]:
+            sys.exit(f"{args.split} probes only {synth.splits()[args.split]}")
+    elif synth.split_of(args.family) != args.split:
         sys.exit(f"{args.family} belongs to {synth.split_of(args.family)}, not {args.split}")
     _, repo, licence, voice = entry
 

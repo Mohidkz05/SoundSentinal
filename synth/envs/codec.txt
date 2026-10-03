@@ -1,0 +1,10 @@
+# python: 3.11
+# Finding 19's codecs. WavTokenizer's own requirements pin torch 2.0 and pull
+# in training-only packages (lightning, fairseq, pesq); inference needs only
+# these. torch 2.8 matches Zonos's environment, known to work on M3.
+torch==2.8.0
+torchaudio==2.8.0
+snac
+einops
+pyyaml
+huggingface_hub

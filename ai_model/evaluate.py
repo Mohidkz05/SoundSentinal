@@ -206,7 +206,7 @@ def main():
     parser.add_argument("--language", default="en", choices=["en", "zh", "all"],
                         help="--dataset speechfake only: which language's rows to "
                              "score. English matches In-the-Wild and the app.")
-    parser.add_argument("--partition", default="eval", choices=["eval", "dev"],
+    parser.add_argument("--partition", default="eval", choices=["eval", "dev", "probe"],
                         help="Which partition to score. Defaults to eval, which "
                              "is the only one worth quoting; dev is offered to "
                              "reproduce a training run's own number.")
@@ -216,6 +216,8 @@ def main():
                         help="Where to write the JSON result. Defaults to "
                              "<checkpoint dir>/eval_<partition>_<timestamp>.json")
     args = parser.parse_args()
+    if args.partition == "probe" and args.dataset != "synth":
+        parser.error("--partition probe exists only for --dataset synth (Finding 19)")
 
     # The directory layout is get_ckpt_paths' business, not ours — it is
     # imported rather than reimplemented so the two cannot drift apart.
@@ -318,8 +320,9 @@ def main():
         # Our own fakes from held-out generator families, never trained on,
         # with the same LibriSpeech test-clean speakers' genuine clips as the
         # real side (Finding 18). --partition dev is heldout-a (Stage A), eval
-        # is heldout-b (Stage B, read once).
-        split = "heldout-b" if args.partition == "eval" else "heldout-a"
+        # is heldout-b (Stage B, read once); probe is Finding 19's Stage 0,
+        # heldout-a's real clips through each codec.
+        split = {"eval": "heldout-b", "dev": "heldout-a", "probe": "probe-a"}[args.partition]
         frame, root = synth.load_heldout(split)
         dataset = AVSpoofDataset(None, root, build_transform(frontend),
                                  protocol=frame, suffix="", degradation=degradation)

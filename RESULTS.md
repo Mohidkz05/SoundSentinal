@@ -1842,6 +1842,16 @@ the model can only learn the decoder, which is the point but also the limit.
 heldout-a has been read twice before (Finding 18 Stage 0 and Stage A); it was
 never used to select or tune anything.
 
+### Amendment (3 October, while writing the code, before any job)
+
+The quality check is **Finding 18's Whisper gate as well as**, not instead
+of, the listening check: `synth.py` uses a model's clips only once
+`synth/qc.py` has passed it, and running the same gate on every source is
+simpler and more objective than an exception. The 20 clips per codec are
+still listened to. Stage 0's clips are a new `probe-a` split (heldout-a's
+speakers, `evaluate.py --dataset synth --partition probe`); its real side is
+the same 1,281 genuine clips as heldout-a. Nothing else changes.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
