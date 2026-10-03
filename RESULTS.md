@@ -1688,6 +1688,48 @@ teaches only part of what these LLM-codec models sound like. Expected was
 
 Stage B is submitted next, unchanged from the registration above.
 
+### Stage B (3 October): improved, not served — one bar missed by 0.18 points
+
+Jobs 60695901–60695905, each set scored once at the calibrated threshold
+(+7.07). Served model (threshold +7.98) beside it for reference.
+
+| Test set | EER, served → new | Real flagged, served → new | Fakes passed, served → new |
+| --- | --- | --- | --- |
+| In-the-Wild | 2.65% → **2.02%** | 0.62% → **2.18%** | 3.61% → **1.89%** |
+| SpeechFake test (en) | 6.26% → 4.15% | 0.01% → 0.00% | 32.72% → 13.65% |
+| LA eval | 2.12% → 0.53% | 0.00% → 0.00% | 46.25% → 20.65% |
+| heldout-b (control run, job 60695905) | 12.09% → 7.70% | 0.00% → 3.51% | 73.86% → 15.27% |
+
+heldout-b by model, fakes passed control → new: Dia 65.9% → 26.1%, Kitten
+91.5% → 0.0%, Marvis 42.4% → 0.2%, Piper Cori 99.7% → 49.4%, Piper
+LibriTTS-R 98.5% → 9.0%, Piper LJSpeech 88.3% → 45.8%. All 17 models passed
+the Whisper gate (Marvis on its second generation run, job 60661544); none was
+dropped.
+
+Serving criteria:
+
+- In-the-Wild EER < 5%: **2.02%, pass.**
+- In-the-Wild real flagged ≤ 2%: **2.18%, fail** (436 of 19,963 clips; 2%
+  would be 399).
+- In-the-Wild fakes passed ≤ 5%: **1.89%, pass.**
+- heldout-b fakes passed ≤ max(73.86 − 10, 73.86 / 2) = 63.86%: **15.27%, pass.**
+- SpeechFake test fakes passed ≤ 32.72%: **13.65%, pass.**
+
+**Outcome: Improved, not served** (Stage A passed, Stage B failed on one
+criterion). The served model is unchanged.
+
+What it says: training on 8 more open-TTS families improved every
+measurement except one. Ranking improved on all four test sets (In-the-Wild
+EER 2.65% → 2.02%), clean fakes passed fell by half or more everywhere, and
+fakes from families it never heard fell from 74–88% passed to 15–37%. The cost
+is the real side: the same 1% People's Speech target flags 2.18% of
+In-the-Wild real speech (from 0.62%) and 3.51% of LibriSpeech test-clean (from
+0.00%). The new model is more suspicious of clean speech, real or fake, so
+calibrating on noisy People's Speech no longer carries over to cleaner real
+audio as well — Finding 13's scale problem, now on the real side.
+
+Expected was "halves the misses, In-the-Wild EER 2–3.5%"; both held.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
