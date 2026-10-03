@@ -1755,6 +1755,93 @@ Served: `.../plus-speechfake+synth/nodp/best_calibrated_peoples_speech_1pct.pth`
 Stage A gate, unlike `heldout-a`. The previous served checkpoint is kept on M3
 unchanged.
 
+## Finding 19 — real speech through neural codecs, labelled fake (pre-registered)
+
+Written 3 October 2026, before any code, generation, training or scoring.
+Nothing below may be changed after Stage 0 is scored except by a dated
+amendment written before the next job; the result is reported whatever it is.
+
+**Question.** The served model (Finding 18) still passes most fakes from
+Qwen3-TTS (78–84%) and VoxCPM (64–67%), with EER ~25%. Both generate speech
+through a neural codec or audio VAE decoder. Does training on **genuine speech
+re-encoded through other open neural codecs, labelled spoof**, teach the model
+the decoder's fingerprint independently of any one TTS model, and so catch
+those two families without ever hearing them? (The idea follows the CodecFake
+line of work.)
+
+**Codecs, fixed now.** Code and weights must allow commercial use with no
+account (Finding 17), and no codec may be one a held-out family uses:
+
+| Codec | Repo | Licence | Settings |
+| --- | --- | --- | --- |
+| SNAC 24 kHz | `hubertsiuzdak/snac_24khz` | MIT | its single bitrate |
+| WavTokenizer | `novateur/WavTokenizer-large-speech-75token` | MIT | 75 tokens/s |
+
+Excluded: DAC (Dia, heldout-b), Mimi (Marvis, heldout-b), the Qwen3-TTS
+tokenizer and VoxCPM's audio VAE (heldout-a) — any of these would leak a
+held-out generator's decoder into training. EnCodec (weights carry no stated
+licence), X-Codec2 (CC BY-NC 4.0) and NeuCodec (gated) fail Finding 17.
+Disclosed overlap: Maya1, a train family, already decodes through SNAC, so
+SNAC's decoder is in Finding 18's training on generated speech; what is new
+here is SNAC applied to real speech.
+
+**Data.** 6,000 clips per codec (12,000 total): LibriSpeech train-clean-100
+utterances (the train split's speakers and text, as in Finding 18), resampled
+to the codec's rate, encoded, decoded, resampled to 16 kHz, labelled spoof.
+The uncoded originals are not added as extra real speech (those speakers are
+already real in training via LibriTTS/SpeechFake). Registered as a new
+`codec` family in `synth.py`'s `ALWAYS_TRAIN`, so the seeded family split is
+unchanged; checked by `python synth.py split` printing the same split. No
+Whisper gate (codec resynthesis of real speech does not change the words);
+instead 20 clips per codec are listened to and any codec producing silence or
+noise is dropped and reported.
+
+**Stage 0 — before any training (go / no-go).** Score the served model at its
+threshold on 1,000 codec-resynthesised clips per codec from heldout-a's 20
+test-clean speakers (diagnostic only; never trained on). If the served model
+already flags **≥ 90%** of both codecs' clips, it already knows these
+fingerprints and there is nothing to learn: outcome **No room**, stop.
+
+**The training run.** Finding 18's recipe exactly, with
+`--extra-train speechfake+synth` now including the `codec` family: SSL-AASIST,
+RawBoost 5, 4 epochs, batch 14, constant lr 1e-6, class weights from the data,
+selection by LA dev + SpeechFake dev. One change only — not more epochs too,
+so any effect is attributable. Calibration: Finding 12's procedure.
+
+**Stage A — no test set touched.** The control is the served model on
+heldout-a (Finding 18 Stage A): Qwen3-TTS + VoxCPM fakes passed **73.30%**
+(1,466 of 2,000).
+
+- A1, Qwen3-TTS + VoxCPM fakes passed ≤ max(73.30 − 10, 73.30 / 2) = **63.30%**.
+- A2, People's Speech check half real flagged ≤ 2%.
+- A3, heldout-a real (LibriSpeech test-clean) flagged ≤ **3%** (control
+  1.64%) — the risk of this idea is that the model learns "clean LibriSpeech
+  = suspicious".
+- Reported: heldout-a EER, Chatterbox/SpeechT5 passed, SpeechFake dev.
+
+**Stage B — once.** Score In-the-Wild, SpeechFake test (English), LA eval and
+heldout-b. Serve only if **all** hold, against the served model's numbers:
+
+- In-the-Wild EER < 5%, real flagged ≤ 2.18%, fakes passed ≤ 5%;
+- SpeechFake test fakes passed ≤ 13.65% + 1 point;
+- heldout-b fakes passed ≤ 15.27% + 1 point, real flagged ≤ 3.51% + 1 point.
+
+**Outcomes:** **Served**; **Improved, not served** (Stage A passed, Stage B
+failed); **No effect** (A1 missed); **Broken** (A2 or A3 failed, or dev EER at
+selection above 6%); **No room** (Stage 0).
+
+**Expected** (so it can be wrong): Stage 0 shows the served model passes
+most codec-resynthesised speech; training cuts Qwen3-TTS + VoxCPM passed to
+40–60%; In-the-Wild unchanged within 0.5 points. A real chance of **No
+effect**: Qwen3-TTS and VoxCPM's decoders are their own, and a fingerprint
+learned from SNAC and WavTokenizer may not transfer.
+
+**Limits, stated now.** Two codecs is a small sample of decoder designs.
+Codec-resynthesised real speech is not TTS output: it carries real prosody, so
+the model can only learn the decoder, which is the point but also the limit.
+heldout-a has been read twice before (Finding 18 Stage 0 and Stage A); it was
+never used to select or tune anything.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
