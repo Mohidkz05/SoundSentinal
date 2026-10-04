@@ -13,9 +13,10 @@ University project. Work is on `main` — see "Branching" below.
 Read this first. `RESULTS.md` has every number with its job ID; its
 "Summary → The served system" section is the one-screen version.
 
-**State of play: the model work is done unless someone chooses to retrain.**
-Finding 18 (training on our own generated fakes) was the last run; its model
-is now served by owner override. The natural next step is the project write-up.
+**State of play: training is closed (owner's decision, 4 October 2026).**
+Finding 18 (training on our own generated fakes) was the last training run (Finding 19 stopped at Stage 0, No room); its model
+is now served by owner override. The next step is the project write-up;
+the open problems below go in it as limitations and future work.
 
 ### The served system (changed 3 October — Finding 18, by override)
 
@@ -64,6 +65,7 @@ is now served by owner override. The natural next step is the project write-up.
 | 16 | Train every clip through a random channel (noise, reverb, codecs) | Clean-fake misses 25.5% → 23.5% on SpeechFake dev; bar was 15.5%. No effect; not served |
 | 18 | Train on 8 more open TTS families we generated | Improved everything; ITW real flagged 2.18% missed the 2% bar by 0.18. **Served by owner override** |
 | 15 | Second threshold for "clean" recordings (loudness-range cutoff) | Clean-fake misses fell (SF 32.7%→23.5%, LA 46%→29%) but 61% of ITW real routed "clean", real flagged 0.62%→4.00%; not served. Stage A's bar was missed and overridden by the owner — disclosed in RESULTS.md |
+| 19 | Real speech through open neural codecs (SNAC, WavTokenizer) as training fakes | **No room** at Stage 0: served model already flags 100% / 98.3% of codec-resynthesised real speech. Not trained. Qwen3-TTS/VoxCPM evade it by something other than a generic codec fingerprint |
 
 **If continuing:** the remaining lever is retraining (≈12–13 h per run on an
 H100) so that clean fakes and noisy real speech share one scale; or a better

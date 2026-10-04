@@ -1852,6 +1852,35 @@ still listened to. Stage 0's clips are a new `probe-a` split (heldout-a's
 speakers, `evaluate.py --dataset synth --partition probe`); its real side is
 the same 1,281 genuine clips as heldout-a. Nothing else changes.
 
+### Result (3 October): **No room** — stopped at Stage 0
+
+Generation: 5,850 SNAC and 5,848 WavTokenizer training clips (jobs
+60698293/60698295), 1,000 probe clips each (60698294/60698296). All four
+passed the Whisper gate (job 60701212): median WER 6.7% / 5.4% (train), 2.9% /
+6.4% (probe), bar 30%.
+
+Stage 0 (job 60701215; `eval_synth-probe_20261003-234005.json`), served model
+at its threshold (+7.07) on probe-a:
+
+| Codec | EER | Flagged | Passed |
+| --- | --- | --- | --- |
+| SNAC 24 kHz | 0.48% | 100.00% | 0.00% |
+| WavTokenizer 75 tok/s | 1.71% | 98.30% | 1.70% |
+
+Real side (1,281 LibriSpeech test-clean): 1.64% flagged, as in Stage A's
+control. Both codecs are flagged at ≥ 90%, so the pre-registered outcome is
+**No room**: the served model already recognises these decoders on real
+speech, and training on them cannot be what lets Qwen3-TTS and VoxCPM
+through. No training job was run; heldout-a fakes and every Stage B test
+set were not touched. The expectation written above ("passes most
+codec-resynthesised speech") was wrong.
+
+What follows: the model catches a generic codec fingerprint well, yet
+passes those two families, so what they get past it with is
+probably not their decoder alone — or their decoders are unlike SNAC and
+WavTokenizer in a way this probe cannot show. The 20-clip listening check
+was not needed for the decision and was not recorded.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
