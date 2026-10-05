@@ -92,6 +92,40 @@ measured; `app.py` also ignores any JSON measured at a different threshold or
 input degradation. Then `cd ai_model && ../venv/bin/python app.py` and
 `npm run dev`. ~0.5 s per prediction on this laptop's CPU.
 
+### Hosting (5 October)
+
+The model server runs on **Azure Container Apps** (Azure for Students,
+`mkha0155@student.monash.edu`, resource group `soundsentinal`, region
+`australiaeast` — the subscription's policy allows only australiaeast, eastasia,
+malaysiawest, indonesiacentral, newzealandnorth). Verified: 401 without the
+token, correct readings on both sample clips, ~1.2 s per prediction warm.
+
+- **Image:** `.github/workflows/model-image.yml` builds `deploy/Dockerfile` to
+  `ghcr.io/mohidkz05/soundsentinal-model` (public; code only) on pushes that
+  touch the server. **Weights:** private blob container, downloaded at each
+  cold start by `deploy/fetch_checkpoint.py` with a read-only SAS (expires a
+  year after the last `deploy/azure.sh` run — rerun it before then).
+- **Deploy/redeploy:** `IMAGE=ghcr.io/mohidkz05/soundsentinal-model:<sha> bash
+  deploy/azure.sh` (pin the sha: `:latest` may not be re-pulled). Azure CLI is
+  in its own venv, `~/tools/azcli/bin/az`; log in with
+  `BROWSER=/mnt/c/Windows/explorer.exe ~/tools/azcli/bin/az login` (Monash
+  blocks `--use-device-code`).
+- **Express environment quirks** — the CLI now creates "express" environments,
+  which: can't mount Azure Files (hence the download); reject the CLI's
+  `containerapp create/update` (api-version 2025-07-01) with a meaningless 400,
+  so `azure.sh` PUTs the app through `az rest` at 2026-07-01; and break
+  `az containerapp logs show` (no `eventStreamEndpoint`). Read replica state
+  via REST `.../revisions/<rev>/replicas`.
+- **Scale to zero:** idle costs nothing; the first request after a quiet spell
+  waits for the image pull, the 1.26 GB download and the load. The proxy route
+  waits up to 180 s for that. Peak memory is 2.8 GB of the 4 GiB allowed.
+- **Auth:** `app.py` requires `MODEL_API_TOKEN` as a bearer token on
+  `/predict` when set; `route.js` sends it. `.env.local` (gitignored) points
+  the local frontend at Azure — delete it to use local Flask again. On Vercel,
+  set `MODEL_API_URL` and `MODEL_API_TOKEN` (server-only, no `NEXT_PUBLIC_`).
+- Hugging Face Spaces was tried first and refused: Docker Spaces on free CPU
+  now need PRO.
+
 ### How the app presents a reading (changed 29 September)
 
 `/result` draws the model's **score in log-odds**, not a percentage, from −11.25
