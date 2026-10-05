@@ -1,6 +1,6 @@
 # Builds the model server image (deploy/Dockerfile) and pushes it to
-# ghcr.io/<owner>/soundsentinal-model. Code only; weights are mounted at run
-# time (deploy/azure.sh), so the image can be public.
+# ghcr.io/<owner>/soundsentinal-model. Code only; weights are downloaded at
+# start (deploy/fetch_checkpoint.py), so the image can be public.
 name: model-image
 
 on:
@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths: [ai_model/app.py, ai_model/model.py, ai_model/aasist.py,
             ai_model/ssl_aasist.py, ai_model/xlsr_300m_config.json,
-            deploy/Dockerfile, deploy/requirements.txt,
+            deploy/Dockerfile, deploy/requirements.txt, deploy/fetch_checkpoint.py,
             .github/workflows/model-image.yml]
   workflow_dispatch:
 
