@@ -3,7 +3,7 @@
 Hosted (deploy/azure.sh), the weights live in a private blob container and the
 container gets a read-only SAS for it: $CKPT_BASE_URL is the container URL,
 $CKPT_SAS the query string. Container Apps express can't mount Azure Files, so
-each cold start pulls them into an EmptyDir volume — same region, seconds.
+each cold start pulls them into the container's own filesystem.
 
 Unset $CKPT_BASE_URL (local runs) and this does nothing.
 """

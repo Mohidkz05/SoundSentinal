@@ -74,63 +74,57 @@ BLOB_URL="https://$SA.blob.core.windows.net/$BLOBS"
 # has been built for the first time.
 if [ -n "${SKIP_APP:-}" ]; then echo "Infrastructure ready; app skipped."; exit 0; fi
 
+# The app itself goes through the REST API: the CLI's containerapp commands
+# send api-version 2025-07-01, which express environments reject with an
+# unhelpful 400 ("could not be converted to System.Boolean").
+API=2026-07-01
+APP_URL="https://management.azure.com$("$AZ" group show -n "$RG" --query id -o tsv)/providers/Microsoft.App/containerApps/$APP?api-version=$API"
+SECRETS_URL="${APP_URL/\?/\/listSecrets?}"
+
 # Keep the token across reruns; generate it once.
-TOKEN=$("$AZ" containerapp secret show -n "$APP" -g "$RG" --secret-name model-api-token \
-          --query value -o tsv 2>/dev/null || true)
+TOKEN=$("$AZ" rest --method post --url "$SECRETS_URL" \
+          --query "value[?name=='model-api-token'].value | [0]" -o tsv 2>/dev/null || true)
 TOKEN=${TOKEN:-$(openssl rand -hex 32)}
 ENV_ID=$("$AZ" containerapp env show -n "$ENV_NAME" -g "$RG" --query id -o tsv)
 
-cat > "$STAGE/app.yaml" <<YAML
-location: $LOC
-properties:
-  managedEnvironmentId: $ENV_ID
-  configuration:
-    secrets:
-      - name: model-api-token
-        value: $TOKEN
-      - name: ckpt-sas
-        value: "$SAS"
-    ingress:
-      external: true
-      targetPort: 8000
-      transport: http
-  template:
-    containers:
-      - name: model
-        image: $IMAGE
-        resources: { cpu: 2.0, memory: 4Gi }
-        env:
-          - name: MODEL_API_TOKEN
-            secretRef: model-api-token
-          - name: CKPT_SAS
-            secretRef: ckpt-sas
-          - name: CKPT_BASE_URL
-            value: $BLOB_URL
-        volumeMounts:
-          - volumeName: ckpt
-            mountPath: /mnt/checkpoints
-        probes:
-          # Fetching and loading the weights takes a while; don't route traffic or restart
-          # the container until /health answers.
-          - type: Startup
-            httpGet: { path: /health, port: 8000 }
-            periodSeconds: 5
-            failureThreshold: 48
-    volumes:
-      - name: ckpt
-        storageType: EmptyDir
-    scale:
-      minReplicas: 0
-      maxReplicas: 1
-YAML
+LOC="$LOC" ENV_ID="$ENV_ID" TOKEN="$TOKEN" SAS="$SAS" BLOB_URL="$BLOB_URL" IMAGE="$IMAGE" \
+python3 - > "$STAGE/app.json" <<'PY'
+import json, os
+e = os.environ
+print(json.dumps({
+    "location": e["LOC"],
+    "properties": {
+        "environmentId": e["ENV_ID"],
+        "configuration": {
+            "secrets": [{"name": "model-api-token", "value": e["TOKEN"]},
+                        {"name": "ckpt-sas", "value": e["SAS"]}],
+            "ingress": {"external": True, "targetPort": 8000, "transport": "http"},
+        },
+        "template": {
+            "containers": [{
+                "name": "model",
+                "image": e["IMAGE"],
+                "resources": {"cpu": 2.0, "memory": "4Gi"},
+                "env": [{"name": "MODEL_API_TOKEN", "secretRef": "model-api-token"},
+                        {"name": "CKPT_SAS", "secretRef": "ckpt-sas"},
+                        {"name": "CKPT_BASE_URL", "value": e["BLOB_URL"]}],
+                # Fetching and loading the weights takes a while; don't route
+                # traffic or restart the container until /health answers.
+                "probes": [{"type": "Startup", "httpGet": {"path": "/health", "port": 8000},
+                            "periodSeconds": 5, "failureThreshold": 48}],
+            }],
+            "scale": {"minReplicas": 0, "maxReplicas": 1},
+        },
+    },
+}))
+PY
 
-if "$AZ" containerapp show -n "$APP" -g "$RG" -o none 2>/dev/null; then
-  "$AZ" containerapp update -n "$APP" -g "$RG" --yaml "$STAGE/app.yaml" -o none
-else
-  "$AZ" containerapp create -n "$APP" -g "$RG" --yaml "$STAGE/app.yaml" -o none
-fi
+"$AZ" rest --method put --url "$APP_URL" --body @"$STAGE/app.json" -o none
+until state=$("$AZ" rest --method get --url "$APP_URL" --query properties.provisioningState -o tsv) \
+      && [ "$state" != InProgress ]; do sleep 5; done
+echo "Provisioning: $state"
 
-FQDN=$("$AZ" containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)
+FQDN=$("$AZ" rest --method get --url "$APP_URL" --query properties.configuration.ingress.fqdn -o tsv)
 echo
 echo "MODEL_API_URL=https://$FQDN"
 echo "MODEL_API_TOKEN=$TOKEN"

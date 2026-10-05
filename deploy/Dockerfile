@@ -2,13 +2,15 @@
 # .github/workflows/model-image.yml and pushed to ghcr.io; run on Azure
 # Container Apps by deploy/azure.sh. Code only — the weights are not in the
 # image: deploy/fetch_checkpoint.py downloads them into $CKPT_ROOT at start.
+# That is the container's own writable layer, deliberately not a volume: an
+# EmptyDir mounts root-owned, and the server runs as uid 1000.
 FROM python:3.12-slim
 
 RUN useradd -m -u 1000 user
 USER user
 ENV PATH=/home/user/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
-    CKPT_ROOT=/mnt/checkpoints
+    CKPT_ROOT=/home/user/checkpoints
 WORKDIR /home/user/ai_model
 
 COPY --chown=user deploy/requirements.txt /tmp/requirements.txt
