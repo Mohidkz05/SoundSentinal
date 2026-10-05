@@ -1,8 +1,15 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { hasWebGL, useInView, usePrefersReducedMotion } from './use-stage';
+import { Canvas, useFrame } from '@react-three/fiber';
+import {
+  hasWebGL,
+  stepDownQuality,
+  useInView,
+  useMotionPaused,
+  usePrefersReducedMotion,
+  useQualityTier,
+} from './use-stage';
 
 /**
  * The one way a canvas enters this app.
@@ -22,6 +29,12 @@ import { hasWebGL, useInView, usePrefersReducedMotion } from './use-stage';
  *   - **Decoration is invisible to assistive tech** and never eats a pointer
  *     event.
  *
+ *   - **The visitor can stop it.** The header's pause switch holds every
+ *     canvas still (WCAG 2.2.2), the same way reduced motion does.
+ *   - **A slow page sheds the layer, not the interface.** The frame-rate
+ *     governor below steps the page-wide quality tier down: first to 1×
+ *     pixels, then to a still frame.
+ *
  * `dpr` is capped below the device ratio on purpose. These are soft, low-
  * contrast fields where the extra samples of a 3× retina buffer cost fill rate
  * and buy nothing you can see.
@@ -32,6 +45,8 @@ export function Stage({
   style,
   camera = { position: [0, 0, 5], fov: 45 },
   dpr = [1, 1.75],
+  /** Off for full-viewport soft fields, where MSAA is pure fill cost. */
+  antialias = true,
   /** Rendered instead of the canvas when WebGL is unavailable. */
   fallback = null,
   ...canvasProps
@@ -39,12 +54,15 @@ export function Stage({
   const hostRef = useRef(null);
   const inView = useInView(hostRef);
   const reduced = usePrefersReducedMotion();
+  const tier = useQualityTier();
+  const paused = useMotionPaused();
 
   // Deferred to an effect so the server and the first client render agree.
   const [enabled, setEnabled] = useState(false);
   useEffect(() => setEnabled(hasWebGL()), []);
 
-  const frameloop = reduced ? 'demand' : inView ? 'always' : 'never';
+  const still = reduced || paused || tier >= 2;
+  const frameloop = still ? 'demand' : inView ? 'always' : 'never';
 
   return (
     <div
@@ -56,11 +74,12 @@ export function Stage({
       {enabled ? (
         <Canvas
           frameloop={frameloop}
-          dpr={dpr}
+          dpr={tier >= 1 ? 1 : dpr}
           camera={camera}
-          gl={{ antialias: true, alpha: true, powerPreference: 'low-power' }}
+          gl={{ antialias, alpha: true, powerPreference: 'low-power' }}
           {...canvasProps}
         >
+          {!still && <Governor key={tier} tier={tier} />}
           {children}
         </Canvas>
       ) : (
@@ -68,6 +87,35 @@ export function Stage({
       )}
     </div>
   );
+}
+
+/**
+ * Watches the frame rate and steps the page's quality tier down when it is too
+ * low to be worth the cost. Two seconds under 40 fps per step, after a one-
+ * second grace period for shader compilation. Gaps over 250 ms are a paused
+ * loop (offscreen, backgrounded tab), not a slow frame, and are skipped.
+ */
+const GRACE_S = 1;
+const WINDOW_S = 2;
+const MIN_FPS = 40;
+
+function Governor({ tier }) {
+  const acc = useRef({ age: 0, time: 0, frames: 0 });
+  useFrame((_, delta) => {
+    const a = acc.current;
+    if (delta > 0.25) return;
+    a.age += delta;
+    if (a.age < GRACE_S) return;
+    a.time += delta;
+    a.frames += 1;
+    if (a.time < WINDOW_S) return;
+    const fps = a.frames / a.time;
+    a.time = 0;
+    a.frames = 0;
+    // Keyed on the tier, so the next tier starts over with its own grace.
+    if (fps < MIN_FPS) stepDownQuality(tier);
+  });
+  return null;
 }
 
 /**

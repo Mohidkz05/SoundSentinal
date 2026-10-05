@@ -150,6 +150,7 @@ export function AmbientDepth() {
       className="fixed inset-0 -z-10"
       camera={{ position: [0, 0, 2], fov: 55 }}
       dpr={[1, 1.5]}
+      antialias={false}
     >
       <Depth />
     </Stage>
