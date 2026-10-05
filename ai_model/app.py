@@ -1,5 +1,6 @@
 # app.py
 
+import hmac
 import io
 import json
 import math
@@ -366,6 +367,23 @@ class InMemoryRequest(Request):
 
 
 app.request_class = InMemoryRequest
+
+
+# Hosted, this server is on the public internet, and only the Next.js proxy
+# should be able to use it. When $MODEL_API_TOKEN is set, /predict requires it
+# as a bearer token (route.js sends it). Unset — the local default — nothing
+# changes. /health stays open for the host's liveness probe.
+API_TOKEN = os.getenv("MODEL_API_TOKEN")
+
+
+@app.before_request
+def require_token():
+    if not API_TOKEN or request.endpoint != "predict":
+        return None
+    sent = request.headers.get("Authorization", "")
+    if not hmac.compare_digest(sent.encode(), f"Bearer {API_TOKEN}".encode()):
+        return jsonify({"error": "Not authorised."}), 401
+    return None
 
 
 @app.errorhandler(413)

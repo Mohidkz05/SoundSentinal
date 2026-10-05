@@ -1,0 +1,38 @@
+# Builds the model server image (deploy/Dockerfile) and pushes it to
+# ghcr.io/<owner>/soundsentinal-model. Code only; weights are mounted at run
+# time (deploy/azure.sh), so the image can be public.
+name: model-image
+
+on:
+  push:
+    branches: [main]
+    paths: [ai_model/app.py, ai_model/model.py, ai_model/aasist.py,
+            ai_model/ssl_aasist.py, ai_model/xlsr_300m_config.json,
+            deploy/Dockerfile, deploy/requirements.txt,
+            .github/workflows/model-image.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/soundsentinal-model" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:latest
+            ${{ steps.name.outputs.image }}:${{ github.sha }}

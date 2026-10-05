@@ -1,0 +1,10 @@
+# Serving only (deploy/Dockerfile) — the subset of the repo's requirements.txt
+# that app.py imports, same pins, plus waitress in place of the dev server.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0
+torchaudio==2.11.0
+soundfile==0.14.0
+numpy==2.5.1
+transformers==5.17.0
+Flask==3.1.3
+waitress==3.0.2

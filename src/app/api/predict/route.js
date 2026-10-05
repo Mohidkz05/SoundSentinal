@@ -17,15 +17,22 @@
 
 const MODEL_API = process.env.MODEL_API_URL ?? 'http://127.0.0.1:5000';
 
+/** Set when the model is hosted: the shared secret app.py checks on /predict
+ *  ($MODEL_API_TOKEN there too), sent as a bearer token. Unset locally.
+ *  Server-only — no NEXT_PUBLIC_ prefix, so it never reaches the client bundle. */
+const MODEL_API_TOKEN = process.env.MODEL_API_TOKEN;
+
 /** Matches MAX_BYTES in upload/page.js and MAX_UPLOAD_BYTES in ai_model/app.py.
  *  Checked here as well because a client-side check is a courtesy, not a
  *  control — this route is reachable directly. */
 const MAX_BYTES = 5 * 1024 * 1024;
 
-/** Analysis is a few hundred milliseconds of CPU; anything past this is the
- *  server being wedged rather than slow, and the page should say so instead of
- *  spinning until the browser gives up. */
-const TIMEOUT_MS = 30_000;
+/** Analysis is a few hundred milliseconds of CPU, but hosted, the model server
+ *  scales to zero (deploy/azure.sh): the first request after a quiet spell
+ *  waits for it to pull its image and load 1.26 GB of weights. Anything past
+ *  this is the server being wedged rather than slow, and the page should say
+ *  so instead of spinning until the browser gives up. */
+const TIMEOUT_MS = 180_000;
 
 function fail(message, status) {
   return Response.json({ error: message }, { status });
@@ -61,6 +68,7 @@ export async function POST(request) {
     upstream = await fetch(`${MODEL_API}/predict`, {
       method: 'POST',
       body: upstreamForm,
+      headers: MODEL_API_TOKEN ? { Authorization: `Bearer ${MODEL_API_TOKEN}` } : undefined,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
