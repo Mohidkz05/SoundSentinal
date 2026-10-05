@@ -123,6 +123,15 @@ token, correct readings on both sample clips, ~1.2 s per prediction warm.
   `/predict` when set; `route.js` sends it. `.env.local` (gitignored) points
   the local frontend at Azure — delete it to use local Flask again. On Vercel,
   set `MODEL_API_URL` and `MODEL_API_TOKEN` (server-only, no `NEXT_PUBLIC_`).
+- **Frontend: Cloudflare Workers** (5 October), via the OpenNext adapter —
+  https://soundsentinal.mohidkhanzada.workers.dev (account
+  `mohidkhanzada@gmail.com`). `npm run cf:deploy` builds and deploys;
+  `npm run cf:preview` runs the Worker build locally. `MODEL_API_URL` and
+  `MODEL_API_TOKEN` are Worker secrets (`npx wrangler secret put …`), not in
+  `wrangler.jsonc`. No R2/KV: nothing uses ISR, so `open-next.config.ts` uses
+  the static-assets cache. Bundle 954 KiB gzipped (free limit 3 MiB). Log in
+  with `BROWSER=/mnt/c/Windows/explorer.exe npx wrangler login`. Untested: an
+  Azure cold start long enough to hit Cloudflare's ~100 s response timeout.
 - Hugging Face Spaces was tried first and refused: Docker Spaces on free CPU
   now need PRO.
 
@@ -659,7 +668,7 @@ dashboard is wanted for a group project.
 - **Flask** — FastAPI is nicer for ML serving, but for one endpoint it's a rewrite
   for marginal gain. The real serving problem is `debug=True` and the dev server;
   fix those and use `waitress`/`gunicorn`
-- **Next.js 15.4.6 / React 19.1** — Next 16 exists; upgrading mid-project buys
+- **Next.js 15.5 / React 19.1** (bumped from 15.4.6 for the Cloudflare adapter) — Next 16 exists; upgrading mid-project buys
   nothing here
 - **npm** — pnpm is faster, not worth switching now
 

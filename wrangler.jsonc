@@ -1,0 +1,28 @@
+// Cloudflare Workers config for the Next.js frontend (OpenNext adapter).
+// Build: `npm run cf:build`; deploy: `npm run cf:deploy`, or let Workers
+// Builds run them on push (see "Hosting" in CLAUDE.md).
+//
+// MODEL_API_URL and MODEL_API_TOKEN are NOT here: set them in the dashboard
+// (Settings → Variables and Secrets), the token as a Secret. Locally they come
+// from .env.local / .dev.vars.
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "soundsentinal",
+	"compatibility_date": "2026-10-01",
+	"compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference, required by OpenNext; must match "name" above.
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "soundsentinal"
+		}
+	],
+	"workers_dev": true,
+	"preview_urls": false,
+	"observability": { "enabled": true }
+}
