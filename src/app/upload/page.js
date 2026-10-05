@@ -18,13 +18,29 @@ import {
   MODEL_SAMPLE_RATE,
   MODEL_WINDOW_SECONDS,
 } from '../../lib/peaks';
+import { extractAudio, MAX_VIDEO_BYTES, VIDEO_FORMATS } from '../../lib/extract';
 
 /* The page used to advertise "up to 5mb" and "MP3, Wav" without checking
    either. These are the numbers it now actually enforces — keep them in step
    with `MAX_CONTENT_LENGTH` on the Flask side once the API is wired. */
 const MAX_BYTES = 5 * 1024 * 1024;
 const FORMATS = ['wav', 'mp3', 'flac'];
-const ACCEPT = '.wav,.mp3,.flac,audio/wav,audio/mpeg,audio/flac,audio/x-flac';
+/* Video (and M4A) is converted to WAV in this browser before anything is sent
+   — see src/lib/extract.js — so it has its own, larger limit: what reaches the
+   server is the extracted soundtrack, which always fits under MAX_BYTES. */
+const ACCEPT = [
+  ...[...FORMATS, ...VIDEO_FORMATS].map((f) => `.${f}`),
+  'audio/wav',
+  'audio/mpeg',
+  'audio/flac',
+  'audio/x-flac',
+  'audio/mp4',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+].join(',');
+
+const isVideo = (name) => VIDEO_FORMATS.includes(extensionOf(name));
 
 function extensionOf(name) {
   const i = name.lastIndexOf('.');
@@ -35,14 +51,19 @@ function extensionOf(name) {
  *  what went wrong and what to do — never just "invalid file". */
 function validate(file) {
   const ext = extensionOf(file.name);
-  if (!FORMATS.includes(ext)) {
-    return `${ext ? `.${ext}` : 'That file type'} isn't supported. Use a ${FORMATS
+  const video = VIDEO_FORMATS.includes(ext);
+  if (!FORMATS.includes(ext) && !video) {
+    return `${ext ? `.${ext}` : 'That file type'} isn't supported. Use ${[
+      ...FORMATS,
+      ...VIDEO_FORMATS,
+    ]
       .map((f) => `.${f}`)
-      .join(', ')} file.`;
+      .join(', ')}.`;
   }
-  if (file.size > MAX_BYTES) {
-    return `That clip is ${formatBytes(file.size)}. The limit is ${formatBytes(
-      MAX_BYTES
+  const limit = video ? MAX_VIDEO_BYTES : MAX_BYTES;
+  if (file.size > limit) {
+    return `That ${video ? 'video' : 'clip'} is ${formatBytes(file.size)}. The limit is ${formatBytes(
+      limit
     )} — try a shorter excerpt.`;
   }
   return null;
@@ -55,7 +76,12 @@ export default function UploadPage() {
   const fieldRef = useRef(null);
 
   const [dragging, setDragging] = useState(false);
+  /* `source` is what you chose; `file` is what gets sent. They are the same
+     file for audio. For a video, `file` is the WAV extracted from it, and
+     stays null until extraction has finished. */
+  const [source, setSource] = useState(null);
   const [file, setFile] = useState(null);
+  const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -84,7 +110,9 @@ export default function UploadPage() {
     const token = decodeToken.current;
 
     if (problem) {
+      setSource(null);
       setFile(null);
+      setExtracting(false);
       setAnalysis(null);
       setPreviewFailed(false);
       setDecoding(false);
@@ -93,9 +121,45 @@ export default function UploadPage() {
     }
 
     setError(null);
-    setFile(candidate);
+    setSource(candidate);
     setAnalysis(null);
     setPreviewFailed(false);
+
+    /* A video has to decode: unlike the preview, extraction is the only way
+       its audio reaches the model, so a failure here is an error. */
+    if (isVideo(candidate.name)) {
+      setFile(null);
+      setExtracting(true);
+      setDecoding(false);
+      extractAudio(candidate)
+        .then(async (extracted) => {
+          if (decodeToken.current !== token) return;
+          const preview = await analyseAudioFile(extracted.file).catch(() => null);
+          if (decodeToken.current !== token) return;
+          setFile(extracted.file);
+          // The original soundtrack's length and channels, the extract's shape.
+          // Its sample rate isn't knowable from here, so it isn't shown.
+          setAnalysis({
+            peaks: preview?.peaks ?? null,
+            duration: extracted.duration,
+            channels: extracted.channels,
+            sampleRate: null,
+          });
+          setExtracting(false);
+        })
+        .catch(() => {
+          if (decodeToken.current !== token) return;
+          setSource(null);
+          setExtracting(false);
+          setError(
+            "This browser couldn't read an audio track from that file. It may have no sound, or use a codec the browser can't decode — try exporting the audio as MP3 or WAV."
+          );
+        });
+      return;
+    }
+
+    setFile(candidate);
+    setExtracting(false);
     setDecoding(true);
 
     analyseAudioFile(candidate)
@@ -164,7 +228,9 @@ export default function UploadPage() {
 
   const clear = () => {
     decodeToken.current += 1;
+    setSource(null);
     setFile(null);
+    setExtracting(false);
     setAnalysis(null);
     setPreviewFailed(false);
     setDecoding(false);
@@ -198,8 +264,9 @@ export default function UploadPage() {
       }
 
       storeClip({
-        name: file.name,
-        size: file.size,
+        name: source?.name ?? file.name,
+        size: source?.size ?? file.size,
+        extracted: source !== file,
         duration: analysis?.duration ?? null,
         sampleRate: analysis?.sampleRate ?? null,
         channels: analysis?.channels ?? null,
@@ -277,15 +344,16 @@ export default function UploadPage() {
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-                {file ? (
+                {source ? (
                   <>
                     <Button
                       variant="primary"
                       size="lg"
                       onClick={analyse}
-                      loading={submitting}
+                      loading={submitting || extracting}
+                      disabled={!file}
                     >
-                      {submitting ? 'Analysing…' : 'Analyse clip'}
+                      {submitting ? 'Analysing…' : extracting ? 'Extracting audio…' : 'Analyse clip'}
                     </Button>
                     {/* The file, its state, and the way to change it, on one
                         raised chip. The line used to sit straight on the
@@ -293,14 +361,18 @@ export default function UploadPage() {
                         its contrast — and so did the "change file" control. */}
                     <div className="panel-raised flex min-h-[var(--hit)] items-center gap-4 py-1.5 pl-4 pr-1.5">
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        <p className="truncate text-small font-semibold text-primary">{file.name}</p>
+                        <p className="truncate text-small font-semibold text-primary">{source.name}</p>
                         <p className="tick-label" aria-live="polite">
-                          {formatBytes(file.size)} ·{' '}
+                          {formatBytes(source.size)} ·{' '}
                           {submitting
                             ? 'sending to the model'
-                            : decoding
-                              ? 'reading waveform'
-                              : 'ready'}
+                            : extracting
+                              ? 'extracting audio'
+                              : decoding
+                                ? 'reading waveform'
+                                : source !== file
+                                  ? 'audio extracted · ready'
+                                  : 'ready'}
                         </p>
                       </div>
                       {!submitting && (
@@ -327,7 +399,8 @@ export default function UploadPage() {
                       or drag one anywhere on this panel
                     </p>
                     <p className="tick-label">
-                      {FORMATS.join(' · ')} — up to {formatBytes(MAX_BYTES)}
+                      {FORMATS.join(' · ')} up to {formatBytes(MAX_BYTES)} ·{' '}
+                      {VIDEO_FORMATS.join(' · ')} up to {formatBytes(MAX_VIDEO_BYTES)}
                     </p>
                   </>
                 )}
@@ -339,7 +412,7 @@ export default function UploadPage() {
                 </Notice>
               )}
 
-              {previewFailed && file && (
+              {previewFailed && source && (
                 <Notice className="mt-2">
                   This browser couldn&apos;t decode the file for a preview —
                   often the case for FLAC outside Chrome. It can still be
@@ -394,7 +467,15 @@ export default function UploadPage() {
                 value={String(analysis.channels)}
                 note={analysis.channels > 1 ? 'Mixed down to mono' : 'Mono'}
               />
-              <Stat label="File size" value={formatBytes(file?.size ?? NaN)} />
+              <Stat
+                label="File size"
+                value={formatBytes(source?.size ?? NaN)}
+                note={
+                  source && file && source !== file
+                    ? `${formatBytes(file.size)} of audio sent`
+                    : null
+                }
+              />
             </div>
           </section>
         )}
@@ -417,6 +498,8 @@ export default function UploadPage() {
             <p className="text-small text-secondary">
               Clips are processed in memory and never written to disk or logged.
               The surface above was decoded in this browser and never left it.
+              A video stays here too: only its soundtrack, converted to WAV in
+              this browser, is sent.
             </p>
           </div>
 

@@ -37,8 +37,10 @@ const KEY = 'soundsentinal-clip';
  * @param {?number} clip.channels
  * @param {?Float32Array} clip.peaks     normalised envelope, or null
  * @param {?object} clip.reading          the /api/predict response, or null
+ * @param {boolean} [clip.extracted]     true when the soundtrack was pulled
+ *                                       out of a video in the browser
  */
-export function storeClip({ name, size, duration, sampleRate, channels, peaks, reading }) {
+export function storeClip({ name, size, duration, sampleRate, channels, peaks, reading, extracted }) {
   try {
     sessionStorage.setItem(
       KEY,
@@ -50,6 +52,7 @@ export function storeClip({ name, size, duration, sampleRate, channels, peaks, r
         channels: channels ?? null,
         peaks: peaks ? Array.from(peaks, (v) => Math.round(v * 100) / 100) : null,
         reading: reading ?? null,
+        extracted: Boolean(extracted),
       })
     );
   } catch {

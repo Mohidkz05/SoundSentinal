@@ -102,6 +102,18 @@ percentile of held-out People's Speech scores (read from the checkpoint). A
 0.99966 a percentage scale put every high reading on the last pixel and
 headlined real clips "Very likely AI generated". Details in DESIGN.md.
 
+**Since 4 October the headline number is a confidence percentage** (owner's
+request): `confidence()` in `src/lib/verdict.js`, sigmoid(|score − threshold|)
+— 50% on the line, rising past it. It is the model's certainty, not a measured
+accuracy, and the page says so beside it; the scale is unchanged. Never show
+raw P(spoof) instead: it is 0.999 at the threshold.
+
+**Uploads (4 October):** WAV / MP3 / FLAC go to the server as-is (libsndfile
+decodes MP3; tested). MP4 / M4A / MOV / WebM are decoded **in the browser**
+(`src/lib/extract.js`), mixed to mono, resampled to 16 kHz, cut to 120 s and
+sent as WAV — the server never sees video and needs no FFmpeg. Video limit
+200 MB client-side; the extracted WAV is always under the 5 MB upload limit.
+
 ### M3 facts that bite
 
 - Project quota (500 GB) is **full**; new runs go to scratch via
@@ -558,8 +570,9 @@ type in, which looks like provenance while being fiction.
 - **The 5 MB limit lives in three places** — `MAX_BYTES` in `upload/page.js`,
   `MAX_BYTES` in the proxy route, `MAX_UPLOAD_BYTES` in `app.py`. The client
   check is a courtesy; the route is reachable directly and Flask has no default
-  cap, so all three are real. `libsndfile` does decode MP3, but that path is
-  untested — no MP3 sample exists in the repo.
+  cap, so all three are real. MP3 decoding through libsndfile was tested end
+  to end on 4 October. Video never reaches these limits: it is converted to a
+  WAV in the browser first (`src/lib/extract.js`).
 
 ### Stack review — what to change and what to leave alone
 

@@ -149,6 +149,31 @@ export function formatScore(score, digits = 1) {
   return Number(text) === 0 ? text : `${s < 0 ? '−' : '+'}${text}`;
 }
 
+/**
+ * How sure the model is of the side of the line it chose, 0.5–1.
+ *
+ * The score re-centred on the threshold and put back through the sigmoid:
+ * sigmoid(|score − threshold|). At the line it is 50%; each unit of score
+ * beyond it is a factor of e in the odds. This is P(spoof) with the model's
+ * prior shifted so that the threshold, not P = 0.5, is the even point — which
+ * is what makes it usable. Raw P(spoof) is 0.999 at this threshold, so it
+ * would call clips "99.9% fake" that the model calls real.
+ *
+ * It is the model's certainty, NOT a measured accuracy: nothing was fitted to
+ * make 90% mean right nine times in ten. The page shows the measured error
+ * rates beside it for that, and says so.
+ */
+export function confidence(score, threshold) {
+  return 1 / (1 + Math.exp(-Math.abs(score - threshold)));
+}
+
+/** "97%"; near-certain readings keep a decimal, and never claim 100%. */
+export function formatConfidence(c) {
+  if (c >= 0.999) return '>99.9%';
+  if (c >= 0.99) return `${(Math.floor(c * 1000) / 10).toFixed(1)}%`;
+  return `${Math.floor(c * 100)}%`;
+}
+
 /** Percent string for a rate (EER, error rates). One decimal: a rate
  *  measured on a few thousand clips is not precise to more. */
 export function formatPercent(rate) {

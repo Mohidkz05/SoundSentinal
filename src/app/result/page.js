@@ -20,6 +20,8 @@ import {
   MODEL_WINDOW_SECONDS,
 } from '../../lib/peaks';
 import {
+  confidence,
+  formatConfidence,
   formatPercent,
   formatScore,
   readingScale,
@@ -102,13 +104,15 @@ export default function ResultPage() {
             <>
               <div className="mt-8 flex flex-wrap items-end gap-x-12 gap-y-6">
                 <div className="flex flex-col gap-2">
-                  <p className="tick-label">Model score</p>
+                  <p className="tick-label">
+                    Model confidence it is {clears ? 'AI generated' : 'real'}
+                  </p>
                   <output
                     data-readout
                     className="block text-score font-medium"
                     style={{ color: tier.token }}
                   >
-                    {formatScore(score)}
+                    {formatConfidence(confidence(score, threshold))}
                   </output>
                 </div>
 
@@ -120,7 +124,8 @@ export default function ResultPage() {
                     {tier.headline}
                   </h1>
                   <p className="tick-label">
-                    {clears ? 'Above' : 'Below'} the decision threshold of{' '}
+                    Score <span className="tabular">{formatScore(score)}</span>,{' '}
+                    {clears ? 'above' : 'below'} the decision threshold of{' '}
                     <span className="tabular">{formatScore(threshold)}</span>
                   </p>
                 </div>
@@ -137,6 +142,15 @@ export default function ResultPage() {
 
               <p className="mt-10 max-w-[68ch] text-body text-secondary">
                 {tier.detail}
+              </p>
+              {/* The percentage is the model's certainty, and the page must not
+                  let it pass for accuracy — see confidence() in verdict.js. */}
+              <p className="mt-4 max-w-[68ch] text-small text-muted">
+                Confidence is how far the score sits from the threshold: 50% on
+                the line, rising the further past it the reading falls. It is
+                how sure the model is, not how often it is right.
+                {measured.length > 0 &&
+                  ' For that, see how often it is wrong on recordings it was tested on, below.'}
               </p>
 
               {/* The next thing to do sits with the reading, not under eight
@@ -242,7 +256,11 @@ export default function ResultPage() {
                     note={clip.channels > 1 ? 'Mixed down to mono' : 'Mono'}
                   />
                 )}
-                <Stat label="File size" value={formatBytes(clip.size)} />
+                <Stat
+                  label="File size"
+                  value={formatBytes(clip.size)}
+                  note={clip.extracted ? 'Soundtrack extracted in your browser' : null}
+                />
               </div>
             )}
           </div>

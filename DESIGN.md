@@ -122,6 +122,14 @@ fixed probability tiers headlined real clips "Very likely AI generated". The
 scale runs from −11.25 to +13.75, chosen so the existing masks put majors on
 multiples of 2.5 and numerals can sit on −10, −5, 0, +5, +10.
 
+**The headline is a confidence, not a probability** (4 October 2026, owner's
+request). The big readout is `confidence()` from `src/lib/verdict.js`:
+sigmoid(|score − threshold|), so the threshold reads 50% and each unit past it
+multiplies the odds by e. It is labelled with the side it supports ("Model
+confidence it is real") and carried by a note saying it is certainty, not
+accuracy, pointing at the measured error rates. The score moved to the line
+under the headline. The axis stays in log-odds; the percentage never draws it.
+
 **Not a coloured track.** A coloured track states a verdict at every point on the
 axis, including all the points the model said nothing about. On a real instrument
 the face is neutral and the *pointer* carries the state.
@@ -458,7 +466,8 @@ Not negotiable, and already verified for every token pair in the system:
   discards it, so there is nothing to serve. Until that is persisted, the meter
   draws a marking the model doesn't actually use — the one place the design
   thesis is currently writing a cheque the backend can't cash.
-- `/upload` enforces the limits it advertises (5 MB, wav/mp3/flac) client-side.
+- `/upload` enforces the limits it advertises (5 MB for wav/mp3/flac; 200 MB for
+  mp4/m4a/mov/webm, whose soundtrack is extracted to WAV in the browser).
   Flask still needs `MAX_CONTENT_LENGTH` set to match.
 - **`/upload` now decodes the clip in the browser** and shows duration, sample
   rate and channel count next to the waveform. The sample rate is parsed from
