@@ -80,7 +80,7 @@ export default function ResultPage() {
     <div className="flex min-h-screen flex-col">
       <Header />
 
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         {/* The reading ---------------------------------------------------
             The scale spans the full bleed, which is the one place on the site
             where that is a functional choice rather than a stylistic one: on a

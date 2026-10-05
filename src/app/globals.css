@@ -313,6 +313,26 @@
 
   /* Anchor targets clear the sticky header. */
   [id] { scroll-margin-top: 5rem; }
+
+  /* Taps act immediately: no double-tap-zoom wait on controls. */
+  a, button, label, [role="button"] { touch-action: manipulation; }
+
+  /* Keyboard users skip the header (WCAG 2.4.1). Off-screen until focused,
+     then a raised chip above the sticky header, in the focus colour. */
+  .skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 100;
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: var(--accent-contrast);
+    font-size: var(--text-small);
+    font-weight: 600;
+    translate: 0 -200%;
+  }
+  .skip-link:focus-visible { translate: 0 0; }
 }
 
 /* ============================================================================

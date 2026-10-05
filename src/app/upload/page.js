@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '../../../components/header';
 import Footer from '../../../components/footer';
@@ -84,6 +84,14 @@ export default function UploadPage() {
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  /* The hosted model sleeps when idle; the first analysis after a quiet spell
+     waits for it to start. Past a few seconds, say so. */
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!submitting) return setSlow(false);
+    const t = setTimeout(() => setSlow(true), 5000);
+    return () => clearTimeout(t);
+  }, [submitting]);
 
   /* Pointer position over the intake field, normalised to 0–1 each way with y
      measured from the top. A ref rather than state: only the render loop reads
@@ -292,7 +300,7 @@ export default function UploadPage() {
     <div className="flex min-h-screen flex-col">
       <Header />
 
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         {/* The intake field is the page, not an illustration on it. It runs
             the full bleed and the drop target is the field itself — you drop a
             clip onto the surface it is about to become, rather than onto a
@@ -339,7 +347,7 @@ export default function UploadPage() {
               </h1>
               <p className="max-w-[54ch] text-body text-secondary">
                 Four seconds of clear speech is enough. What you are looking at
-                is the shape the model reads — frequency across, time back,
+                is speech as a spectrogram — frequency across, time back,
                 energy up. Your clip replaces it.
               </p>
 
@@ -365,7 +373,9 @@ export default function UploadPage() {
                         <p className="tick-label" aria-live="polite">
                           {formatBytes(source.size)} ·{' '}
                           {submitting
-                            ? 'sending to the model'
+                            ? slow
+                              ? 'waking the model server — up to a minute'
+                              : 'sending to the model'
                             : extracting
                               ? 'extracting audio'
                               : decoding
@@ -487,9 +497,9 @@ export default function UploadPage() {
             <p className="text-small text-secondary">
               A fixed {MODEL_WINDOW_SECONDS}-second window of mono audio at{' '}
               {formatSampleRate(MODEL_SAMPLE_RATE)}. Anything longer is
-              truncated; anything shorter is padded with silence. The clip is
-              then reduced to a log-Mel spectrogram, which is the only thing the
-              network ever sees.
+              truncated; anything shorter is padded with silence. The network
+              reads that waveform directly, through XLS-R, a speech model
+              pretrained on 436,000 hours of speech in 128 languages.
             </p>
           </div>
 

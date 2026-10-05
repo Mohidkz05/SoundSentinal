@@ -33,6 +33,15 @@ const plexMono = localFont({
   display: "swap",
 });
 
+/* The browser chrome (mobile address bar, PWA title bar) in the canvas colour.
+   Follows the OS scheme; the in-app toggle can't reach a static meta tag. */
+export const viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7fbfb" }, // --color-petrol-50
+    { media: "(prefers-color-scheme: dark)", color: "#0a1514" }, // --color-petrol-950
+  ],
+};
+
 export const metadata = {
   title: "SoundSentinal — audio authenticity analysis",
   description:
@@ -61,6 +70,7 @@ export default function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className="antialiased">
+        <a href="#main" className="skip-link">Skip to content</a>
         <Theme>
           {/* One backdrop for the whole app. It sits on a negative z-index, so
               it paints above the body's canvas colour and below every panel —

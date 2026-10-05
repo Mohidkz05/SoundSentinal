@@ -153,9 +153,11 @@ export function VerdictScale({
           </div>
 
           {/* Tier names, each centred on the part of its tier that is on the
-              scale. They are band labels, not boundary labels. */}
-          <div className="relative mt-2 h-4" aria-hidden="true">
-            {tiers.map((band) => {
+              scale. They are band labels, not boundary labels. Below `sm`
+              alternate names drop to a second row: at 390px a band around the
+              threshold is ~67px wide and "UNCERTAIN" alone needs ~70. */}
+          <div className="relative mt-2 h-4 max-sm:h-8" aria-hidden="true">
+            {tiers.map((band, i) => {
               const from = position(band.from);
               const to = position(band.to);
               const mid = (from + to) / 2;
@@ -166,7 +168,7 @@ export function VerdictScale({
               return (
                 <span
                   key={band.id}
-                  className={`tick-label absolute top-0 whitespace-nowrap ${narrow ? 'max-sm:hidden' : ''}`}
+                  className={`tick-label absolute top-0 whitespace-nowrap ${i % 2 ? 'max-sm:top-4' : ''} ${narrow ? 'max-sm:hidden' : ''}`}
                   style={{
                     left: `${mid * 100}%`,
                     transform: anchor(mid),

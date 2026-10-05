@@ -37,7 +37,7 @@ export default function DesignSystem() {
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         <header className="shell pb-[var(--space-section)] pt-[calc(var(--space-section)*0.9)]">
           <h1 className="text-h1 text-balance">Design system</h1>
           <p className="mt-5 max-w-[68ch] text-body text-secondary">
@@ -57,7 +57,7 @@ export default function DesignSystem() {
         >
           <Swatches
             label="Sentinel Teal — brand, actions, focus"
-            sub="Hue 190.3°, sampled from viridis at 0.50 — the colormap that renders the log-Mel spectrograms the model reads."
+            sub="Hue 190.3°, sampled from viridis at 0.50 — the colormap that renders the spectrograms speech is pictured in."
             items={[
               ['50', '#eefaf8'], ['200', '#b2e5e1'], ['300', '#84d3ce'],
               ['400', '#53bdb7'], ['500', '#1ca5a0'], ['600', '#078b86'],
@@ -248,7 +248,7 @@ export default function DesignSystem() {
         <Section
           n="Dimension"
           title="The 3D layer"
-          note="Every canvas depicts something the model actually does — the spectrogram it reads, the waveform you gave it, the uncertainty around its threshold. None of them is decoration with a subject bolted on, and none is load-bearing: the DOM underneath carries the meaning, and the geometry is an enhancement of it."
+          note="Every canvas depicts something real about the reading — the input as a spectrogram, the waveform you gave it, the uncertainty around its threshold. None of them is decoration with a subject bolted on, and none is load-bearing: the DOM underneath carries the meaning, and the geometry is an enhancement of it."
         >
           <div className="panel mb-8 overflow-hidden">
             <div className="h-44">
@@ -258,8 +258,8 @@ export default function DesignSystem() {
               <span className="font-semibold text-[var(--text-primary)]">
                 Spectral field
               </span>{' '}
-              — a log-Mel spectrogram as a ridgeline. Brand teal, because it is
-              the model&apos;s input format and not a result.
+              — a spectrogram of speech as a ridgeline. Brand teal, because it
+              pictures the input, not a result.
             </p>
           </div>
 

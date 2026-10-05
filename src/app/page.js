@@ -43,16 +43,38 @@ function useMeasured() {
   const [state, setState] = useState({ status: 'loading', measured: [] });
   useEffect(() => {
     let live = true;
+    /* A hosted server asleep takes a minute or two to answer. Past a few
+       seconds, say so — "loading" that long reads as broken. */
+    const waking = setTimeout(
+      () => live && setState((s) => (s.status === 'loading' ? { ...s, status: 'waking' } : s)),
+      WAKING_AFTER_MS
+    );
     fetch('/api/model')
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d) => live && setState({ status: 'ready', measured: d.measured ?? [] }))
+      .then((d) =>
+        live &&
+        setState({
+          status: 'ready',
+          measured: d.measured ?? [],
+          threshold: d.threshold_score,
+          bandLow: d.band_low,
+        })
+      )
       .catch(() => live && setState({ status: 'offline', measured: [] }));
     return () => {
       live = false;
+      clearTimeout(waking);
     };
   }, []);
   return state;
 }
+
+const WAKING_AFTER_MS = 4000;
+
+/* The scale illustration uses the served threshold and band once they are
+   known, so the home page never draws a line the live model doesn't use.
+   Until then (or with no server), round illustrative values. */
+const ILLUSTRATIVE = { threshold: 8, bandLow: 2.5 };
 
 export default function Home() {
   const rates = useMeasured();
@@ -63,7 +85,7 @@ export default function Home() {
     <div className="flex min-h-screen flex-col overflow-x-clip">
       <Header />
 
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         {/* Hero ---------------------------------------------------------- */}
         {/* The hero is a two-column grid rather than text with a picture
             behind it: the text column is pinned to a readable measure and the
@@ -100,10 +122,13 @@ export default function Home() {
             </div>
 
             {/* Naming the field is the honest move: it stops being decoration
-                and becomes a caption for what the model consumes. */}
+                and becomes a caption for the input. Since the SSL-AASIST
+                model (October 2026) the network reads the raw waveform, so
+                the caption says what the picture is, not that the model
+                reads it. */}
             <p className="tick-label mt-auto max-w-[34ch] pt-10">
-              Log-Mel spectrogram — the representation every clip is reduced to
-              before the model reads it
+              Spectrogram of speech — the input as it is usually pictured. The
+              model reads the raw waveform.
             </p>
           </div>
 
@@ -135,7 +160,11 @@ export default function Home() {
           </SectionHead>
 
           <div className="mt-[var(--space-head)]">
-            <VerdictScale threshold={8} bandLow={2.5} height="h-16" />
+            <VerdictScale
+              threshold={rates.threshold ?? ILLUSTRATIVE.threshold}
+              bandLow={rates.bandLow ?? ILLUSTRATIVE.bandLow}
+              height="h-16"
+            />
           </div>
 
           <div className="mt-[var(--space-head)] grid gap-[var(--space-group)] lg:grid-cols-3 lg:gap-14">
@@ -186,8 +215,12 @@ export default function Home() {
                   studio-clean, a low reading is not evidence it is real.
                 </Notice>
               </>
-            ) : rates.status === 'loading' ? (
-              <p className="tick-label" aria-live="polite">Reading the model&apos;s measurements…</p>
+            ) : rates.status === 'loading' || rates.status === 'waking' ? (
+              <p className="tick-label" aria-live="polite">
+                {rates.status === 'waking'
+                  ? 'Waking the model server — it sleeps when idle, and starting takes up to a minute…'
+                  : 'Reading the model’s measurements…'}
+              </p>
             ) : (
               <Notice>
                 The model server isn&apos;t running, so its measured error rates

@@ -379,7 +379,7 @@ an abstract "AI" motif:
 
 | Scene | Where | What it is |
 | --- | --- | --- |
-| `spectral-field` | `/` hero | A log-Mel spectrogram as a ridgeline — the representation `preprocess_waveform()` reduces every clip to. |
+| `spectral-field` | `/` hero | A spectrogram of speech as a ridgeline — the input, pictured the usual way. (Until October 2026 the served CNN/AASIST read log-Mel; SSL-AASIST reads the raw waveform through XLS-R, so captions say "the input", never "what the model reads".) |
 | `intake-field` | `/upload` | The spectrogram as a *surface* — frequency across, time back, energy up — and the drop target itself. Idles on travelling waves, swells under the pointer, lifts while a file is dragged over it, and becomes your clip's envelope once decoded. |
 | `waveform-display` | `/result` | The envelope of **your** clip, decoded in the browser and carried across from `/upload`. |
 | `uncertainty-field` | `/result` | A lattice that holds its grid for a decisive reading and scatters as the reading nears the threshold. |
@@ -395,10 +395,10 @@ second to deliver a value React never displays. The canvas stays
 geometry can never intercept a drag.
 
 That constraint is what makes the layer defensible rather than decorative, and
-it is also what lets the hero be brand teal: a spectrogram is the model's
+it is also what lets the hero be brand teal: a spectrogram pictures the
 *input*, not a result, so rule 1 is intact.
 
-**Six rules, all enforced through `Stage`** — the single component every canvas
+**Eight rules, all enforced through `Stage`** — the single component every canvas
 mounts through, so the guarantees are made once instead of remembered five
 times:
 
@@ -422,6 +422,17 @@ times:
    app combined. Everything is imported through `components/three/lazy.js`
    (`ssr: false`), which keeps First Load JS at ~108 kB instead of ~350 kB. An
    ambient layer must never decide how fast the interface appears.
+7. **The visitor can stop it** (WCAG 2.2.2). The header's pause switch
+   (`aria-pressed`, remembered in `localStorage['soundsentinal-motion']`) holds
+   every canvas still, exactly as reduced motion does. It sits beside the theme
+   toggle, 4px apart, as one group of display switches.
+8. **A slow machine sheds the layer, not the interface.** A software
+   rasteriser (SwiftShader, llvmpipe, Basic Render — i.e. hardware
+   acceleration off) counts as no WebGL. On real hardware a governor watches
+   the frame rate: two seconds under 40 fps drops every canvas to 1× pixels,
+   two more freezes them. The tier is page-wide and only steps down. The
+   full-viewport backdrop renders without MSAA. The headless harness needs
+   `localStorage['soundsentinal-3d'] = 'force'` to see any 3D at all.
 
 **Placement is a legibility decision, not a composition one.** Two of these
 moved during the build for exactly that reason: the hero field is masked and

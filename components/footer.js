@@ -30,8 +30,9 @@ export default function Footer() {
         </div>
 
         <p className="max-w-[72ch] text-small text-muted">
-          Trained on ASVspoof 2019 LA (ODC-By) and SpeechFake (CC BY 4.0), with
-          an XLS-R front-end (Apache 2.0). Clips you upload are processed in
+          Trained on ASVspoof 2019 LA (ODC-By), SpeechFake (CC BY 4.0) and
+          clips we generated with eight open text-to-speech models, with an
+          XLS-R front-end (Apache 2.0). Clips you upload are processed in
           memory and not stored.
         </p>
 
