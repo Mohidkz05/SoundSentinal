@@ -359,6 +359,25 @@ using.
 
 ---
 
+## The home page hook: a sample reading
+
+Since 6 October 2026 the hero is a question in the visitor's words ("Heard a
+voice. Not sure it's human?") beside `components/ui/sample-reading.js`: the two
+bundled clips as the live model actually scored them, cycling until the visitor
+picks one. The playhead scans the waveform, then the needle travels, so a swap
+swings it across the threshold. It is DOM and CSS, so it renders without WebGL;
+the hero previously depended on the spectral field and was half empty without
+hardware acceleration.
+
+Its numbers come from `src/lib/samples.json`, written by
+`ai_model/sample_readings.py` against the served API. **Rerun it whenever the
+checkpoint changes.** The clips are from the model's training data, and the
+caption says so: the panel shows what a reading looks like, not accuracy.
+The home page is otherwise three steps and the live error rates; the
+design-rule explanations live on `/design`.
+
+---
+
 ## The 3D layer
 
 Six WebGL scenes, in `components/three/`. They exist to make the product feel
@@ -379,7 +398,7 @@ an abstract "AI" motif:
 
 | Scene | Where | What it is |
 | --- | --- | --- |
-| `spectral-field` | `/` hero | A spectrogram of speech as a ridgeline — the input, pictured the usual way. (Until October 2026 the served CNN/AASIST read log-Mel; SSL-AASIST reads the raw waveform through XLS-R, so captions say "the input", never "what the model reads".) |
+| `spectral-field` | `/` hero, behind the sample panel (ambient only, since 6 October 2026) | A spectrogram of speech as a ridgeline — the input, pictured the usual way. (Until October 2026 the served CNN/AASIST read log-Mel; SSL-AASIST reads the raw waveform through XLS-R, so captions say "the input", never "what the model reads".) |
 | `intake-field` | `/upload` | The spectrogram as a *surface* — frequency across, time back, energy up — and the drop target itself. Idles on travelling waves, swells under the pointer, lifts while a file is dragged over it, and becomes your clip's envelope once decoded. |
 | `waveform-display` | `/result` | The envelope of **your** clip, decoded in the browser and carried across from `/upload`. |
 | `uncertainty-field` | `/result` | A lattice that holds its grid for a decisive reading and scatters as the reading nears the threshold. |

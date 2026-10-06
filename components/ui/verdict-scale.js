@@ -40,6 +40,9 @@ import {
  * @param {?number} score      the reading. Omit for an unmarked scale.
  * @param {boolean} labelled   draw numerals and tier names under the scale
  * @param {string}  height     Tailwind height for the graduation band
+ * @param {boolean} compact    narrow container (the home page panel): drop
+ *                             the names of tiers too thin to hold one at
+ *                             every width, not only on phones
  */
 export function VerdictScale({
   threshold,
@@ -47,6 +50,7 @@ export function VerdictScale({
   score = null,
   labelled = true,
   height = 'h-12',
+  compact = false,
 }) {
   const tiers = tiersFor(threshold, bandLow);
   const hasReading = score != null;
@@ -168,7 +172,7 @@ export function VerdictScale({
               return (
                 <span
                   key={band.id}
-                  className={`tick-label absolute top-0 whitespace-nowrap ${i % 2 ? 'max-sm:top-4' : ''} ${narrow ? 'max-sm:hidden' : ''}`}
+                  className={`tick-label absolute top-0 whitespace-nowrap ${i % 2 ? 'max-sm:top-4' : ''} ${narrow ? (compact ? 'hidden' : 'max-sm:hidden') : ''}`}
                   style={{
                     left: `${mid * 100}%`,
                     transform: anchor(mid),

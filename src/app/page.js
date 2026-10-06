@@ -5,36 +5,32 @@ import Header from '../../components/header';
 import Footer from '../../components/footer';
 import { Button } from '../../components/ui/button';
 import { SpectralField } from '../../components/three/lazy';
-import { VerdictScale } from '../../components/ui/verdict-scale';
+import { SampleReading } from '../../components/ui/sample-reading';
 import { SectionHead } from '../../components/ui/section-head';
 import { ErrorRates } from '../../components/ui/error-rates';
 import { Notice } from '../../components/ui/notice';
 
-/* The thesis, stated three ways. These mirror the three rules in DESIGN.md —
-   if one of them stops being true of the product, it should come off this page
-   rather than quietly become marketing. */
-const PRINCIPLES = [
+/* Three steps, in the visitor's words. The third is the one competitors skip:
+   every reading is shown beside how often this model is wrong. */
+const STEPS = [
   {
-    title: 'A score, not a verdict',
-    body: 'The model returns a score. We show you that number, and the band where it is unsure, instead of stamping REAL or FAKE over a clip.',
+    title: 'Upload a clip',
+    body: 'A voice note, call recording or video. It is scored in memory and never stored.',
   },
   {
-    title: 'The cutoff is on screen',
-    body: 'Every detector has a decision threshold. Ours is calibrated on held-out data and drawn on the scale, so you can see how close a reading sits to it.',
+    title: 'Read the score',
+    body: 'A needle on a scale, against the line where the model flags a clip. Near the line, it is unsure, and the page says so.',
   },
   {
-    title: 'The colour drains when we are unsure',
-    body: 'The scale loses its saturation near the boundary. Where the model is least confident, the interface stops looking confident too.',
+    title: 'Weigh it',
+    body: 'Every reading comes with how often this model is wrong. A low score is not proof a recording is real.',
   },
 ];
 
-/* The field is masked rather than clipped so it has no edge anywhere — a
-   rectangle of animation with a visible border reads as an embedded video. It
-   is centred on its own box, which since the hero became a grid is already
-   clear of the text column; it no longer has to be pushed off-centre to stay
-   away from the headline. */
+/* Masked rather than clipped, so the field has no edge anywhere. The panel
+   sits on top of its middle, so it only shows in the margins around it. */
 const FIELD_MASK =
-  'radial-gradient(80% 92% at 50% 50%, #000 0%, #000 40%, transparent 78%)';
+  'radial-gradient(closest-side, #000 0%, #000 55%, transparent 100%)';
 
 /* The served model's measured error rates, fetched rather than written
    down: a number on a home page is a claim, and this one is only allowed to be
@@ -56,8 +52,6 @@ function useMeasured() {
         setState({
           status: 'ready',
           measured: d.measured ?? [],
-          threshold: d.threshold_score,
-          bandLow: d.band_low,
         })
       )
       .catch(() => live && setState({ status: 'offline', measured: [] }));
@@ -71,11 +65,6 @@ function useMeasured() {
 
 const WAKING_AFTER_MS = 4000;
 
-/* The scale illustration uses the served threshold and band once they are
-   known, so the home page never draws a line the live model doesn't use.
-   Until then (or with no server), round illustrative values. */
-const ILLUSTRATIVE = { threshold: 8, bandLow: 2.5 };
-
 export default function Home() {
   const rates = useMeasured();
   return (
@@ -86,106 +75,54 @@ export default function Home() {
       <Header />
 
       <main id="main" className="flex-1">
-        {/* Hero ---------------------------------------------------------- */}
-        {/* The hero is a two-column grid rather than text with a picture
-            behind it: the text column is pinned to a readable measure and the
-            field gets everything to its right, bleeding to the viewport edge so
-            the page doesn't look like a document with an image pasted into it.
-            Below `lg` the field drops into a band under the call to action —
-            there is no room beside the text on a narrow screen, and running it
-            behind body copy would cost legibility for decoration. */}
-        {/* The text column is sized in rem, not ch: `ch` on a display-sized
-            heading resolves against the display font size and came out far
-            narrower than the headline needs, breaking "not a verdict machine."
-            across three lines. 44rem is the width that line wants at 68px. */}
-        <section className="shell relative isolate grid gap-y-12 pb-[var(--space-section)] pt-[calc(var(--space-section)*0.9)] lg:min-h-[36rem] lg:grid-cols-[minmax(0,44rem)_minmax(0,1fr)] lg:gap-x-12">
-          <div className="relative flex flex-col items-start gap-6">
+        {/* Hero ----------------------------------------------------------
+            The hook is the product itself: a real reading of a real clip,
+            next to a question in the visitor's own words. It is DOM, so it
+            never depends on WebGL; the spectral field behind the panel is
+            ambient and only ever seen in the panel's margins. */}
+        <section className="shell relative isolate grid items-center gap-y-12 pb-[var(--space-section)] pt-[calc(var(--space-section)*0.8)] lg:min-h-[min(46rem,calc(100svh-4rem))] lg:grid-cols-[minmax(0,1fr)_minmax(0,38rem)] lg:gap-x-16">
+          <div className="flex flex-col items-start gap-6">
             <h1 className="text-display text-balance">
-              An instrument,
+              Heard a voice.
               <br />
-              not a verdict machine.
+              Not sure it&apos;s human?
             </h1>
-
-            <p className="max-w-[46ch] text-body text-secondary">
-              Upload a voice clip and get a calibrated reading of how likely it
-              is to be synthetic — measured against the model&apos;s own
-              decision threshold, with its uncertainty shown rather than hidden.
+            <p className="max-w-[40ch] text-body text-secondary">
+              Upload the clip for a second opinion: a score against a
+              calibrated threshold, and how often the model gets it wrong.
             </p>
-
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <Button href="/upload" variant="primary" size="lg">
-                Analyse a clip
+                Check a clip
               </Button>
               <Button href="#how-it-works" variant="quiet" size="lg">
-                How a reading works
+                How it works
               </Button>
             </div>
-
-            {/* Naming the field is the honest move: it stops being decoration
-                and becomes a caption for the input. Since the SSL-AASIST
-                model (October 2026) the network reads the raw waveform, so
-                the caption says what the picture is, not that the model
-                reads it. */}
-            <p className="tick-label mt-auto max-w-[34ch] pt-10">
-              Spectrogram of speech — the input as it is usually pictured. The
-              model reads the raw waveform.
-            </p>
           </div>
 
-          <div className="relative min-h-[15rem] lg:min-h-0">
+          <div className="relative">
             <div
-              className="pointer-events-none absolute inset-y-0 left-[calc(50%-50vw)] right-[calc(50%-50vw)] lg:left-0 lg:right-[calc(50%-50vw)]"
+              className="pointer-events-none absolute -inset-x-[12%] -inset-y-[18%] -z-10"
               style={{ maskImage: FIELD_MASK, WebkitMaskImage: FIELD_MASK }}
             >
-              <SpectralField className="h-full w-full" opacity={0.9} />
+              <SpectralField className="h-full w-full" opacity={0.75} />
             </div>
+            <SampleReading />
           </div>
         </section>
 
-        {/* The scale, explained ------------------------------------------
-            The scale runs the full bleed, which is the honest way to show it:
-            on a graduated scale width is resolution, so this is what it looks
-            like at the size the result page actually gives it. */}
+        {/* How it works --------------------------------------------------- */}
         <section className="band">
-          <SectionHead
-            id="how-it-works"
-            title="How a reading is shown"
-            aside={<p className="tick-label">Illustration — not a result</p>}
-          >
-            <p>
-              Every clip gets a score. The scale below is the one a result is
-              read off: the score on the axis, the threshold drawn as a line,
-              the band where genuine speech sometimes reaches bracketed under it.
-            </p>
-          </SectionHead>
-
-          <div className="mt-[var(--space-head)]">
-            <VerdictScale
-              threshold={rates.threshold ?? ILLUSTRATIVE.threshold}
-              bandLow={rates.bandLow ?? ILLUSTRATIVE.bandLow}
-              height="h-16"
-            />
-          </div>
-
-          <div className="mt-[var(--space-head)] grid gap-[var(--space-group)] lg:grid-cols-3 lg:gap-14">
-            <p className="text-small text-secondary">
-              A neutral face and a coloured pointer, the way an instrument is
-              built. The graduations say nothing on their own — fifty of them,
-              one per half point of the model&apos;s score — because the scale
-              is an axis, not a verdict at every point along it.
-            </p>
-            <p className="text-small text-secondary">
-              Colour belongs to the reading alone. The needle takes a diverging
-              violet↔orange: hue says which side of the threshold the clip fell
-              on, and it drains towards grey near the line, so a reading the
-              model was unsure about does not look confident.
-            </p>
-            <p className="text-small text-secondary">
-              The brand teal never renders a result. It measured as
-              indistinguishable from the warm end under protanopia, which makes
-              it unusable for this and is why the two palettes are separate.
-            </p>
-          </div>
+          <h2 id="how-it-works" className="text-h2 scroll-mt-24">How it works</h2>
+          <ol className="mt-[var(--space-head)] grid gap-[var(--space-group)] sm:grid-cols-3 sm:gap-12">
+            {STEPS.map((step) => (
+              <li key={step.title} className="flex max-w-[38ch] flex-col gap-[var(--space-stack)] border-t border-line-strong pt-5">
+                <h3 className="text-h3">{step.title}</h3>
+                <p className="text-small text-secondary">{step.body}</p>
+              </li>
+            ))}
+          </ol>
         </section>
 
         {/* Measured, not claimed ------------------------------------------
@@ -195,10 +132,9 @@ export default function Home() {
         <section className="band">
           <SectionHead title="Measured, not claimed">
             <p>
-              How often the model being served right now is wrong, at the
-              threshold it is served at, on recordings it never trained on.
-              Two mistakes, counted separately: a real voice flagged is an
-              accusation, a fake let through is a miss.
+              How often the live model is wrong, on recordings it never trained
+              on. A real voice flagged is an accusation; a fake let through is
+              a miss.
             </p>
           </SectionHead>
 
@@ -207,12 +143,9 @@ export default function Home() {
               <>
                 <ErrorRates measured={rates.measured} />
                 <Notice className="mt-[var(--space-group)]">
-                  Strong on real-world audio; weaker on clean synthetic speech.
-                  The threshold is set for noisy, compressed recordings, and
-                  between one in eight and one in five studio-clean fakes pass
-                  it — and some recent text-to-speech models it never trained
-                  on still pass most of the time. If a clip sounds
-                  studio-clean, a low reading is not evidence it is real.
+                  It misses more clean, studio-quality fakes than noisy ones,
+                  and some recent voice generators still get past it. A low
+                  reading on a clean clip is not evidence it is real.
                 </Notice>
               </>
             ) : rates.status === 'loading' || rates.status === 'waking' ? (
@@ -228,19 +161,6 @@ export default function Home() {
                 is actually live.
               </Notice>
             )}
-          </div>
-        </section>
-
-        {/* Principles ----------------------------------------------------- */}
-        <section className="band">
-          <SectionHead title="Three rules the interface keeps" />
-          <div className="mt-[var(--space-head)] grid gap-[var(--space-group)] sm:grid-cols-3 sm:gap-12">
-            {PRINCIPLES.map((p) => (
-              <article key={p.title} className="flex flex-col gap-[var(--space-stack)]">
-                <h3 className="text-h3 text-balance">{p.title}</h3>
-                <p className="text-small text-secondary">{p.body}</p>
-              </article>
-            ))}
           </div>
         </section>
       </main>

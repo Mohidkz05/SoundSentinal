@@ -10,7 +10,7 @@ import { FlatMark } from './ui/mark';
  */
 const LINKS = [
   { href: '/upload', label: 'Analyse a clip' },
-  { href: '/#how-it-works', label: 'How a reading works' },
+  { href: '/#how-it-works', label: 'How it works' },
   { href: '/design', label: 'Design system' },
 ];
 
