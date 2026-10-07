@@ -330,6 +330,20 @@ export default function UploadPage() {
               entirely. Reading order and depth order agree this way round:
               you read the instruction, then look down at the instrument. The
               wash only has to cover the top band where the two still meet. */}
+          {/* Behind the text column at every height: the field's bars rise
+              to wherever the clip is loud, and copy over them lost its
+              contrast (reported 7 October 2026). Opaque under the column,
+              fading out to the right, so the surface still reads beside it. */}
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-full max-w-[52rem]"
+            style={{
+              background:
+                'linear-gradient(to right, var(--canvas) 0%, var(--canvas) 62%, transparent 100%)',
+              maskImage: 'linear-gradient(to bottom, #000 0%, #000 70%, transparent 88%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, #000 0%, #000 70%, transparent 88%)',
+            }}
+            aria-hidden="true"
+          />
           <div
             className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-1/2"
             style={{
@@ -342,12 +356,19 @@ export default function UploadPage() {
           <div className="shell pb-40 pt-[calc(var(--space-section)*0.6)]">
             <div className="animate-rise flex flex-col gap-4">
               <Stepper current={0} />
+              {/* The headline follows the state, so the screen always says
+                  what to do next: choose, then analyse, then wait. */}
               <h1 className="max-w-[18ch] text-display text-balance">
-                Drop a clip on the surface.
+                {submitting
+                  ? 'Reading your clip.'
+                  : source
+                    ? 'Ready to analyse.'
+                    : 'Drop a clip on the surface.'}
               </h1>
-              <p className="max-w-[48ch] text-body text-secondary">
-                A voice note, call recording or video. The model reads the
-                first {MODEL_WINDOW_SECONDS} seconds; nothing is stored.
+              <p className="max-w-[48ch] text-body text-primary/80">
+                {source
+                  ? `The model reads the first ${MODEL_WINDOW_SECONDS} seconds. Nothing is stored.`
+                  : `A voice note, call recording or video. The model reads the first ${MODEL_WINDOW_SECONDS} seconds; nothing is stored.`}
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -369,19 +390,17 @@ export default function UploadPage() {
                     <div className="panel-raised flex min-h-[var(--hit)] items-center gap-4 py-1.5 pl-4 pr-1.5">
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <p className="truncate text-small font-semibold text-primary">{source.name}</p>
-                        <p className="tick-label" aria-live="polite">
+                        <p className="text-small text-secondary">
                           {formatBytes(source.size)} ·{' '}
                           {submitting
-                            ? slow
-                              ? 'waking the model server — up to a minute'
-                              : 'sending to the model'
+                            ? 'Sending to the model'
                             : extracting
-                              ? 'extracting audio'
+                              ? 'Extracting audio'
                               : decoding
-                                ? 'reading waveform'
+                                ? 'Reading waveform'
                                 : source !== file
-                                  ? 'audio extracted · ready'
-                                  : 'ready'}
+                                  ? 'Audio extracted, ready'
+                                  : 'Ready'}
                         </p>
                       </div>
                       {!submitting && (
@@ -414,6 +433,22 @@ export default function UploadPage() {
                   </>
                 )}
               </div>
+
+              {/* The wait is the most important thing on screen while it lasts,
+                  so it gets body text in the primary ink, not a caption. */}
+              <p
+                aria-live="polite"
+                className={`flex max-w-[52ch] items-center gap-2.5 text-body text-primary ${
+                  submitting && slow ? '' : 'sr-only'
+                }`}
+              >
+                {submitting && slow && (
+                  <span className="h-2 w-2 flex-none animate-pulse rounded-full bg-accent" aria-hidden="true" />
+                )}
+                {submitting && slow
+                  ? 'Waking the model server. After a quiet spell the first reading takes up to a minute.'
+                  : ''}
+              </p>
 
               {error && (
                 <Notice tone="danger" className="mt-2">

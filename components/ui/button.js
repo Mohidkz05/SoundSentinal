@@ -82,7 +82,13 @@ export function Button({
   children,
   ...props
 }) {
-  const classes = buttonClasses({ variant, size, className });
+  /* A loading button is disabled (so a click can't land twice) but must not
+     look disabled: it is the thing the user is waiting on. */
+  const classes = buttonClasses({
+    variant,
+    size,
+    className: loading ? `opacity-100! cursor-progress ${className}` : className,
+  });
 
   if (href) {
     return (
