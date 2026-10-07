@@ -38,12 +38,17 @@ socio-environmental impact.
    > real-world recordings, and how should its output be reported so that a
    > non-expert is not misled?*
    with *what does DP-SGD cost such a detector?* as the secondary question.
-3. **Team submission**: Muhammad Mohid Khanzada (lead; most of the
-   development), Amaan Muhammad, Farhan Mohammed, in that author order.
-   Contributions are drafted from git history only; Amaan and Farhan state
-   their own (`paper/main.tex`, Author Contributions). Git also shows commits
-   from Alex Ung (August 2025: portability fixes, dev-set training): confirm
-   whether to acknowledge him.
+3. **Team submission**: Muhammad Mohid Khanzada, Amaan Muhammad, Farhan
+   Mohammed, in that author order. Agreed split (7 October):
+
+   | | Paper | Slides (presents his own) |
+   | --- | --- | --- |
+   | Mohid | I (drafted), III Method, IV Results, V–VII; final edit to 10 pages | Demo, how it works, why these choices, the journey (37% → 2%) |
+   | Amaan | II-A–II-C (benchmarks, front-ends, back-ends); verify all references | The problem and why it matters; constraints (cost, carbon, privacy) |
+   | Farhan | II-D–II-F (generalisation, DP, deployed detectors); Figs 2 and 3 | Project management and timeline; prepared Q&A answers |
+
+   Briefs: `paper/briefs/amaan.md`, `paper/briefs/farhan.md`. Git also shows
+   commits from Alex Ung (August 2025); confirm whether to acknowledge him.
 4. **AI acknowledgement**: a section in the paper, wording still to agree.
 
 ---
