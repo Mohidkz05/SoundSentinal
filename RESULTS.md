@@ -247,10 +247,13 @@ noise it drifted toward predicting the majority class, which is the exact
 pathology the class weighting was added to prevent. EER at 24.41% shows it is
 not *purely* a majority-class predictor, but accuracy is doing no work here.
 
-Per attack, DP is excellent on A07–A16 (0.39%–1.08%, several *better* than the
-non-private log-Mel run) and effectively blind on A17 (43.22%), A18 (44.53%) and
-A19 (44.39%) — all close to chance. DP noise did not degrade the model evenly;
-it removed three attack families.
+Per attack, DP is excellent on A07 and A09–A16 (0.39%–1.08%, A10–A15 all
+*better* than the non-private log-Mel run), worse on A08 (0.83% → 8.10%), and
+effectively blind on A17 (43.22%), A18 (44.53%) and A19 (44.39%) — all close to
+chance. The non-private run was already near chance on A17 (41.19%), so DP
+removed two families it had learned (A18 12.19%, A19 2.61%), not three.
+(Corrected 7 October 2026 from the eval JSONs: this paragraph previously
+included A08 in the 0.39–1.08% range and said three families were removed.)
 
 ## Finding 4 — the calibrated threshold does not survive the partition change
 

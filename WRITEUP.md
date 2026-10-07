@@ -1,5 +1,16 @@
 # SoundSentinal — FYP B write-up and presentation plan
 
+**Status (7 October 2026): both drafts are complete.**
+- Paper: `paper/main.tex` → 7 pages, no TODOs. Build:
+  `~/tools/tectonic/tectonic paper/main.tex`. Figures:
+  `~/tools/docvenv/bin/python paper/figures/make_figures.py`.
+- Slides: `paper/presentation/SoundSentinal_FYP_B.pptx`, 12 slides on the
+  Monash template, script and timing in each slide's speaker notes. Rebuild:
+  `~/tools/docvenv/bin/python paper/presentation/build_deck.py <monash template.pptx>`.
+- Before submitting: verify every reference in `paper/refs.bib`; Amaan and
+  Farhan review the sections credited to them and confirm their lines; rehearse
+  to 10:00 with a timer.
+
 Started 7 October 2026; restructured the same day against the two marking
 rubrics (`FYP_B_Final_Paper_Rubric.pdf`, `FYP B Final Presentation
 Rubric.pdf`). An outline, not the paper: each section says what it argues,
