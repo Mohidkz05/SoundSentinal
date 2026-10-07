@@ -125,7 +125,9 @@ token, correct readings on both sample clips, ~1.2 s per prediction warm.
   set `MODEL_API_URL` and `MODEL_API_TOKEN` (server-only, no `NEXT_PUBLIC_`).
 - **Frontend: Cloudflare Workers** (5 October), via the OpenNext adapter —
   https://soundsentinal.mohidkhanzada.workers.dev (account
-  `mohidkhanzada@gmail.com`). `npm run cf:deploy` builds and deploys;
+  `mohidkhanzada@gmail.com`). **Pushing to `main` deploys it** (Workers Builds, connected 7 October:
+  build `npx opennextjs-cloudflare build`, deploy `npx wrangler deploy`);
+  `npm run cf:deploy` still deploys by hand;
   `npm run cf:preview` runs the Worker build locally. `MODEL_API_URL` and
   `MODEL_API_TOKEN` are Worker secrets (`npx wrangler secret put …`), not in
   `wrangler.jsonc`. No R2/KV: nothing uses ISR, so `open-next.config.ts` uses
