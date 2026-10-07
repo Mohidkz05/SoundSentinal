@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { FlatMark } from './ui/mark';
+import { MotionSwitch } from './motion-switch';
 
 /**
  * One ending for every page. It carries the standing disclaimer — which used
@@ -46,6 +47,7 @@ export default function Footer() {
               {l.label}
             </Link>
           ))}
+          <MotionSwitch />
         </nav>
       </div>
     </footer>

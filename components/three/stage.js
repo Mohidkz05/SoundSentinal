@@ -29,7 +29,7 @@ import {
  *   - **Decoration is invisible to assistive tech** and never eats a pointer
  *     event.
  *
- *   - **The visitor can stop it.** The header's pause switch holds every
+ *   - **The visitor can stop it.** The footer's pause switch holds every
  *     canvas still (WCAG 2.2.2), the same way reduced motion does.
  *   - **A slow page sheds the layer, not the interface.** The frame-rate
  *     governor below steps the page-wide quality tier down: first to 1×

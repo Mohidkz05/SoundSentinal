@@ -441,10 +441,11 @@ times:
    app combined. Everything is imported through `components/three/lazy.js`
    (`ssr: false`), which keeps First Load JS at ~108 kB instead of ~350 kB. An
    ambient layer must never decide how fast the interface appears.
-7. **The visitor can stop it** (WCAG 2.2.2). The header's pause switch
-   (`aria-pressed`, remembered in `localStorage['soundsentinal-motion']`) holds
-   every canvas still, exactly as reduced motion does. It sits beside the theme
-   toggle, 4px apart, as one group of display switches.
+7. **The visitor can stop it** (WCAG 2.2.2). The footer's "Pause background
+   animation" control (`components/motion-switch.js`, remembered in
+   `localStorage['soundsentinal-motion']`) holds every canvas still, exactly
+   as reduced motion does. It was an icon button in the header until 7 October
+   2026; the owner had it moved out.
 8. **A slow machine sheds the layer, not the interface.** A software
    rasteriser (SwiftShader, llvmpipe, Basic Render — i.e. hardware
    acceleration off) counts as no WebGL. On real hardware a governor watches

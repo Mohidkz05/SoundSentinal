@@ -31,7 +31,7 @@ import { VerdictScale } from './verdict-scale';
  * argument in one motion. It is DOM and CSS, not WebGL, so it is always there.
  *
  * The page cycles between the two until the visitor picks one, and only while
- * the panel is on screen, motion is allowed and the header's pause switch is
+ * the panel is on screen, motion is allowed and the footer's pause switch is
  * off (WCAG 2.2.2).
  */
 const SCAN_MS = 1100;

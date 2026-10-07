@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme } from './theme';
 import { SignalMark } from './three/lazy';
-import { setMotionPaused, useMotionPaused } from './three/use-stage';
 
 /* The product's navigation, not the site map. /result is the second step of
    the analyse flow and empty when visited directly, so it is reached through
@@ -36,27 +35,11 @@ function ThemeIcon() {
   );
 }
 
-/* Pause and play, drawn at the theme icons' stroke and size. */
-function MotionIcon({ paused }) {
-  return paused ? (
-    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor"
-         strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
-      <path d="M8 5.5v13l10.5-6.5z" />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor"
-         strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
-      <path d="M9 5.5v13M15 5.5v13" />
-    </svg>
-  );
-}
-
 const ICON_BUTTON =
   'grid h-[var(--hit)] w-[var(--hit)] shrink-0 place-items-center rounded-md border border-line text-secondary transition-colors duration-fast ease-instrument hover:border-accent hover:text-accent';
 
 export default function Header() {
   const { darkMode, toggleDarkMode } = useTheme();
-  const motionPaused = useMotionPaused();
   const pathname = usePathname();
 
   return (
@@ -97,20 +80,9 @@ export default function Header() {
           })}
         </nav>
 
-        {/* The two display switches sit as one group: 4px apart, not the
-            header's 12-24px, which is also what keeps all of it on one row
-            at 390px. */}
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setMotionPaused(!motionPaused)}
-            aria-label="Pause background animation"
-            aria-pressed={motionPaused}
-            title={motionPaused ? 'Play background animation' : 'Pause background animation'}
-            className={ICON_BUTTON}
-          >
-            <MotionIcon paused={motionPaused} />
-          </button>
+        {/* The pause-animation switch moved to the footer (7 October 2026):
+            the header keeps only the theme toggle. */}
+        <div className="flex shrink-0 items-center">
           <button
             type="button"
             onClick={toggleDarkMode}

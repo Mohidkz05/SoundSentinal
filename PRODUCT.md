@@ -116,5 +116,5 @@ invent any.
 - **Colour:** the verdict colours must survive colour-blindness. They were
   checked under protanopia, which is why teal is never a verdict colour.
   Colour is never the only channel.
-- **Motion:** reduced motion is honoured, and the header's pause switch stops
+- **Motion:** reduced motion is honoured, and the footer's pause switch stops
   all ambient motion for everyone.
