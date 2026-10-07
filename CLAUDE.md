@@ -130,8 +130,10 @@ token, correct readings on both sample clips, ~1.2 s per prediction warm.
   `MODEL_API_TOKEN` are Worker secrets (`npx wrangler secret put …`), not in
   `wrangler.jsonc`. No R2/KV: nothing uses ISR, so `open-next.config.ts` uses
   the static-assets cache. Bundle 954 KiB gzipped (free limit 3 MiB). Log in
-  with `BROWSER=/mnt/c/Windows/explorer.exe npx wrangler login`. Untested: an
-  Azure cold start long enough to hit Cloudflare's ~100 s response timeout.
+  with `BROWSER=/mnt/c/Windows/explorer.exe npx wrangler login`. Measured 7
+  October: a cold Azure start through Cloudflare took 28.8 s (warm ~1.2 s),
+  well inside Cloudflare's ~100 s response timeout. Lighthouse (mobile): home
+  90+, /upload 96, /result 97; CLS 0 everywhere.
 - Hugging Face Spaces was tried first and refused: Docker Spaces on free CPU
   now need PRO.
 

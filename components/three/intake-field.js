@@ -385,8 +385,56 @@ export function IntakeField({
   className = '',
 }) {
   return (
-    <Stage className={className} camera={{ position: [0, 3.9, 8.0], fov: 40 }}>
+    <Stage
+      className={className}
+      camera={{ position: [0, 3.9, 8.0], fov: 40 }}
+      fallback={<FlatSurface peaks={peaks} active={active} />}
+    >
       <Surface peaks={peaks} energy={active ? 1 : 0} pointerRef={pointerRef} />
     </Stage>
+  );
+}
+
+/* Without hardware WebGL the page still says "drop a clip on the surface", so
+   there has to be one. A flat row of bars in the lower part of the field: an
+   idle speech-like envelope, or the clip's own once decoded, lifting while a
+   file is dragged over. Same job as the 3D surface, drawn in DOM. */
+const FLAT_BARS = 128;
+const IDLE = Array.from({ length: FLAT_BARS }, (_, i) => {
+  const t = i / FLAT_BARS;
+  // Syllable-scale bursts, gated into words, with per-bar grain.
+  const syllables = Math.abs(Math.sin(t * 41)) ** 1.5;
+  const words = Math.max(0, Math.sin(t * 17 + 0.4) + 0.35) ** 0.6;
+  const grain = 0.75 + 0.25 * Math.abs(Math.sin(i * 12.9898) * 43758.5453 % 1);
+  return 0.05 + 0.9 * syllables * words * grain;
+});
+
+function resample(peaks, n) {
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const from = Math.floor((i * peaks.length) / n);
+    const to = Math.max(from + 1, Math.floor(((i + 1) * peaks.length) / n));
+    let m = 0;
+    for (let j = from; j < to; j++) m = Math.max(m, peaks[j]);
+    out[i] = Math.sqrt(m);
+  }
+  return out;
+}
+
+function FlatSurface({ peaks, active }) {
+  const bars = peaks?.length ? resample(peaks, FLAT_BARS) : IDLE;
+  return (
+    <div className="absolute inset-x-0 bottom-0 flex h-[46%] items-end gap-[2px] px-[var(--gutter)] pb-10">
+      {bars.map((v, i) => (
+        <span
+          key={i}
+          className="flex-1 rounded-full bg-accent transition-[height,opacity] duration-[var(--duration-base)] ease-[var(--ease-instrument)]"
+          style={{
+            height: `${Math.max(v, 0.04) * (active ? 100 : 82)}%`,
+            opacity: peaks?.length ? 0.55 : active ? 0.4 : 0.18,
+          }}
+        />
+      ))}
+    </div>
   );
 }

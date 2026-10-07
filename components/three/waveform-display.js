@@ -255,8 +255,38 @@ function Bars({ peaks, energy }) {
  */
 export function WaveformDisplay({ peaks = null, active = false, className = '' }) {
   return (
-    <Stage className={className} camera={{ position: [0, 0, 3.7], fov: 42 }}>
+    <Stage
+      className={className}
+      camera={{ position: [0, 0, 3.7], fov: 42 }}
+      fallback={<FlatWaveform peaks={peaks} />}
+    >
       <Bars peaks={peaks} energy={active ? 1 : 0} />
     </Stage>
+  );
+}
+
+/* Without hardware WebGL: the same envelope as mirrored DOM bars, so the clip
+   is still drawn. Teal, because it is the input, not the result. */
+const FLAT_BARS = 120;
+
+function FlatWaveform({ peaks }) {
+  if (!peaks?.length) return null;
+  const bars = Array.from({ length: FLAT_BARS }, (_, i) => {
+    const from = Math.floor((i * peaks.length) / FLAT_BARS);
+    const to = Math.max(from + 1, Math.floor(((i + 1) * peaks.length) / FLAT_BARS));
+    let m = 0;
+    for (let j = from; j < to; j++) m = Math.max(m, peaks[j]);
+    return Math.sqrt(m);
+  });
+  return (
+    <div className="flex h-full w-full items-center gap-[2px]">
+      {bars.map((v, i) => (
+        <span
+          key={i}
+          className="flex-1 rounded-full bg-accent opacity-80"
+          style={{ height: `${Math.max(v, 0.03) * 100}%` }}
+        />
+      ))}
+    </div>
   );
 }

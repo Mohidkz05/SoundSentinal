@@ -430,7 +430,10 @@ times:
 3. **Never the only channel.** Every canvas is `aria-hidden`, takes no pointer
    events, and sits under DOM that carries the meaning by itself. No WebGL, no
    loss — `Stage` renders the `fallback` instead (the header falls back to the
-   flat SVG mark).
+   flat SVG mark). A page whose copy refers to a scene needs a real fallback:
+   `/upload`'s "drop a clip on the surface" and `/result`'s clip waveform draw
+   DOM bars without WebGL (added 7 October 2026, when the owner saw an empty
+   page with hardware acceleration off).
 4. **Stops when unwatched.** Offscreen or backgrounded canvases drop to
    `frameloop="never"`. Scenes advance their own clock from accumulated delta,
    so a paused field resumes where it left off instead of snapping.

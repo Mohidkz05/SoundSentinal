@@ -345,10 +345,9 @@ export default function UploadPage() {
               <h1 className="max-w-[18ch] text-display text-balance">
                 Drop a clip on the surface.
               </h1>
-              <p className="max-w-[54ch] text-body text-secondary">
-                Four seconds of clear speech is enough. What you are looking at
-                is speech as a spectrogram — frequency across, time back,
-                energy up. Your clip replaces it.
+              <p className="max-w-[48ch] text-body text-secondary">
+                A voice note, call recording or video. The model reads the
+                first {MODEL_WINDOW_SECONDS} seconds; nothing is stored.
               </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -436,6 +435,7 @@ export default function UploadPage() {
             ref={inputRef}
             id={inputId}
             type="file"
+            aria-label="Audio or video file to analyse"
             accept={ACCEPT}
             className="sr-only"
             /* Out of the tab order: "Choose a file" is the keyboard path to
@@ -490,39 +490,6 @@ export default function UploadPage() {
           </section>
         )}
 
-        {/* Standing explanation ------------------------------------------- */}
-        <section className="band grid gap-[var(--space-group)] lg:grid-cols-3 lg:gap-14">
-          <div className="flex flex-col gap-[var(--space-stack)]">
-            <h2 className="text-h3">What the model reads</h2>
-            <p className="text-small text-secondary">
-              A fixed {MODEL_WINDOW_SECONDS}-second window of mono audio at{' '}
-              {formatSampleRate(MODEL_SAMPLE_RATE)}. Anything longer is
-              truncated; anything shorter is padded with silence. The network
-              reads that waveform directly, through XLS-R, a speech model
-              pretrained on 436,000 hours of speech in 128 languages.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-[var(--space-stack)]">
-            <h2 className="text-h3">Where your clip goes</h2>
-            <p className="text-small text-secondary">
-              Clips are processed in memory and never written to disk or logged.
-              The surface above was decoded in this browser and never left it.
-              A video stays here too: only its soundtrack, converted to WAV in
-              this browser, is sent.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-[var(--space-stack)]">
-            <h2 className="text-h3">What it can&apos;t do</h2>
-            <p className="text-small text-secondary">
-              It learned from 2019-era and open-source synthetic speech. A clip
-              from a commercial cloning service it never heard, or one that is
-              studio-clean, is where it is weakest — clean fakes often score
-              below the threshold. The result page shows how often it is wrong.
-            </p>
-          </div>
-        </section>
       </main>
 
       <Footer />

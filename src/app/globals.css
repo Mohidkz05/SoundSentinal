@@ -516,8 +516,11 @@
    One keyframe set, all of it opt-in. Reduced motion removes travel and keeps
    opacity, so nothing disappears for anyone who turns animation off.
    ========================================================================= */
+/* Starts visible: content that begins at opacity 0 does not count as painted,
+   which held /upload's LCP back by ~3 s on a throttled phone (Lighthouse,
+   7 October 2026). The rise is carried by the movement alone. */
 @keyframes rise {
-  from { opacity: 0; transform: translateY(12px); }
+  from { opacity: 1; transform: translateY(12px); }
   to   { opacity: 1; transform: none; }
 }
 

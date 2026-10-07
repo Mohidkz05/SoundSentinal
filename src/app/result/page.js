@@ -51,6 +51,34 @@ function modelCard(model) {
   ].filter(([, value]) => value);
 }
 
+const LIMITS = [
+  ['Unseen generators', 'Voice-cloning services it never heard can pass. A low reading on one is not evidence the clip is real.'],
+  ['Recording conditions', 'Noise, phone lines and compression shift scores for reasons unrelated to whether speech was synthesised.'],
+  [`Only ${MODEL_WINDOW_SECONDS} seconds`, `Only the first ${MODEL_WINDOW_SECONDS} seconds are read; anything after that is never looked at.`],
+  ['Not who spoke', 'It estimates whether speech was synthesised, not whose voice it is.'],
+];
+
+function bandRange(band) {
+  if (!Number.isFinite(band.from)) return `below ${formatScore(band.to)}`;
+  if (!Number.isFinite(band.to)) return `${formatScore(band.from)} and above`;
+  return `${formatScore(band.from)} to ${formatScore(band.to)}`;
+}
+
+/* A native disclosure: keyboard and screen-reader behaviour for free. */
+function Detail({ title, children }) {
+  return (
+    <details className="group border-b border-line">
+      <summary className="flex min-h-[var(--hit)] cursor-pointer list-none items-center justify-between gap-4 py-3 text-body font-semibold text-primary hover:text-accent [&::-webkit-details-marker]:hidden">
+        {title}
+        <svg viewBox="0 0 24 24" className="h-4 w-4 flex-none transition-transform duration-[var(--duration-base)] group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M6 9.5l6 6 6-6" />
+        </svg>
+      </summary>
+      <div className="flex flex-col gap-[var(--space-stack)] pb-5 text-small text-secondary">{children}</div>
+    </details>
+  );
+}
+
 export default function ResultPage() {
   const [clip, setClip] = useState(null);
   /* Separate from `clip` because "we haven't looked yet" and "there is nothing
@@ -146,11 +174,7 @@ export default function ResultPage() {
               {/* The percentage is the model's certainty, and the page must not
                   let it pass for accuracy — see confidence() in verdict.js. */}
               <p className="mt-4 max-w-[68ch] text-small text-muted">
-                Confidence is how far the score sits from the threshold: 50% on
-                the line, rising the further past it the reading falls. It is
-                how sure the model is, not how often it is right.
-                {measured.length > 0 &&
-                  ' For that, see how often it is wrong on recordings it was tested on, below.'}
+                Confidence is how sure the model is, not how often it is right.
               </p>
 
               {/* The next thing to do sits with the reading, not under eight
@@ -187,10 +211,7 @@ export default function ResultPage() {
               {loaded && (
                 <>
                   <p className="text-body text-secondary">
-                    You arrived here directly rather than through the upload
-                    step, so there is no clip and no measurement to report.
-                    Everything below still describes how a reading is produced
-                    and what it is worth.
+                    Upload a clip first, and its reading will appear here.
                   </p>
                   <Button href="/upload" variant="primary" size="lg">
                     Analyse a clip
@@ -213,8 +234,7 @@ export default function ResultPage() {
                     <WaveformDisplay className="h-full w-full" peaks={clip.peaks} />
                   </div>
                   <p className="max-w-[62ch] text-small text-muted">
-                    Decoded in your browser on the previous screen and carried
-                    here in tab storage. It never went to a server.
+                    Drawn in your browser; this picture never left it.
                     {truncated &&
                       ` The model read only the first ${MODEL_WINDOW_SECONDS} seconds of it.`}
                   </p>
@@ -224,9 +244,8 @@ export default function ResultPage() {
                    usually. The reading is still real; only the picture of it is
                    missing, and saying which is which matters. */
                 <p className="max-w-[62ch] text-small text-muted">
-                  This browser couldn&apos;t decode the file to draw it. The
-                  reading above is unaffected — the server decodes the clip
-                  separately, with a different library.
+                  This browser couldn&apos;t draw the file. The reading above
+                  is unaffected.
                 </p>
               )}
             </div>
@@ -267,96 +286,6 @@ export default function ResultPage() {
         </section>
         )}
 
-        {/* Where the reading falls ---------------------------------------- */}
-        <section className="band">
-          <SectionHead title="Where this reading falls">
-              <p>
-                The bands are placed around the threshold, so they move with
-                it. The uncertain band starts where genuine speech stops being
-                typical
-                {bandMeasured && bandSource ? (
-                  <>
-                    {' '}
-                    —{' '}
-                    <span className="text-primary">
-                      {bandSource.charAt(0).toLowerCase() + bandSource.slice(1)}
-                    </span>
-                  </>
-                ) : null}
-                . The flagged band mirrors its width above the line: a
-                convention, because there is no held-out set of fakes to
-                measure that edge on.
-              </p>
-              {hasReading && !bandMeasured && (
-                <p className="text-muted">
-                  The checkpoint being served carries no calibration data, so
-                  this band is a fixed width around the threshold rather than a
-                  measured one.
-                </p>
-              )}
-          </SectionHead>
-
-          <div className="mt-[var(--space-head)] overflow-x-auto">
-            <table className="data-table sm:min-w-[44rem]">
-              <thead>
-                <tr>
-                  <th scope="col">Band</th>
-                  <th scope="col">Range</th>
-                  <th scope="col" className="max-sm:hidden">
-                    What it means
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tiers.map((band) => {
-                  const here = hasReading && band.id === tier.id;
-                  const range = !Number.isFinite(band.from)
-                    ? `below ${formatScore(band.to)}`
-                    : !Number.isFinite(band.to)
-                      ? `${formatScore(band.from)} and above`
-                      : `${formatScore(band.from)} to ${formatScore(band.to)}`;
-                  return (
-                    <tr key={band.id}>
-                      <th
-                        scope="row"
-                        className="font-semibold"
-                        style={{ color: here ? band.token : 'var(--text-muted)' }}
-                      >
-                        <span className="flex items-center gap-2.5">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-[var(--radius-tick)]"
-                            style={{
-                              background: here ? band.token : 'var(--line-strong)',
-                            }}
-                            aria-hidden="true"
-                          />
-                          {band.label}
-                          {here && (
-                            <span className="tick-label text-primary">
-                              ← this reading
-                            </span>
-                          )}
-                        </span>
-                        {/* At phone width the meaning moves under the name
-                            rather than into a column off the right edge. */}
-                        <span className="mt-2 block text-small font-normal text-secondary sm:hidden">
-                          {band.detail}
-                        </span>
-                      </th>
-                      <td className="tabular whitespace-nowrap text-small text-secondary">
-                        {range}
-                      </td>
-                      <td className="text-small text-secondary max-sm:hidden">
-                        {band.detail}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
         {/* How often it is wrong ------------------------------------------
             Measured for this checkpoint at this threshold, and delivered by
             the API from evaluate.py's own reports — the server drops any
@@ -365,168 +294,110 @@ export default function ResultPage() {
         <section className="band">
           <SectionHead id="how-often-wrong" title="How often it is wrong">
             <p>
-              Two mistakes, measured separately, because they cost different
-              things: a genuine recording wrongly flagged is an accusation, a
-              fake let through is a miss. Both were measured at the threshold
-              this reading was compared against, on recordings the model never
-              trained on and that played no part in choosing the threshold.
+              Measured at this threshold, on recordings the model never trained
+              on. A real voice flagged is an accusation; a fake let through is
+              a miss.
             </p>
           </SectionHead>
 
           {measured.length > 0 ? (
             <div className="mt-[var(--space-head)]">
               <ErrorRates measured={measured} />
+              <Notice className="mt-[var(--space-group)]">
+                It misses more clean, studio-quality fakes than noisy ones, and
+                some recent voice generators still get past it. If a clip
+                sounds studio-clean, a low reading is not evidence it is real.
+              </Notice>
             </div>
           ) : (
             <p className="mt-[var(--space-head)] max-w-[68ch] text-small text-muted">
               {hasReading
-                ? 'No error rates have been measured for this model at this threshold, so none are shown. A rate measured at another threshold would describe a different operating point.'
-                : 'The error rates are measured for the model and threshold that produced a reading, so they appear once a clip has been analysed.'}
-            </p>
-          )}
-
-          {measured.length > 1 && (
-            <p className="mt-[var(--space-group)] max-w-[72ch] text-small text-secondary">
-              The rows disagree, and that is the finding. The threshold is set
-              for real-world audio: noisy, compressed, recorded in rooms. On
-              that, it rarely accuses a real speaker and rarely misses a fake.
-              Clean synthetic speech is harder. It scores lower on this model,
-              and between one in eight and one in five clean fakes pass; some
-              recent text-to-speech models it never heard still pass most of
-              the time. If a clip sounds studio-clean,{' '}
-              <span className="text-primary">
-                a low reading is not evidence that it is real
-              </span>
-              .
+                ? 'No error rates were measured for this model at this threshold, so none are shown.'
+                : 'Error rates appear once a clip has been analysed.'}
             </p>
           )}
         </section>
 
-        {/* How to read it, and the model card ----------------------------- */}
-        <section className="band grid gap-[var(--space-group)] lg:grid-cols-3 lg:gap-14">
-          <div className="flex flex-col gap-[var(--space-stack)]">
-            <h2 className="text-h3">What this number is</h2>
-            <p className="text-small text-secondary">
-              A score, not a fact.{' '}
-              {hasReading ? (
-                <>
-                  The model scored this clip{' '}
-                  <span className="tabular text-primary">{formatScore(score)}</span>,
-                  against a decision threshold of{' '}
-                  <span className="tabular text-primary">
-                    {formatScore(threshold)}
-                  </span>
-                  .
-                </>
-              ) : (
-                <>
-                  The model gives every clip a score, and that score is
-                  compared against a decision threshold to produce a label.
-                </>
-              )}{' '}
-              Positive scores lean synthetic, negative lean real, and 0 means
-              the model found both equally likely. The scale is logarithmic:
-              every 2.3 points is ten times the odds.
-            </p>
-            <p className="text-small text-secondary">
-              A reading near the threshold means the model was close to its own
-              line — not that the clip is half fake. That is why the scale is
-              graduated rather than filled: you read one position off it.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-[var(--space-stack)]">
-            <h2 className="text-h3">Where the threshold comes from</h2>
-            {/* Two kinds of checkpoint exist: recalibrated by calibrate.py on
-                held-out real speech (they carry the band's data), and the
-                trainer's own dev-EER threshold. Describe the one being served. */}
-            <p className="text-small text-secondary">
-              {!hasReading || bandMeasured
-                ? 'It is set on genuine speech the model never trained on: the score that only a small, fixed share of those real recordings reach. The model card names the recordings and the share. It is chosen before the model is tested on real-world audio, never adjusted to fit that test.'
-                : 'It is the equal error rate point on a held-out partition: the score at which the model wrongly flags a real clip exactly as often as it misses a fake one. It is computed after training, not chosen by hand.'}
-            </p>
-            <p className="text-small text-muted">
-              It is stored with the weights it was computed for, so retraining
-              moves the threshold and the reading together. A checkpoint that
-              carries none is served at 0 and says so above.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-[var(--space-stack)]">
-            <h2 className="text-h3">The model</h2>
-            {card.length > 0 ? (
-              <dl className="mt-1 flex flex-col">
-                {card.map(([term, value]) => (
-                  <div
-                    key={term}
-                    className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-b border-line py-2.5 last:border-0"
-                  >
-                    <dt className="tick-label">{term}</dt>
-                    <dd className="text-small text-secondary">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="text-small text-muted">
-                The model card is read from the checkpoint that produced a
-                reading, so it appears once a clip has been analysed. It is not
-                written down on this page: a card kept by hand describes
-                whichever training run someone last remembered to type in.
-              </p>
-            )}
-          </div>
-        </section>
-
-        {/* Limits --------------------------------------------------------- */}
+        {/* Limits: the weaknesses stay where the reading is (PRODUCT.md). */}
         <section className="band">
           <div className="grid gap-x-14 gap-y-[var(--space-group)] lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-            <h2 className="text-h2 text-balance">
-              What this reading does not tell you
-            </h2>
-            <div className="grid gap-[var(--space-group)] sm:grid-cols-2">
-              <div className="flex flex-col gap-[var(--space-tight)]">
-                <p className="text-small font-semibold text-primary">Unseen attacks</p>
-                <p className="text-small text-secondary">
-                  The model learned from 2019-era and open-source generators.
-                  Commercial voice-cloning services it never heard are outside
-                  that, and a low reading on one of them is not evidence the
-                  clip is real.
-                </p>
-              </div>
-              <div className="flex flex-col gap-[var(--space-tight)]">
-                <p className="text-small font-semibold text-primary">Recording conditions</p>
-                <p className="text-small text-secondary">
-                  Noise, phone codecs and heavy compression all shift a clip
-                  away from the clean corpus the model learned on. They push
-                  readings around for reasons that have nothing to do with
-                  whether the speech was synthesised.
-                </p>
-              </div>
-              <div className="flex flex-col gap-[var(--space-tight)]">
-                <p className="text-small font-semibold text-primary">Four seconds</p>
-                <p className="text-small text-secondary">
-                  Only the first {MODEL_WINDOW_SECONDS} seconds are read. A clip
-                  that is real for that window and synthetic afterwards reads as
-                  real, because the rest was never looked at.
-                </p>
-              </div>
-              <div className="flex flex-col gap-[var(--space-tight)]">
-                <p className="text-small font-semibold text-primary">Who spoke</p>
-                <p className="text-small text-secondary">
-                  This is not speaker verification. It estimates whether speech
-                  was synthesised, and says nothing at all about whose voice it
-                  is or whether the words were said.
-                </p>
-              </div>
-            </div>
+            <h2 className="text-h2 text-balance">What it can&apos;t tell you</h2>
+            <ul className="grid gap-x-12 gap-y-[var(--space-group)] sm:grid-cols-2">
+              {LIMITS.map(([title, body]) => (
+                <li key={title} className="flex flex-col gap-[var(--space-tight)]">
+                  <p className="text-small font-semibold text-primary">{title}</p>
+                  <p className="text-small text-secondary">{body}</p>
+                </li>
+              ))}
+            </ul>
           </div>
+        </section>
 
-          {/* Secondary: the primary for this screen is the same action next
-              to the reading. One primary per screen. */}
-          <div className="mt-[var(--space-head)]">
-            <Button href="/upload" variant="secondary" size="lg">
-              Analyse another clip
-            </Button>
+        {/* Details, closed by default: everything a reader who wants to check
+            the reading needs, without making everyone else read it. */}
+        <section className="band">
+          <h2 className="text-h2">Details</h2>
+          <div className="mt-[var(--space-group)] flex max-w-[72ch] flex-col border-t border-line">
+            <Detail title="How the scale works">
+              <p>
+                {hasReading ? (
+                  <>
+                    This clip scored{' '}
+                    <span className="tabular text-primary">{formatScore(score)}</span>{' '}
+                    against a threshold of{' '}
+                    <span className="tabular text-primary">{formatScore(threshold)}</span>.{' '}
+                  </>
+                ) : null}
+                Positive scores lean synthetic, negative lean real; every 2.3
+                points is ten times the odds. Confidence is 50% on the
+                threshold and rises the further past it a score falls.
+              </p>
+              <ul className="flex flex-col gap-1">
+                {tiers.map((band) => (
+                  <li key={band.id}>
+                    <span className="font-semibold text-primary">{band.label}</span>{' '}
+                    <span className="tabular">({bandRange(band)})</span>: {band.detail}
+                  </li>
+                ))}
+              </ul>
+              <p>
+                The uncertain band starts where genuine speech stops being
+                typical
+                {bandMeasured && bandSource
+                  ? ` (${bandSource.charAt(0).toLowerCase() + bandSource.slice(1)})`
+                  : ''}
+                . The flagged band mirrors its width above the line, a
+                convention: there is no held-out set of fakes to measure it on.
+                {hasReading && !bandMeasured &&
+                  ' This checkpoint carries no calibration data, so the band is a fixed width.'}
+              </p>
+            </Detail>
+
+            <Detail title="Where the threshold comes from">
+              <p>
+                {!hasReading || bandMeasured
+                  ? 'It is the score only a small, fixed share of genuine recordings the model never trained on reach. It was set before the model was tested on real-world audio, and never adjusted to fit that test.'
+                  : 'It is the equal error rate point on a held-out partition, computed after training rather than chosen by hand.'}
+              </p>
+            </Detail>
+
+            <Detail title="The model">
+              {card.length > 0 ? (
+                <dl className="flex flex-col">
+                  {card.map(([term, value]) => (
+                    <div
+                      key={term}
+                      className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-b border-line py-2.5 last:border-0"
+                    >
+                      <dt className="tick-label">{term}</dt>
+                      <dd className="text-small text-secondary">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p>The model card is read from the checkpoint, so it appears once a clip has been analysed.</p>
+              )}
+            </Detail>
           </div>
         </section>
       </main>
