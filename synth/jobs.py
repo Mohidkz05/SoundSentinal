@@ -20,7 +20,7 @@ MIN_CHARS, MAX_CHARS = 40, 240        # text: a sentence or two
 PROMPT_S = (5.5, 10.0)                # prompt duration window, seconds; Chatterbox-Turbo
                                       # refuses prompts under 5 s
 SUBSET = {"train": "train-clean-100", "heldout-a": "test-clean", "heldout-b": "test-clean",
-          "probe-a": "test-clean"}
+          "probe-a": "test-clean", "heldout-c": "test-clean"}
 
 
 def utterances(librispeech_root, subset):

@@ -153,7 +153,8 @@ BONAFIDE_SOURCES = {"commonvoice": commonvoice.load_protocol,
 # --extra-train values -> the corpora they add. "speechfake+synth" keeps
 # SpeechFake's dev in selection, exactly as "speechfake" alone does.
 EXTRA_TRAIN_MIXES = {"asvspoof5": ("asvspoof5",), "speechfake": ("speechfake",),
-                     "speechfake+synth": ("speechfake", "synth")}
+                     "speechfake+synth": ("speechfake", "synth"),
+                     "speechfake+synth20": ("speechfake", "synth20")}
 BONAFIDE_MIXES = {"commonvoice": ("commonvoice",),
                   "commonvoice+voxpopuli": ("commonvoice", "voxpopuli")}
 
@@ -451,7 +452,8 @@ def main():
                              "LA dev for selection, because LA dev saturates at 0%% for "
                              "ssl-aasist. 'speechfake+synth' also adds the train split of "
                              "our own generated fakes, 8 open TTS families (synth.py; "
-                             "RESULTS.md Finding 18). "
+                             "RESULTS.md Finding 18). 'speechfake+synth20' adds those "
+                             "plus the four heldout-a families (Finding 20). "
                              "Checkpoints go to <arch dir>/plus-<name>/.")
     parser.add_argument("--extra-bonafide", default=None, choices=list(BONAFIDE_MIXES),
                         help="Add real-world speech to training, labelled bona fide. "
@@ -547,10 +549,16 @@ def main():
         # (loader, audio-file suffix): ASVspoof 5 names files without an
         # extension like ASVspoof2019; SpeechFake's and synth's paths already
         # carry theirs.
-        adapter, suffix = {"asvspoof5": (asvspoof5, ".flac"),
-                           "speechfake": (speechfake, ""),
-                           "synth": (synth, "")}[source]
-        extra_protocol, extra_dir = adapter.load_protocol("train")
+        if source.startswith("synth"):
+            # Families named explicitly (synth.train_families), so Finding
+            # 19's codec clips never leak in. 'synth20' is Finding 20's.
+            extra_protocol, extra_dir = synth.load_protocol(
+                "train", families=synth.train_families(source))
+            suffix = ""
+        else:
+            adapter, suffix = {"asvspoof5": (asvspoof5, ".flac"),
+                               "speechfake": (speechfake, "")}[source]
+            extra_protocol, extra_dir = adapter.load_protocol("train")
         print(f"Extra training data: {source} train, "
               f"{len(extra_protocol)} clips from {extra_dir}")
         extra_parts.append(AVSpoofDataset(None, extra_dir, transform_pipeline,

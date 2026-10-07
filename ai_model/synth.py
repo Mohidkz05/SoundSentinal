@@ -50,9 +50,12 @@ SEED = 42
 N_HELDOUT_FAMILIES = 4          # per held-out split
 CLIPS_TRAIN = 6000              # per family, spread over its models
 CLIPS_HELDOUT = 1000            # per family
-SPLITS = ("train", "heldout-a", "heldout-b", "probe-a")
+SPLITS = ("train", "heldout-a", "heldout-b", "probe-a", "heldout-c")
 # Diagnostic splits: which held-out split's speakers they draw from.
 PROBES = {"probe-a": "heldout-a"}
+# Splits that borrow another split's speakers (voices, text and real side).
+# heldout-c (Finding 20) reuses heldout-b's 20 test-clean speakers.
+SPEAKERS_OF = {"probe-a": "heldout-a", "heldout-c": "heldout-b"}
 
 # family -> [(model id, Hugging Face repo, licence, voice source)]
 # voice source: "clone" (LibriSpeech prompt), "preset" (the model's own voices),
@@ -86,6 +89,12 @@ FAMILIES = {
     # Finding 19: genuine speech through open neural codecs, labelled spoof.
     # Never a codec a held-out family decodes with (DAC: Dia; Mimi: Marvis;
     # the Qwen3-TTS tokenizer; VoxCPM's audio VAE).
+    # Finding 20's never-heard set. Kept out of the seeded draw below
+    # (HELDOUT_C), so Finding 18's split is unchanged by their addition.
+    "bark":      [("bark", "suno/bark", "MIT", "preset")],
+    "glmtts":    [("glm-tts", "zai-org/GLM-TTS", "MIT", "clone")],
+    "mossttsd":  [("moss-ttsd-v0.7", "OpenMOSS-Team/MOSS-TTSD-v0.7", "Apache-2.0", "clone")],
+    "soulx":     [("soulx-podcast-1.7b", "Soul-AILab/SoulX-Podcast-1.7B", "Apache-2.0", "clone")],
     "codec":     [("snac-24khz", "hubertsiuzdak/snac_24khz", "MIT", "resynth"),
                   ("wavtokenizer-75", "novateur/WavTokenizer-large-speech-75token", "MIT",
                    "resynth")],
@@ -94,16 +103,29 @@ FAMILIES = {
 # because it is Finding 19's training data, added after the split was drawn —
 # listing it here keeps the seeded split exactly as Finding 18 drew it.
 ALWAYS_TRAIN = ("parler", "codec")
+HELDOUT_C = ("bark", "glmtts", "mossttsd", "soulx")
+# Finding 20 trains on heldout-a's families too: they generate a train split
+# (train-clean-100 voices) as well as keeping their heldout-a clips.
+PROMOTED_F20 = ("chatterbox", "qwen3tts", "speecht5", "voxcpm")
+
+
+def train_families(recipe):
+    """The families a training recipe uses, named explicitly so that clips
+    generated for another purpose (Finding 19's codec) never leak in.
+    'synth' is Finding 18's eight; 'synth20' adds PROMOTED_F20."""
+    f18 = sorted(set(splits()["train"]) - {"codec"})
+    return {"synth": f18, "synth20": sorted(f18 + list(PROMOTED_F20))}[recipe]
 
 
 def splits():
     """{split: [family, ...]}: ALWAYS_TRAIN in train, the rest in a seeded
     order, N_HELDOUT_FAMILIES to heldout-a, the next to heldout-b."""
-    pool = sorted(f for f in FAMILIES if f not in ALWAYS_TRAIN)
+    pool = sorted(f for f in FAMILIES if f not in ALWAYS_TRAIN and f not in HELDOUT_C)
     order = [pool[i] for i in np.random.RandomState(SEED).permutation(len(pool))]
     a, b = order[:N_HELDOUT_FAMILIES], order[N_HELDOUT_FAMILIES:2 * N_HELDOUT_FAMILIES]
-    return {"train": sorted(set(FAMILIES) - set(a) - set(b)),
-            "heldout-a": sorted(a), "heldout-b": sorted(b), "probe-a": ["codec"]}
+    return {"train": sorted(set(FAMILIES) - set(a) - set(b) - set(HELDOUT_C)),
+            "heldout-a": sorted(a), "heldout-b": sorted(b), "probe-a": ["codec"],
+            "heldout-c": sorted(HELDOUT_C)}
 
 
 def split_of(family):
@@ -119,12 +141,13 @@ def get_synth_root():
     return root
 
 
-def load_manifests(split, root=None):
+def load_manifests(split, root=None, families=None):
     """Every generated clip of a split: (frame of file, family, model, speaker,
-    text), audio root. `file` is relative to the root."""
+    text), audio root. `file` is relative to the root. `families` restricts it
+    (default: the split's own families)."""
     root = Path(root) if root is not None else get_synth_root()
     frames = []
-    for family in splits()[split]:
+    for family in (families if families is not None else splits()[split]):
         for model, *_ in FAMILIES[family]:
             d = root / split / family / model
             m = d / "manifest.csv"
@@ -144,10 +167,12 @@ def load_manifests(split, root=None):
     return pd.concat(frames, ignore_index=True), root
 
 
-def load_protocol(split="train", root=None):
+def load_protocol(split="train", root=None, families=None):
     """(protocol frame, audio root) for AVSpoofDataset with suffix="": the
     split's fakes, labelled spoof, system_id the model id."""
-    clips, root = load_manifests(split, root)
+    if split == "train" and families is None:
+        families = train_families("synth")
+    clips, root = load_manifests(split, root, families)
     frame = pd.DataFrame({
         "speaker_id": clips["speaker"], "audio_file_name": clips["file"], "_": "-",
         "system_id": clips["model"], "label": "spoof"})
@@ -171,7 +196,7 @@ def load_heldout(split, synth_root=None, librispeech_root=None):
 
 def heldout_speakers(split, clips):
     """test-clean speaker ids for a held-out split: first or second half, sorted."""
-    split = PROBES.get(split, split)
+    split = SPEAKERS_OF.get(split, split)
     speakers = sorted(clips["speaker_id"].unique())
     half = len(speakers) // 2
     return set(speakers[:half] if split == "heldout-a" else speakers[half:])

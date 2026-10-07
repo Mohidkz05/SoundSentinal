@@ -48,7 +48,8 @@ def main():
     if args.split in synth.PROBES:
         if args.family not in synth.splits()[args.split]:
             sys.exit(f"{args.split} probes only {synth.splits()[args.split]}")
-    elif synth.split_of(args.family) != args.split:
+    elif synth.split_of(args.family) != args.split and not (
+            args.split == "train" and args.family in synth.PROMOTED_F20):
         sys.exit(f"{args.family} belongs to {synth.split_of(args.family)}, not {args.split}")
     _, repo, licence, voice = entry
 

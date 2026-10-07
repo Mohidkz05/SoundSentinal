@@ -210,6 +210,10 @@ def main():
                         help="Which partition to score. Defaults to eval, which "
                              "is the only one worth quoting; dev is offered to "
                              "reproduce a training run's own number.")
+    parser.add_argument("--synth-split", default=None,
+                        choices=["heldout-a", "heldout-b", "heldout-c", "probe-a"],
+                        help="--dataset synth only: score this split, overriding the "
+                             "--partition mapping (Finding 20's heldout-c).")
     parser.add_argument("--num-workers", type=int,
                         default=int(os.getenv("SLURM_CPUS_PER_TASK", "2")))
     parser.add_argument("--out", type=Path, default=None,
@@ -322,7 +326,8 @@ def main():
         # real side (Finding 18). --partition dev is heldout-a (Stage A), eval
         # is heldout-b (Stage B, read once); probe is Finding 19's Stage 0,
         # heldout-a's real clips through each codec.
-        split = {"eval": "heldout-b", "dev": "heldout-a", "probe": "probe-a"}[args.partition]
+        split = args.synth_split or {"eval": "heldout-b", "dev": "heldout-a",
+                                     "probe": "probe-a"}[args.partition]
         frame, root = synth.load_heldout(split)
         dataset = AVSpoofDataset(None, root, build_transform(frontend),
                                  protocol=frame, suffix="", degradation=degradation)
@@ -493,7 +498,7 @@ def main():
     # mechanical rather than a matter of scrolling back.
     tag = {"itw": "itw",
            "speechfake": f"speechfake-{args.partition}-{args.language}",
-           "synth": f"synth-{args.partition}"}.get(args.dataset,
+           "synth": f"synth-{args.synth_split or args.partition}"}.get(args.dataset,
                                                                             args.partition)
     out = args.out or ckpt_path.parent / f"eval_{tag}_{strftime('%Y%m%d-%H%M%S')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
