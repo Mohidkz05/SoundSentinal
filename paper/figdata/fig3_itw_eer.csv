@@ -1,0 +1,10 @@
+# In-the-Wild EER by model, in the order the findings produced them.
+# Source: RESULTS.md Findings 6, 7, 8, 9 and 18. Never trained, selected or calibrated on In-the-Wild.
+model,itw_eer_percent,finding
+CNN log-Mel (LA only),58.54,6
+AASIST (LA only),37.15,6
+AASIST + RawBoost,48.78,7
+SSL-AASIST,37.86,8
+SSL-AASIST + RawBoost,11.21,8
++ SpeechFake,2.65,9
++ own generated fakes (served),2.02,18

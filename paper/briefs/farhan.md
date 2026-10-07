@@ -53,7 +53,7 @@ and units. Put the image files in `paper/figures/` and add them to
 caption so the figure makes sense on its own.
 
 - **Fig. 3 — the main figure: In-the-Wild EER by model.** Data:
-  `paper/data/fig3_itw_eer.csv`. A bar chart in the order given (it tells the
+  `paper/figdata/fig3_itw_eer.csv`. A bar chart in the order given (it tells the
   story: collapse, then recovery). Mark 50% as "chance".
 - **Fig. 2 — cost of privacy, per attack.** EER for each attack A07–A19, CNN
   with and without DP. Ask Mohid for the per-attack numbers (they are in the
