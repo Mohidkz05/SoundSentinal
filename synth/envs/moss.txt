@@ -1,0 +1,7 @@
+# python: 3.12
+# The repo pins torch 2.9.1 (PyPI's default build is CUDA 12.8; M3's driver
+# 580 supports it). Installed without its torch-runtime extra, which would
+# also pull torchcodec.
+moss-tts @ git+https://github.com/OpenMOSS/MOSS-TTS.git
+torch==2.9.1
+torchaudio==2.9.1

@@ -92,9 +92,8 @@ FAMILIES = {
     # Finding 20's never-heard set. Kept out of the seeded draw below
     # (HELDOUT_C), so Finding 18's split is unchanged by their addition.
     "bark":      [("bark", "suno/bark", "MIT", "preset")],
-    "glmtts":    [("glm-tts", "zai-org/GLM-TTS", "MIT", "clone")],
-    "mossttsd":  [("moss-ttsd-v0.7", "OpenMOSS-Team/MOSS-TTSD-v0.7", "Apache-2.0", "clone")],
-    "soulx":     [("soulx-podcast-1.7b", "Soul-AILab/SoulX-Podcast-1.7B", "Apache-2.0", "clone")],
+    "moss":      [("moss-tts-v1.5", "OpenMOSS-Team/MOSS-TTS-v1.5", "Apache-2.0", "clone")],
+    "mimo":      [("mimo-audio-7b", "XiaomiMiMo/MiMo-Audio-7B-Instruct", "MIT", "clone")],
     "codec":     [("snac-24khz", "hubertsiuzdak/snac_24khz", "MIT", "resynth"),
                   ("wavtokenizer-75", "novateur/WavTokenizer-large-speech-75token", "MIT",
                    "resynth")],
@@ -103,7 +102,7 @@ FAMILIES = {
 # because it is Finding 19's training data, added after the split was drawn —
 # listing it here keeps the seeded split exactly as Finding 18 drew it.
 ALWAYS_TRAIN = ("parler", "codec")
-HELDOUT_C = ("bark", "glmtts", "mossttsd", "soulx")
+HELDOUT_C = ("bark", "mimo", "moss")
 # Finding 20 trains on heldout-a's families too: they generate a train split
 # (train-clean-100 voices) as well as keeping their heldout-a clips.
 PROMOTED_F20 = ("chatterbox", "qwen3tts", "speecht5", "voxcpm")

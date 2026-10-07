@@ -1933,6 +1933,27 @@ FishSpeech, ChatTTS, FireRedTTS, MeloTTS (in SpeechFake). A family whose
 backend cannot be made to run in two attempts is dropped, and the drop
 reported; `heldout-c` needs at least three.
 
+### Amendment (8 October, while writing the backends, before any heldout-c clip was generated or scored)
+
+Reading the code changed the set. **GLM-TTS and SoulX-Podcast decode with
+CosyVoice 2's HiFT vocoder** (`GLM-TTS/utils/hift_util.py` imports
+`cosyvoice.hifigan_cosy2.generator.HiFTGenerator`; SoulX-Podcast ships the same
+flow + HiFi-GAN stack). CosyVoice is in SpeechFake, which every model here
+trains on, so their last stage has in effect been heard: they would overstate
+generalisation to unheard systems. Dropped. **MOSS-TTSD v0.7** is now legacy;
+the same team's current single-speaker model, **MOSS-TTS v1.5** (Apache-2.0,
+own MOSS-Audio-Tokenizer), replaces it in the same family. Added: **MiMo-Audio**
+(Xiaomi, 7B, MIT, own MiMo-Audio-Tokenizer), voice clone via `tts_sft(...,
+prompt_speech=)`. Also considered and rejected: MegaTTS3 (WaveVAE encoder
+withheld, voices only as pre-extracted latents; its README says "primarily
+intended for academic purposes"), FireRedTTS2 (FireRedTTS is in SpeechFake),
+Kimi-Audio (BigVGAN decoder, in SpeechFake), Step-Audio-TTS (CosyVoice decoder).
+
+`heldout-c` is therefore **three** families — bark (suno/bark, MIT), moss
+(OpenMOSS-Team/MOSS-TTS-v1.5, Apache-2.0), mimo (XiaomiMiMo/MiMo-Audio-7B-Instruct
++ MiMo-Audio-Tokenizer, MIT) — the minimum the registration allows. Every
+other part of the registration is unchanged.
+
 **Stage 0 — before training.** Score the served model (+7.07) on `heldout-c`:
 control **C0** = pooled fakes passed, reported per model.
 
