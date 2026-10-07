@@ -38,9 +38,12 @@ socio-environmental impact.
    > real-world recordings, and how should its output be reported so that a
    > non-expert is not misled?*
    with *what does DP-SGD cost such a detector?* as the secondary question.
-3. **Team submission.** Still needed from the owner: team members, author
-   order, and who did what (the paper's Author Contributions section, and the
-   presentation's speaker split and hand-overs).
+3. **Team submission**: Muhammad Mohid Khanzada (lead; most of the
+   development), Amaan Muhammad, Farhan Mohammed, in that author order.
+   Contributions are drafted from git history only; Amaan and Farhan state
+   their own (`paper/main.tex`, Author Contributions). Git also shows commits
+   from Alex Ung (August 2025: portability fixes, dev-set training): confirm
+   whether to acknowledge him.
 4. **AI acknowledgement**: a section in the paper, wording still to agree.
 
 ---
