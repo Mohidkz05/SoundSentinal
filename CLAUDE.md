@@ -175,8 +175,9 @@ sent as WAV — the server never sees video and needs no FFmpeg. Video limit
 ### Branch and housekeeping
 
 Everything is on `main` (fast-forwarded from `ssl-aasist` on 30 September, no
-PR). The `ssl-aasist`, `rawboost` and `asvspoof5` branches are fully merged and
-can be deleted from GitHub. A collaborator invite went to `Farhan3135` (write
+PR). The merged `ssl-aasist`, `rawboost`, `asvspoof5` and `aasist-port`
+branches were deleted, locally and on GitHub, on 7 October; `main` is the only
+branch. A collaborator invite went to `Farhan3135` (write
 access) on 29 September. A detached tmux session `claude-side` may be running
 `claude remote-control` for a second chat; stop it with
 `tmux kill-session -t claude-side`.
@@ -685,8 +686,7 @@ CNN.** Reach for pretrained SSL only after dropping DP.
 
 **Work is on `main`.** On 30 September 2026 `main` was fast-forwarded to
 `ssl-aasist` (28 commits, no PR, at the owner's request), which also brought in
-`rawboost` and `asvspoof5` — neither has anything `main` now lacks. Those three
-branches still exist on the remote and can be deleted. M3's checkout is on
+`rawboost` and `asvspoof5`. All of them were deleted on 7 October 2026. M3's checkout is on
 `main` too (switched 30 September).
 
 `Alex-development` (the AI model, merged via PR #1) and `Mohid-fixes` (the
