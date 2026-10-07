@@ -1,254 +1,252 @@
-# SoundSentinal — write-up outline
+# SoundSentinal — FYP B write-up and presentation plan
 
-Started 7 October 2026. An outline, not the write-up: each section says what
-it argues, which evidence carries it, and where that evidence lives. Every
-number below is copied from `RESULTS.md`; re-check against it before anything
-is submitted, since that file is the record. Word counts are placeholders until
-the required format is known.
+Started 7 October 2026; restructured the same day against the two marking
+rubrics (`FYP_B_Final_Paper_Rubric.pdf`, `FYP B Final Presentation
+Rubric.pdf`). An outline, not the paper: each section says what it argues,
+which evidence carries it, and where that evidence lives. Every number is
+copied from `RESULTS.md`, which is the record; re-check against it before
+submission.
 
-**Open decisions (owner's call, before drafting):**
+## What the rubrics require
 
-1. **The framing.** `APPROACH.md` set the research question as *what does
-   differential privacy cost an audio deepfake detector?* The work since
-   mid-September was mostly about something else: whether a detector trained on
-   benchmark data holds up on real-world audio. The DP cost was measured once,
-   on the CNN. Two honest options:
-   - **A. Generalisation first, DP as a secondary result** (recommended: Findings 6–19,
-     all but one of the last fourteen, are about this). Title along the lines of *"Calibrated
-     deepfake audio detection: from benchmark to real-world recordings"*.
-   - **B. Keep DP as the headline** and present the generalisation work as what
-     building a usable detector required. Weaker, because the DP result is one
-     point on one small model.
-2. **The required format**: length, section list, template, referencing style.
-3. **Who wrote what**, if this is a group submission (a collaborator was given
-   write access on 29 September).
+**Paper** — weighted 30 / 50 / 10 / 10:
+
+| Category | Weight | What earns HD |
+| --- | --- | --- |
+| Background, literature, research question | 30% | Current *and* seminal literature, grey literature where relevant, critical evaluation that finds gaps, a research question justified by the review |
+| Scientific and engineering content | 50% | Clear method with figures/tables; results with statistical analysis where applicable, no overclaiming, failures reported so others can learn; discussion linked back to the literature, bias and error addressed, limitations and future work; originality |
+| Structure, figures, tables | 10% | **The provided template, strictly. Over 10 pages is an N.** Abstract, Introduction, Conclusion mandatory; figures cross-referenced |
+| Clarity and expression | 10% | Terms defined, one referencing style, **AI use acknowledged** |
+
+**Presentation** — 10 minutes, hard stop, for a *general engineering
+audience*. It is **not** a summary of the paper. Weighted: technical content,
+constraints and project plan 60%; structure and visuals 15%; answers to
+questions 15%; individual delivery 10%. It must cover why anyone should
+care, who benefits, project management and setbacks, why these methods, and
+constraints such as safety, whole-life cost, net zero carbon and
+socio-environmental impact.
+
+## Open decisions (owner's call, before drafting)
+
+1. **The template.** The rubric says "the provided template". Which is it
+   (IEEE two-column, a Monash Word/LaTeX file)? The page budget below assumes
+   IEEE-style two-column, about 7,000 words of body text with figures.
+2. **The framing.** Recommended: *real-world generalisation and calibration
+   first, the cost of DP second.* `APPROACH.md` set DP as the question, but it
+   was measured once, on the CNN, while Findings 6–19 are about
+   generalisation. Proposed research question:
+   > *Can a deepfake speech detector trained on public benchmark data be made
+   > to work on real-world recordings, and how should its output be reported
+   > so that a non-expert is not misled?*
+   with DP as a secondary question: *what does DP-SGD cost such a detector?*
+3. **Team or solo.** If a collaborator contributed, the presentation needs
+   both speakers and planned hand-overs, and the paper's contribution
+   statement needs to say who did what.
+4. **The AI acknowledgement.** The rubric requires it. Claude was used for
+   code, experiment orchestration on M3, the interface, and drafting; say so
+   precisely, in the template's acknowledgements section.
 
 ---
 
-## 0. Abstract (~250 words)
+# Part 1 — the paper (10 pages)
 
-- Problem: synthetic speech is cheap and convincing; most detectors are trained
-  and scored on clean benchmark audio and report a single accuracy.
-- What was built: SSL-AASIST (XLS-R 300M + AASIST) with RawBoost, trained on
-  ASVspoof 2019 LA + SpeechFake + ~44,000 fakes we generated from 8 open TTS
-  families; served through a web app that shows a score against a calibrated
-  threshold and the model's measured error rates.
-- Headline numbers: In-the-Wild EER **2.02%**; at the served threshold
-  **2.18%** of real recordings flagged and **1.89%** of fakes missed.
-- The honest caveat: clean studio-quality fakes are missed 13.7–20.7% of the
-  time, and two recent TTS systems (Qwen3-TTS, VoxCPM) mostly pass.
-- DP result (if framing A): one measurement, +7.65 points of eval EER at ε=0.48
-  on the CNN.
+Page budget in brackets, figures included. Rubric weight in bold where a
+section carries it.
 
-## 1. Introduction (~1,000 words)
+## Abstract (in page 1)
 
-- Motivation: voice-cloning scams, the everyday user with one clip and one
-  question (`PRODUCT.md`, "Users").
-- Gap: benchmark EERs (~1% on ASVspoof 2019 LA) do not transfer to real-world
-  audio; a single "accuracy" figure hides the two kinds of error, which cost
-  different things (a false accusation vs. a missed fake).
-- Contributions, as a numbered list:
-  1. A detector reaching 2.02% EER on In-the-Wild, never trained, selected or
-     calibrated on it.
-  2. A threshold calibration procedure on held-out real speech, and evidence
-     that the threshold, not the ranking, was the hard problem (Findings 9–16).
-  3. A pre-registered experimental protocol: outcomes and serving bars written
-     down before each job ran.
-  4. A measured cost of differential privacy on a small detector (Finding 3).
-  5. An interface that reports a reading against a visible threshold, with
-     the live model's error rates beside it.
-- Structure of the report.
+~200 words: the problem, the system, In-the-Wild EER **2.02%**, real
+recordings flagged **2.18%** and fakes missed **1.89%** at the served
+threshold, the clean-fake weakness (13.7–20.7% missed), the DP cost (+7.65
+points of EER at ε = 0.48 on the CNN).
 
-## 2. Background and related work (~1,500 words)
+## 1. Introduction (≈0.75 page)
 
-- **Spoofing countermeasures**: the ASVspoof challenges (2019 LA, 2021, 5);
-  EER and min t-DCF, and why t-DCF is the primary metric (`RESULTS.md`, "How
-  to read these numbers"; `APPROACH.md`, "The comparison table").
-- **Front-ends**: hand-crafted (CQCC, LFCC), log-Mel, raw waveform (SincNet),
-  self-supervised (wav2vec 2.0 / XLS-R). Why the Mel scale discards
-  high-frequency vocoder evidence.
-- **Back-ends**: LCNN, RawNet2, RawGAT-ST, AASIST (Jung et al., ICASSP 2022);
-  SSL-AASIST (Tak et al., 2022).
-- **Generalisation**: In-the-Wild (Müller et al., 2022) and its finding that
-  benchmark-trained models collapse; RawBoost (Tak et al., 2022).
-- **Differential privacy**: DP-SGD (Abadi et al., 2016), Opacus, the PRV
-  accountant; what DP protects here (training speakers) and what it does not
-  (the uploaded clip) — `CLAUDE.md`, "Question DP-SGD's premise".
-- **Calibration and thresholds**: why a probability from a saturated model is
-  not a usable output; log-odds scores.
-- **Existing products** (one paragraph, no marketing): verdict-style outputs,
-  no published thresholds or per-error rates (`DESIGN.md`, competitor table).
+- Why it matters: voice-cloning fraud; the person with one clip and one
+  question.
+- The gap, in one paragraph: benchmark EERs near 1% collapse on real-world
+  audio (Müller et al.), and a single accuracy figure hides two errors with
+  very different costs (accusing a real speaker vs. missing a fake).
+- Research question (decision 2) and contributions:
+  1. a detector at 2.02% EER on In-the-Wild, never trained, selected or
+     calibrated on it;
+  2. evidence that the decision threshold, not the ranking, was the hard
+     problem, and a calibration procedure on held-out real speech;
+  3. a pre-registered protocol: outcomes and bars written before each run;
+  4. a measured cost of DP-SGD on a small detector;
+  5. an interface that reports a reading against a visible threshold.
 
-## 3. Data (~800 words)
+## 2. Background and related work (≈2 pages) — **30% of the mark**
 
-- Table of every dataset, its role and licence:
-  - ASVspoof 2019 LA: train / dev / eval (ODC-By).
-  - SpeechFake: training + dev selection (CC BY 4.0); note it trains on VCTK,
-    LA's bona fide source, so LA eval is no longer cleanly held out (Finding 9).
-  - Own generated fakes, 8 open TTS families for training; **heldout-a**
-    (Chatterbox, SpeechT5, Qwen3-TTS, VoxCPM) gated Stage A; **heldout-b** (Dia,
-    Kitten, Marvis, Piper) never used for anything but the final score
-    (Finding 18).
-  - People's Speech: calibration only; LibriSpeech test-clean: calibration
-    diagnostics only, speaker-disjoint.
-  - Common Voice, VoxPopuli: tried as bona fide training data (Findings 10–11).
-  - In-the-Wild: **evaluation only**, never trained, selected or calibrated on.
-- The licence rule: commercial use allowed, no NC/ND, no gated datasets; MLAAD
-  rejected on those grounds (Finding 17).
-- Class imbalance (~1:9 bona fide:spoof on LA) and inverse-frequency loss
-  weights `[4.92, 0.56]`; why not a weighted sampler under Opacus.
+The heaviest-weighted category gets the most room relative to its length.
+Each subsection ends with the gap it leaves, which is what "critical
+analysis" means here.
 
-## 4. Method (~2,000 words)
+- **2.1 Benchmarks and metrics.** ASVspoof 2015 → 2019 LA → 2021 → 5;
+  EER vs. min t-DCF and why t-DCF is primary. *Gap:* both are pooled,
+  threshold-free numbers; neither says what happens at a deployed threshold.
+- **2.2 Front-ends.** CQCC and LFCC baselines; log-Mel and why the Mel scale
+  compresses where vocoder artefacts live; raw waveform (SincNet / RawNet2);
+  self-supervised (wav2vec 2.0, XLS-R). Seminal + current.
+- **2.3 Back-ends.** LCNN, RawGAT-ST, AASIST, SSL-AASIST. *Inconsistency:*
+  RawNet2's reported LA EER ranges 0.99–9.5% across sources (`APPROACH.md`).
+- **2.4 Generalisation.** In-the-Wild's collapse result; RawBoost; newer
+  multi-generator corpora (SpeechFake, MLAAD — and why MLAAD was excluded on
+  licence grounds). *Gap:* most papers report EER only, so whether a threshold
+  transfers is untested.
+- **2.5 Differential privacy.** DP-SGD (Abadi et al.), Opacus, the PRV
+  accountant. *Gap:* no published cost-of-privacy figure for spoofing
+  countermeasures; and a critical point — DP protects the training speakers of
+  a *public* corpus, not the user's uploaded clip.
+- **2.6 Deployed detectors (grey literature).** Commercial and free detectors
+  report a verdict or one accuracy figure, never a threshold or per-error
+  rates (`DESIGN.md`, competitor table; company pages as grey literature).
+- Close with the research question, justified by 2.1, 2.4 and 2.6.
 
-- **Pipeline**: mono, 16 kHz, first 4 s (64,000 samples). One `model.py`
-  shared by trainer, evaluator and server, and the train/serve parity check
-  (`verify_setup.py`) — with the bug that motivated it (log-Mel vs raw Mel
-  silently diverging).
-- **Models compared**: the 267k CNN (log-Mel, LFCC), AASIST (297k, GroupNorm
-  instead of BatchNorm for DP compatibility — list the deviations from
-  upstream in `aasist.py`), SSL-AASIST (XLS-R 300M front-end, ~316M params).
-- **Training recipes** (`TRAIN_DEFAULTS`): CNN 5 epochs / batch 64 / 1e-3;
-  AASIST 100 epochs / batch 24 / 1e-4 with cosine annealing; SSL runs on an
-  H100 on Monash M3. Say plainly that the AASIST and CNN rows differ by
-  schedule as well as architecture.
-- **Augmentation**: RawBoost (training only); random recording channel
-  (Finding 16).
-- **DP**: Opacus, noise multiplier 1.1, max grad norm 1.0, δ=1e-5, ε=0.48.
-- **Model selection** and its known flaw: `best.pth` by dev EER, which reuses
-  the training attacks (Finding 1).
-- **Calibration**: threshold set so a fixed share (1%) of held-out People's
-  Speech real clips is flagged; scores in log-odds because the model saturates
-  float32 softmax; the uncertain band at the 95th percentile of held-out real
-  scores.
-- **Evaluation protocol**: eval partition only, never dev; EER, min t-DCF,
-  per-attack EER, and both error rates at the served threshold.
-- **Pre-registration**: each experiment from Finding 10 on had its outcome
-  categories and serving bars written in `RESULTS.md` before submission;
-  In-the-Wild scored once per model. Owner overrides were written down before
-  the next job ran.
+## 3. Method (≈2 pages) — part of the 50%
 
-## 5. Results (~3,000 words — the core)
+- **3.1 Data** **[Table 1]**: every corpus, its role (train / select /
+  calibrate / evaluate only) and licence. In-the-Wild evaluation-only;
+  heldout-a and heldout-b own-generated families; the VCTK overlap that
+  makes LA eval no longer cleanly held out once SpeechFake is in (Finding 9).
+- **3.2 Models** **[Fig 1: pipeline diagram]**: 16 kHz mono, first 4 s →
+  CNN (267k, log-Mel/LFCC) / AASIST (297k, GroupNorm, deviations listed in
+  `aasist.py`) / SSL-AASIST (XLS-R 300M, ~316M params). One `model.py` for
+  training and serving, with the parity test (`verify_setup.py`).
+- **3.3 Training**: recipes per architecture; class weights; RawBoost; DP
+  settings (noise 1.1, clip 1.0, δ = 1e-5, ε = 0.48). Say the CNN and AASIST
+  rows differ by schedule as well as architecture.
+- **3.4 Calibration**: scores in log-odds (softmax saturates); threshold so 1%
+  of held-out People's Speech real clips is flagged; uncertain band at the 95th
+  percentile.
+- **3.5 Evaluation protocol**: eval partitions only, never dev; EER, min
+  t-DCF, per-attack EER, and both error rates at the threshold, with Wilson
+  95% intervals. **Pre-registration**: outcome categories and serving bars
+  written in `RESULTS.md` before each job; In-the-Wild scored once per model;
+  overrides written down before the next run.
 
-Figures and tables to make are marked **[fig]** / **[table]**.
+## 4. Results (≈2.5 pages) — part of the 50%
 
-### 5.1 The benchmark comparison (ASVspoof 2019 LA eval)
+Every result with its interval where one exists; failures reported in the
+same voice as successes.
 
-- **[table]** the Summary table in `RESULTS.md`: published baselines vs ours.
-- CNN log-Mel 9.60% (best epoch) ≈ CQCC-GMM 9.57%; our AASIST 3.17% vs the
-  published 0.83% (Finding 5: GroupNorm, single seed, `best.pth` ranked 23rd
-  of 100 epochs); SSL-AASIST + RawBoost 0.79% EER, 0.0143 min t-DCF — better
-  than published AASIST.
-- Finding 1: dev EER picks a worse model than an earlier epoch (log-Mel 0.24%
-  dev vs 10.15% eval).
-- Finding 2: front-ends are complementary — LFCC wins 9 of 13 attacks, log-Mel
-  wins A18/A19. **[fig]** per-attack EER heatmap.
+- **4.1 Benchmark** **[Table 2]**: the `RESULTS.md` Summary table, trimmed to
+  the rows that make the argument. SSL-AASIST + RawBoost 0.79% EER / 0.0143
+  min t-DCF; our AASIST 3.17% vs published 0.83% (GroupNorm, single seed,
+  Finding 5); dev EER selects the wrong model (Finding 1); LFCC and log-Mel
+  are complementary per attack (Finding 2).
+- **4.2 The cost of privacy** **[Fig 2: per-attack EER, private vs not]**:
+  10.15% → 17.80% eval EER (+7.65); A07–A16 almost untouched, A17–A19 at
+  chance. Caveats that inflate the gap: untuned, strict ε, 5 epochs, one seed.
+- **4.3 Real-world collapse and recovery** **[Fig 3: In-the-Wild EER by
+  model — the main figure]**: AASIST 37.15% (Finding 6); RawBoost and ASVspoof 5
+  don't fix it (Finding 7); SSL + RawBoost 11.21% (Finding 8); + SpeechFake
+  2.65% (Finding 9); + own fakes 2.02% (Finding 18).
+- **4.4 The threshold** **[Table 3: Findings 10–16, idea / bar / result /
+  served?]** **[Fig 4: score distributions with the threshold drawn]**: real
+  speech in training broke it (10–11); a 1% target worked on real-world audio
+  (12); clean fakes then passed (13: 32.7%); three fixes failed (14–16).
+- **4.5 The served system** **[Table 4: four test sets, with 95% CIs]**:
 
-### 5.2 The cost of privacy (Finding 3)
+  | Set | Real flagged | Fakes missed |
+  | --- | --- | --- |
+  | In-the-Wild | 2.18% (1.99–2.40) | 1.89% (1.66–2.15) |
+  | SpeechFake test (en) | 0.00% | 13.65% (13.50–13.81) |
+  | ASVspoof 2019 LA eval | 0.00% | 20.65% (20.34–20.97) |
+  | heldout-b (never heard) | 3.51% (2.65–4.64) | 15.27% (14.19–16.42) |
 
-- **[table]** non-private vs DP: eval EER 10.15% → 17.80% (+7.65 points);
-  best epochs 9.60% → 17.57% (+7.97).
-- DP did not degrade evenly: A07–A16 stay at 0.39–1.08%, A17–A19 go to chance
-  (43–45%). **[fig]** per-attack bars, both regimes.
-- Caveats that bias the gap upwards: untuned hyperparameters, very strict ε,
-  five epochs, single seed.
+  The override: Finding 18 missed its pre-registered 2% bar by 0.18 points and
+  was served anyway; state it here, in the body. Finding 19: codec
+  resynthesis already flagged at 98–100%, so Qwen3-TTS and VoxCPM evade it some
+  other way (64–84% still pass).
 
-### 5.3 The real-world collapse and the fix (Findings 6–9)
+## 5. Discussion (≈1 page) — part of the 50%
 
-- Finding 6: every benchmark-trained model collapses on In-the-Wild (AASIST
-  37.15%).
-- Finding 7: RawBoost and ASVspoof 5 data do not fix it.
-- Finding 8: a pretrained SSL front-end does, but only with RawBoost: 11.21%.
-- Finding 9: adding SpeechFake: **2.65%**.
-- **[fig]** In-the-Wild EER by model, one bar each — the project's main plot.
+Link each point back to Section 2.
 
-### 5.4 The threshold was the hard part (Findings 4, 9–16)
+- Why a pretrained front-end generalises when from-scratch models don't
+  (back to 2.2–2.4).
+- One threshold, two kinds of audio: the trade-off the 1% target makes.
+- **Bias and error**: single seeds; intervals cover clip sampling only, and
+  In-the-Wild clips share speakers, so they are optimistic; model selection on
+  a dev set that reuses training attacks; LA eval contaminated by VCTK once
+  SpeechFake is added; the 2.18% miss sits at the edge of its interval
+  (1.99–2.40%), so the bar was missed only just measurably.
+- Pre-registration as a control on researcher bias, and what the two
+  overrides (Findings 15 and 18) cost in credibility.
+- DP: what one point does and doesn't show (back to 2.5).
+- What another researcher can learn from the failures (rubric wording).
 
-- Finding 4: a dev-set threshold does not survive the partition change.
-- Findings 10–11: real-world bona fide speech in training broke or did not
-  move the threshold.
-- Finding 12: a 1% target on People's Speech — ITW 0.62% real flagged, 3.61%
-  fakes missed.
-- Finding 13: clean modern fakes pass (32.7% on SpeechFake): clean and noisy
-  audio sit on different parts of the scale.
-- Findings 14–16: three attempts to close that gap — degrading inputs, a
-  second "clean" threshold, channel augmentation — none served. **[table]**
-  idea / bar / result / served?
-- **[fig]** score distributions: ITW real, LibriSpeech real, SpeechFake fakes,
-  with the threshold drawn.
+## 6. Limitations and future work (≈0.5 page)
 
-### 5.5 Training on our own fakes (Findings 18–19)
+LLM-codec TTS (Qwen3-TTS, VoxCPM); clean real speech flagged more (LibriSpeech
+0% → 3.5%); first 4 s only; not speaker verification; one seed, no EER
+intervals; DP only on the CNN, no ε sweep. Future: whole-clip scoring, one
+scale for clean and noisy audio, a frozen-front-end DP SSL-AASIST, a held-out
+attack set for model selection, saved per-clip scores for bootstrap EER
+intervals.
 
-- Finding 18: 8 more open TTS families in training. Every number improved
-  (**[table]** the four-row served table, old vs new), but ITW real flagged
-  2.18% missed the pre-registered 2% bar by 0.18 points.
-- **The override**: served anyway by the owner on 3 October, written down
-  before the swap. State it in the body, not a footnote.
-- Finding 19: codec-resynthesised real speech — no room, the model already
-  flags 98–100% of it; so Qwen3-TTS / VoxCPM evade it by something other than
-  a codec fingerprint.
+## 7. Conclusion (≈0.25 page) — mandatory
 
-## 6. The application (~1,200 words)
+The answer to the research question in three sentences, the headline numbers,
+and the one weakness a user must know.
 
-- Architecture: Next.js on Cloudflare Workers → proxy route → Flask/PyTorch on
-  Azure Container Apps (scale to zero, bearer token). Video decoded in the
-  browser; clips processed in memory, never stored.
-- Design thesis: *an instrument, not a verdict machine*. The score on a
-  log-odds scale, the threshold drawn, the uncertain band, confidence as
-  certainty not accuracy, the live error rates beside every reading. Why the
-  axis is log-odds (P = 0.99966 at the threshold). **[fig]** screenshot of
-  `/result`.
-- Accessibility and performance: WCAG 2.2 AA; the verdict palette checked
-  under colour-blindness simulation (teal↔ember fails, ΔE 0.048); Lighthouse
-  mobile 90–97, CLS 0; works without WebGL.
-- Measured serving: ~1.2 s per prediction warm, 28.8 s cold.
+## Acknowledgements, AI use, references (≈0.5 page)
 
-## 7. Discussion (~1,200 words)
+Supervisor; Monash M3 (project df37); dataset licences; the AI-use statement
+(decision 4). One referencing style throughout.
 
-- Why the SSL front-end generalises and the from-scratch models do not.
-- One threshold for two kinds of audio: the clean-vs-noisy scale problem, and
-  the trade-off the 1% target makes (fewer false accusations on real-world
-  audio, more missed clean fakes).
-- What the DP measurement does and does not show; the case that DP protects
-  the wrong party for a public training corpus.
-- Pre-registration in a student project: what it prevented (tuning to
-  In-the-Wild) and what the two overrides cost in credibility.
+## Figures and tables to make
 
-## 8. Limitations and future work (~800 words)
+| # | What | From |
+| --- | --- | --- |
+| Fig 1 | Pipeline: upload → 16 kHz/4 s → model → log-odds → threshold → reading | new diagram |
+| Fig 2 | Per-attack EER, CNN private vs non-private | Finding 3 JSONs |
+| Fig 3 | In-the-Wild EER by model, in order of the findings | Findings 6–9, 18 |
+| Fig 4 | Score distributions, real vs fake per set, threshold marked | needs per-clip scores (rescore on M3) or drop |
+| Fig 5 | `/result` screenshot | live site |
+| Table 1 | Datasets, roles, licences | Section 3.1 |
+| Table 2 | Benchmark comparison | `RESULTS.md` Summary |
+| Table 3 | Findings 10–16 at a glance | `RESULTS.md` |
+| Table 4 | Served system with 95% CIs | above |
 
-From `RESULTS.md` "What has not been measured" and the served-system section:
+Fig 4 is the only item that needs new compute: `evaluate.py` doesn't save
+per-clip scores. It is evaluation, not training, but training was closed on
+4 October, so it is the owner's call.
 
-- Recent LLM-codec TTS mostly passes (Qwen3-TTS 78–84%, VoxCPM 64–67%).
-- Clean real speech is flagged more (LibriSpeech 0% → 3.5%).
-- Only the first 4 seconds are read; not speaker verification.
-- Every result is a single seed; no error bars.
-- DP measured only on the CNN; no DP AASIST or SSL run; no ε sweep.
-- Model selection on a dev set that reuses training attacks.
-- Future: whole-clip scoring, retraining so clean and noisy audio share one
-  scale, a frozen-front-end DP SSL-AASIST, a held-out attack set for selection.
+---
 
-## 9. Ethics, privacy and licensing (~500 words)
+# Part 2 — the presentation (10 minutes, hard stop)
 
-- Upload privacy: in-memory processing, no logs, video never leaves the
-  browser.
-- The cost of each error to a real person; why the interface never stamps a
-  verdict.
-- Dataset licences and attribution; In-the-Wild's evaluation-only use.
-- Dual use: a published detector can be used to tune fakes against it.
+For a general engineering audience; the paper's detail stays in the paper.
+Approximate timing:
 
-## 10. Conclusion (~300 words)
+| Min | Slide(s) | Content | Rubric item |
+| --- | --- | --- | --- |
+| 0:00 | Hook | Play the two sample clips (one real, one synthetic); ask the room which is fake | why care |
+| 1:00 | The problem | Voice-clone scams; who is harmed; why "98% accurate" claims mislead | relevance, who benefits |
+| 2:00 | What we built | Live demo of the site: upload → reading against the threshold → error rates | solution, visuals |
+| 3:30 | How it works | One diagram: audio → pretrained speech model → score → threshold. No jargon | method for a general audience |
+| 4:30 | Why these choices | Why SSL-AASIST over the CNN; why a threshold and error rates, not a verdict | justification |
+| 5:30 | The journey | Benchmark 3% → real world 37% → 2%: the collapse and the fix, one chart | setbacks and how they were addressed |
+| 6:30 | Project management | Timeline Aug–Oct; M3 GPU access as the critical path; pre-registration as a project control; 19 findings, what was dropped and why | project plan, adaptability |
+| 7:30 | Constraints | Cost (A$0.53 of student credit to host; scale-to-zero); carbon (H100 hours for training vs CPU inference); privacy (clips never stored); data licences; harm from false accusations | contextual factors |
+| 8:30 | Honest limits | Clean studio fakes and two new TTS systems get past it; the override, said plainly | no overclaiming |
+| 9:15 | Close | Who benefits, what's next | impact |
 
-## Appendices
+**Prepared answers** (15% of the mark): why not just use a commercial
+detector; why the threshold is 1% and not something else; what the override
+means for trusting the results; why DP was dropped for the served model; how
+much training cost (GPU hours, carbon); could the detector be used to make
+better fakes; what happens with a clip longer than 4 seconds.
 
-- A. Full per-attack tables (`RESULTS.md`).
-- B. Every pre-registration and its outcome, verbatim, including both
-  overrides.
-- C. Reproduction: `hpc/README.md`, job IDs, commit hashes.
-- D. Hyperparameters per run.
-
-## References to collect
-
-ASVspoof 2019 database paper and evaluation plan; AASIST (Jung et al. 2022);
-SSL-AASIST (Tak et al. 2022); RawBoost (Tak et al. 2022); In-the-Wild (Müller
-et al. 2022); XLS-R (Babu et al. 2021); wav2vec 2.0 (Baevski et al. 2020);
-DP-SGD (Abadi et al. 2016); Opacus; SpeechFake; People's Speech; LibriSpeech;
-Common Voice; VoxPopuli; ASVspoof 5; the TTS systems used in `synth/`.
+**Compute used** (from `sacct` on M3, 1 August – 7 October 2026): **228.7
+GPU-hours** in 175 jobs: 87.7 h on H100s (`m3h`, 12 jobs) and 141.0 h on the
+general `gpu` partition (L40S / A100 / A40 / T4, 163 jobs). A rough energy
+estimate, to be stated as one: at board power (H100 ~700 W, the rest taken
+at ~350 W) that is about 110 kWh of GPU energy, ~150 kWh with a data-centre
+overhead of 1.4; at Victoria's grid intensity (~0.8 kg CO₂e/kWh) roughly
+**90–125 kg CO₂e** for all training and evaluation. Serving costs almost
+nothing by comparison: CPU-only, scale-to-zero, A$0.53 of credit to date.
+Check the grid factor against the current Australian National Greenhouse
+Accounts Factors before quoting it.
