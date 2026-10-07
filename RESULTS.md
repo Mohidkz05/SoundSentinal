@@ -1884,6 +1884,89 @@ probably not their decoder alone — or their decoders are unlike SNAC and
 WavTokenizer in a way this probe cannot show. The 20-clip listening check
 was not needed for the decision and was not recorded.
 
+## Finding 20 — train on the families that still pass; test on four never heard (pre-registered)
+
+Written 8 October 2026, before any code, generation, training or scoring.
+Training was closed on 4 October; **the owner reopened it on 8 October for this
+one run** (paper deadline ~15 October). Nothing below may be changed after Stage
+B is scored; the result is reported whatever it is.
+
+**Question.** The served model (Finding 18) still passes most fakes from
+Qwen3-TTS (78–84%) and VoxCPM (64–67%), recent LLM-based TTS with neural
+codecs, at EER ~25% (Finding 18 Stage A). Finding 19 ruled out a generic codec
+fingerprint. The direct fix is to train on them. Does it cut their misses, and —
+the question that matters for a user — does it carry over to *other* recent
+LLM-based TTS the model has never heard, without costing In-the-Wild?
+
+**Why not ElevenLabs or Suno.** Asked for by the owner; both are excluded by
+their terms, not by preference. ElevenLabs' Prohibited Use Policy forbids using
+its output "as input for any machine learning or training of artificial
+intelligence models" or "as part of a dataset that may be used for training,
+fine-tuning, developing, testing, or improving" one (elevenlabs.io/use-policy,
+read 8 October). Suno's terms forbid using output "to power, enable or train
+other artificial intelligence and machine learning models"
+(suno.com/terms-of-service). Suno's own open model, Bark (MIT), is used below.
+
+**The one change.** Finding 18's recipe exactly, plus the **train** split
+(train-clean-100 voices and text, 6,000 clips per family, as in Finding 18) of
+the four `heldout-a` families: Chatterbox, SpeechT5, Qwen3-TTS, VoxCPM.
+`--extra-train speechfake+synth20` names its families explicitly: Finding 18's
+eight training families plus those four, **not** Finding 19's codec clips
+(generated, never trained). Same Whisper quality gate (`synth/qc.py`).
+
+**A new never-heard set, `heldout-c`.** Four families, each with code and
+weights under MIT or Apache-2.0, ungated on Hugging Face, absent from SpeechFake's
+system list (checked against its metadata on M3) and from every family above:
+
+| Family | Model | Licence | Kind |
+| --- | --- | --- | --- |
+| bark | suno/bark | MIT | GPT + EnCodec (2023), preset voices |
+| glmtts | zai-org/GLM-TTS | MIT | LLM + flow (Dec 2025), voice clone |
+| mossttsd | OpenMOSS-Team/MOSS-TTSD-v0.7 | Apache-2.0 | LLM + XY-Tokenizer (2025), voice clone |
+| soulx | Soul-AILab/SoulX-Podcast-1.7B | Apache-2.0 | LLM (2025), voice clone |
+
+1,000 clips per family, voices and text from `heldout-b`'s 20 test-clean
+speakers; the real side is those speakers' genuine clips (as `heldout-b`).
+Rejected and why: NeuTTS Air, CSM-1B, Orpheus (gated); Spark-TTS, XTTS
+(non-commercial); IndexTTS-2, Step-Audio-EditX (no clear licence); CosyVoice,
+FishSpeech, ChatTTS, FireRedTTS, MeloTTS (in SpeechFake). A family whose
+backend cannot be made to run in two attempts is dropped, and the drop
+reported; `heldout-c` needs at least three.
+
+**Stage 0 — before training.** Score the served model (+7.07) on `heldout-c`:
+control **C0** = pooled fakes passed, reported per model.
+
+**Calibration**, fixed now: Finding 12's procedure (People's Speech, 1%).
+
+**Stage A — no final test set touched.** `heldout-a` at the calibrated
+threshold (its families are now trained on; its speakers are not):
+- A1: Qwen3-TTS + VoxCPM fakes passed, pooled over their four models, **≤ 25%**
+  (control 73.3%, the mean of 83.8, 78.4, 67.0, 64.0).
+- A2: People's Speech check half real flagged ≤ 2%.
+Fail either → **No effect**; stop, nothing served.
+
+**Stage B — once.** In-the-Wild, SpeechFake test (English), LA eval,
+`heldout-b`, `heldout-c`. Serving needs all of:
+- In-the-Wild EER ≤ 2.5% (served 2.02%);
+- In-the-Wild real flagged ≤ 2.5% (served 2.18%);
+- In-the-Wild fakes missed ≤ 2.5% (served 1.89%);
+- `heldout-c` fakes passed ≤ max(C0 − 10, C0 / 2);
+- `heldout-b` fakes passed ≤ 17.27% (served 15.27% + 2);
+- SpeechFake test fakes passed ≤ 15.65% (served 13.65% + 2).
+Reported, not a criterion: LibriSpeech real flagged (`heldout-a`/`-b` real sides).
+
+**Outcomes:** **Served**; **Improved, not served** (A passed, a B criterion
+failed); **No effect** (A failed); **Broken** (In-the-Wild EER ≥ 5%).
+
+**Expected** (so it can be wrong): Qwen3-TTS/VoxCPM misses fall below 15%;
+`heldout-c` misses fall by about a third from C0; In-the-Wild within 0.3 points
+of the served model; LibriSpeech real flagged a little higher.
+
+**Limits, stated now.** One seed. Four new families is a small sample of
+"recent LLM TTS". `heldout-c` reuses `heldout-b`'s speakers, so the two sets'
+real sides are the same 1,339 clips. With the deadline, this is the only run:
+there is no second attempt if it fails.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
