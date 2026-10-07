@@ -1,0 +1,16 @@
+# Per-attack EER (%) on ASVspoof 2019 LA eval, CNN log-Mel, best.pth (epoch 5) of each regime.
+# Source: M3 checkpoints/nodp/eval_eval_20260919-232302.json (non-private) and checkpoints/eval_eval_20260920-002624.json (DP, epsilon 0.48). RESULTS.md Finding 3.
+attack,non_private,dp
+A07,0.11,0.39
+A08,0.83,8.10
+A09,0.63,0.51
+A10,3.70,0.51
+A11,2.97,0.42
+A12,8.10,0.51
+A13,15.85,0.63
+A14,2.12,0.41
+A15,5.72,0.43
+A16,0.22,1.08
+A17,41.19,43.22
+A18,12.19,44.53
+A19,2.61,44.39
