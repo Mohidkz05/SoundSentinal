@@ -151,10 +151,13 @@ export default function ResultPage() {
                   >
                     {tier.headline}
                   </h1>
-                  <p className="tick-label">
-                    Score <span className="tabular">{formatScore(score)}</span>,{' '}
+                  {/* Why the headline says what it says: the score and the side of
+                      the line. Readable text, not a caption (7 October 2026). */}
+                  <p className="text-body text-secondary">
+                    Score{' '}
+                    <span className="tabular font-semibold text-primary">{formatScore(score)}</span>,{' '}
                     {clears ? 'above' : 'below'} the decision threshold of{' '}
-                    <span className="tabular">{formatScore(threshold)}</span>
+                    <span className="tabular font-semibold text-primary">{formatScore(threshold)}</span>
                   </p>
                 </div>
               </div>
@@ -173,7 +176,7 @@ export default function ResultPage() {
               </p>
               {/* The percentage is the model's certainty, and the page must not
                   let it pass for accuracy — see confidence() in verdict.js. */}
-              <p className="mt-4 max-w-[68ch] text-small text-muted">
+              <p className="mt-4 max-w-[68ch] text-small text-secondary">
                 Confidence is how sure the model is, not how often it is right.
               </p>
 
@@ -305,8 +308,10 @@ export default function ResultPage() {
               <ErrorRates measured={measured} />
               <Notice className="mt-[var(--space-group)]">
                 It misses more clean, studio-quality fakes than noisy ones, and
-                some recent voice generators still get past it. If a clip
-                sounds studio-clean, a low reading is not evidence it is real.
+                some recent voice generators still get past it.{' '}
+                <strong className="font-semibold text-primary">
+                  If a clip sounds studio-clean, a low reading is not evidence it is real.
+                </strong>
               </Notice>
             </div>
           ) : (

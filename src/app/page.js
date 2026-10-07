@@ -144,8 +144,10 @@ export default function Home() {
                 <ErrorRates measured={rates.measured} />
                 <Notice className="mt-[var(--space-group)]">
                   It misses more clean, studio-quality fakes than noisy ones,
-                  and some recent voice generators still get past it. A low
-                  reading on a clean clip is not evidence it is real.
+                  and some recent voice generators still get past it.{' '}
+                  <strong className="font-semibold text-primary">
+                    A low reading on a clean clip is not evidence it is real.
+                  </strong>
                 </Notice>
               </>
             ) : rates.status === 'loading' || rates.status === 'waking' ? (
