@@ -26,25 +26,22 @@ care, who benefits, project management and setbacks, why these methods, and
 constraints such as safety, whole-life cost, net zero carbon and
 socio-environmental impact.
 
-## Open decisions (owner's call, before drafting)
+## Decisions (7 October 2026)
 
-1. **The template.** The rubric says "the provided template". Which is it
-   (IEEE two-column, a Monash Word/LaTeX file)? The page budget below assumes
-   IEEE-style two-column, about 7,000 words of body text with figures.
-2. **The framing.** Recommended: *real-world generalisation and calibration
-   first, the cost of DP second.* `APPROACH.md` set DP as the question, but it
-   was measured once, on the CNN, while Findings 6–19 are about
-   generalisation. Proposed research question:
-   > *Can a deepfake speech detector trained on public benchmark data be made
-   > to work on real-world recordings, and how should its output be reported
-   > so that a non-expert is not misled?*
-   with DP as a secondary question: *what does DP-SGD cost such a detector?*
-3. **Team or solo.** If a collaborator contributed, the presentation needs
-   both speakers and planned hand-overs, and the paper's contribution
-   statement needs to say who did what.
-4. **The AI acknowledgement.** The rubric requires it. Claude was used for
-   code, experiment orchestration on M3, the interface, and drafting; say so
-   precisely, in the template's acknowledgements section.
+1. **Template: LaTeX, IEEE Transactions (`IEEEtran` journal).** The paper is
+   `paper/main.tex` with references in `paper/refs.bib` (IEEE style via
+   `IEEEtran.bst`). Build with `~/tools/tectonic/tectonic paper/main.tex` or
+   on Overleaf. Red `[TODO: …]` markers show what is left; there must be none
+   at submission. Slides use Monash's `powerpoint-template-standard.pptx`.
+2. **Framing: generalisation first, DP second.** Research question:
+   > *Can a deepfake speech detector trained on public data be made to work on
+   > real-world recordings, and how should its output be reported so that a
+   > non-expert is not misled?*
+   with *what does DP-SGD cost such a detector?* as the secondary question.
+3. **Team submission.** Still needed from the owner: team members, author
+   order, and who did what (the paper's Author Contributions section, and the
+   presentation's speaker split and hand-overs).
+4. **AI acknowledgement**: a section in the paper, wording still to agree.
 
 ---
 

@@ -52,3 +52,10 @@ checkpoints/
 .open-next/
 .wrangler/
 .dev.vars*
+
+# LaTeX build output for paper/ (tectonic or Overleaf)
+paper/*.pdf
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg

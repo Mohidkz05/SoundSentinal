@@ -1,0 +1,317 @@
+% SoundSentinal — FYP B final paper.
+% Template: IEEE Transactions (IEEEtran journal), as provided for FYP B.
+% Limit: 10 pages including references (rubric: "Exceeds 10 pages" is an N).
+% Build: ~/tools/tectonic/tectonic paper/main.tex, or upload paper/ to Overleaf.
+% Every number comes from RESULTS.md; the outline is WRITEUP.md.
+
+\documentclass[journal]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{xcolor}
+\usepackage{url}
+
+% Visible placeholders. Search for TODO before submitting; there must be none.
+\newcommand{\TODO}[1]{{\color{red}\textbf{[TODO:} #1\textbf{]}}}
+
+\begin{document}
+
+\title{Calibrated Deepfake Speech Detection:\\From Benchmark to Real-World Recordings}
+
+\author{\TODO{Author names, in agreed order}
+\thanks{Final Year Project B, Monash University, \TODO{semester and year}. Supervisor: \TODO{supervisor name and title}.}
+\thanks{Training and evaluation used the MASSIVE M3 cluster (project df37).}}
+
+\maketitle
+
+\begin{abstract}
+Synthetic speech is now cheap enough to use in everyday fraud, and detectors
+that score near 1\% equal error rate (EER) on public benchmarks are known to
+fail on recordings from the real world. We ask whether a detector trained only
+on public data can be made to work on such recordings, and how its output
+should be reported so that a non-expert is not misled. Across nineteen
+pre-registered experiments we compare a small CNN, AASIST and a
+self-supervised XLS-R front-end with an AASIST back-end (SSL-AASIST). Trained
+with RawBoost augmentation on ASVspoof~2019 LA, SpeechFake and 44{,}000 clips
+we generated from eight open text-to-speech systems, SSL-AASIST reaches
+2.02\% EER on the In-the-Wild dataset, on which it was never trained, selected
+or calibrated. At a threshold set on held-out real speech it flags 2.18\% of
+real recordings and misses 1.89\% of fakes. The threshold, not the ranking,
+proved the harder problem: clean studio-quality fakes are still missed 13.7--20.7\%
+of the time, and two recent text-to-speech systems mostly pass. Differential
+privacy, measured on the CNN, cost 7.65 points of EER at $\varepsilon = 0.48$.
+We serve the detector through a web application that reports a score against
+its visible threshold, beside the live model's measured error rates.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Anti-spoofing, audio deepfake detection, calibration, differential privacy,
+generalization, self-supervised learning.
+\end{IEEEkeywords}
+
+% ===========================================================================
+\section{Introduction}
+% ~0.75 page. WRITEUP.md, Part 1, Section 1.
+
+\IEEEPARstart{V}{oice} cloning has moved from research to commodity:
+\TODO{one or two sentences with a cited, current example of voice-clone fraud
+(grey literature is acceptable here, per the rubric)}. The person most exposed
+is not a security team but someone holding one recording and one question:
+should I trust this?
+
+Detectors exist, and on the ASVspoof~2019 logical access (LA) benchmark the
+best of them report EERs below 1\%~\cite{jung2022aasist,tak2022ssl}. Two
+problems separate that number from the person with the recording. First,
+benchmark performance does not transfer: on recordings collected from the
+internet, detectors trained on ASVspoof degrade to 30--40\%
+EER~\cite{muller2022itw}. Second, EER is threshold-free, while a deployed
+detector must commit to a threshold, and at that threshold it makes two
+different mistakes. Flagging a genuine recording accuses a real person;
+passing a fake fails to protect one. A single accuracy figure hides both.
+
+This paper asks: \emph{can a deepfake speech detector trained on public data
+be made to work on real-world recordings, and how should its output be
+reported so that a non-expert is not misled?} A secondary question is what
+differentially private training~\cite{abadi2016dpsgd} costs such a detector.
+Our contributions are:
+\begin{enumerate}
+\item a detector reaching 2.02\% EER on In-the-Wild~\cite{muller2022itw}
+  without being trained, selected or calibrated on it;
+\item evidence, from seven experiments, that setting the decision threshold
+  was harder than ranking clips, and a calibration procedure on held-out real
+  speech;
+\item a pre-registered protocol in which every experiment's outcomes and
+  serving criteria were written down before it ran;
+\item a measured cost of DP-SGD for a small spoofing countermeasure;
+\item an interface that reports a reading against a visible threshold, with
+  the served model's error rates beside it.
+\end{enumerate}
+\TODO{one sentence on the structure of the paper}
+
+% ===========================================================================
+\section{Background and Related Work}
+% ~2 pages. 30% of the mark: current + seminal + grey literature, and each
+% subsection ends with the gap it leaves (that is the "critical analysis").
+
+\subsection{Benchmarks and Metrics}
+\TODO{ASVspoof 2015 to 2019 LA~\cite{wang2020asvspoof,todisco2019asvspoof},
+2021~\cite{liu2023asvspoof2021} and 5~\cite{wang2024asvspoof5}. EER and min
+t-DCF~\cite{kinnunen2018tdcf}; why t-DCF is primary. Gap: both are pooled and
+threshold-free, so neither describes a deployed operating point.}
+
+\subsection{Front-Ends}
+\TODO{CQCC~\cite{todisco2017cqcc} and LFCC~\cite{sahidullah2015lfcc}
+baselines; log-Mel and why the Mel scale compresses the high frequencies where
+vocoder artefacts live; raw waveform via SincNet~\cite{ravanelli2018sincnet};
+self-supervised wav2vec~2.0~\cite{baevski2020wav2vec} and
+XLS-R~\cite{babu2022xlsr}.}
+
+\subsection{Back-Ends}
+\TODO{LCNN~\cite{lavrentyeva2019stc}, RawNet2~\cite{tak2021rawnet2},
+RawGAT-ST~\cite{tak2021rawgat}, AASIST~\cite{jung2022aasist},
+SSL-AASIST~\cite{tak2022ssl}. Inconsistency to name: RawNet2's reported LA
+EER ranges from 0.99\% to 9.5\% across sources.}
+
+\subsection{Generalization}
+\TODO{In-the-Wild~\cite{muller2022itw} and its collapse result;
+RawBoost~\cite{tak2022rawboost}; multi-generator corpora
+(SpeechFake~\cite{speechfake}, MLAAD~\cite{muller2024mlaad}, and why MLAAD was
+excluded on licence grounds). Gap: results are reported as EER, so whether a
+threshold transfers between domains is rarely tested.}
+
+\subsection{Differential Privacy}
+\TODO{DP-SGD~\cite{abadi2016dpsgd}, Opacus~\cite{yousefpour2021opacus}, the
+PRV accountant~\cite{gopi2021prv}. Gap: no published cost of privacy for
+spoofing countermeasures. Critical point: DP protects the speakers of a
+public training corpus, not the user's uploaded clip.}
+
+\subsection{Deployed Detectors}
+\TODO{Grey literature: commercial and free detectors report a verdict or one
+accuracy figure; none publishes its threshold or its two error rates
+separately. Close the section with the research question, justified by
+Sections II-A, II-D and II-F.}
+
+% ===========================================================================
+\section{Method}
+% ~2 pages.
+
+\subsection{Data}
+Table~\ref{tab:data} lists every corpus and the single role it played.
+
+\begin{table}[!t]
+\caption{Datasets and the role each played. No corpus had two roles.}
+\label{tab:data}
+\centering
+\footnotesize
+\begin{tabular}{@{}L{2.7cm}L{2.9cm}L{1.9cm}@{}}
+\toprule
+Dataset & Role & Licence \\
+\midrule
+ASVspoof 2019 LA~\cite{wang2020asvspoof} & train, select (dev), evaluate (eval) & ODC-By \\
+SpeechFake~\cite{speechfake} & train, select (dev), evaluate (test) & CC BY 4.0 \\
+Own fakes, 8 open TTS families & train & \TODO{per model} \\
+Own fakes, heldout-a & gate between training stages & \TODO{} \\
+Own fakes, heldout-b & evaluate only & \TODO{} \\
+People's Speech~\cite{galvez2021peoples} & calibrate threshold only & CC BY / CC BY-SA \\
+LibriSpeech test-clean~\cite{panayotov2015librispeech} & calibration diagnostics only & CC BY 4.0 \\
+Common Voice, VoxPopuli~\cite{ardila2020commonvoice,wang2021voxpopuli} & tried as bona fide training data & CC0 / CC0 \\
+In-the-Wild~\cite{muller2022itw} & evaluate only & \TODO{} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\TODO{Text: In-the-Wild is never trained, selected or calibrated on. Which
+TTS families are in each own-fake split. SpeechFake shares VCTK with LA's bona
+fide speech, so LA eval is no longer cleanly held out once SpeechFake is in
+training. Class imbalance and inverse-frequency loss weights. Verify every
+licence in this table before submitting.}
+
+\subsection{Models}
+\TODO{Fig.~1: pipeline diagram. Input 16~kHz mono, first 4~s. The three
+architectures: CNN (267k parameters; log-Mel or LFCC), AASIST (297k;
+GroupNorm in place of BatchNorm so it remains DP-compatible), SSL-AASIST
+(XLS-R 300M front-end, 316M parameters). One shared preprocessing module for
+training and serving, with a byte-level parity test.}
+
+\subsection{Training}
+\TODO{Recipes per architecture (they differ by schedule as well as
+architecture). RawBoost. DP: noise multiplier 1.1, clipping norm 1.0,
+$\delta = 10^{-5}$, $\varepsilon = 0.48$.}
+
+\subsection{Calibration}
+\TODO{Scores as log-odds, because the model saturates float32 softmax. The
+threshold flags 1\% of held-out People's Speech real clips (log-odds +7.07,
+$P = 0.99915$). Uncertain band at the 95th percentile of held-out real
+scores.}
+
+\subsection{Evaluation Protocol}
+\TODO{Evaluation partitions only, never dev. EER, min t-DCF, per-attack EER,
+and both error rates at the served threshold, with Wilson 95\%
+intervals~\cite{wilson1927}. Pre-registration: outcome categories and serving
+bars written before each job; In-the-Wild scored once per model; any owner
+override written down before the next run.}
+
+% ===========================================================================
+\section{Results}
+% ~2.5 pages. Every number with its finding in RESULTS.md.
+
+\subsection{Benchmark Performance}
+
+\begin{table}[!t]
+\caption{ASVspoof 2019 LA evaluation partition. Published rows from the
+cited papers; ours measured.}
+\label{tab:la}
+\centering
+\footnotesize
+\begin{tabular}{@{}lrr@{}}
+\toprule
+System & EER (\%) & min t-DCF \\
+\midrule
+CQCC-GMM (official baseline) & 9.57 & 0.2366 \\
+LFCC-GMM (official baseline) & 8.09 & 0.2116 \\
+AASIST (published)~\cite{jung2022aasist} & 0.83 & 0.0275 \\
+\midrule
+Ours: CNN, log-Mel & 10.15 & 0.2350 \\
+Ours: CNN, log-Mel, DP ($\varepsilon = 0.48$) & 17.80 & 0.2696 \\
+Ours: AASIST & 3.17 & 0.0909 \\
+Ours: SSL-AASIST + RawBoost & 0.79 & 0.0143 \\
+Ours: served model$^\dagger$ & 0.53 & 0.0173 \\
+\bottomrule
+\end{tabular}\\[2pt]
+{\scriptsize $^\dagger$Not cleanly held out: SpeechFake shares VCTK with
+LA's bona fide speech.}
+\end{table}
+
+\TODO{Table~\ref{tab:la}. Our AASIST is 3.17\% against the published 0.83\%:
+GroupNorm, one seed, and a dev-selected checkpoint that ranks 23rd of 100
+epochs. Model selection by dev EER picks a worse model than an earlier epoch
+(Finding 1). LFCC and log-Mel are complementary per attack (Finding 2).}
+
+\subsection{The Cost of Privacy}
+\TODO{Fig.~2: per-attack EER, private vs non-private. 10.15\% $\to$ 17.80\%
+(+7.65 points). A07--A16 almost unchanged, A17--A19 at chance. Caveats that
+inflate the gap: untuned hyperparameters, a strict $\varepsilon$, five epochs,
+one seed.}
+
+\subsection{Collapse and Recovery on Real-World Audio}
+\TODO{Fig.~3, the main figure: In-the-Wild EER by model. CNN 58.54\%, AASIST
+37.15\%, AASIST + RawBoost 48.78\%, SSL-AASIST 37.86\%, SSL-AASIST + RawBoost
+11.21\%, + SpeechFake 2.65\%, + own fakes 2.02\%. Neither the pretrained
+front-end nor RawBoost helps alone (Findings 6--9, 18).}
+
+\subsection{The Threshold}
+\TODO{Table: Findings 10--16, idea / pre-registered bar / result / served?
+Real-world speech in training broke the threshold (10--11). A 1\% target on
+held-out real speech worked for real-world audio (12). Clean modern fakes then
+passed (13). Degrading inputs, a second threshold for clean audio and channel
+augmentation all failed (14--16).}
+
+\subsection{The Served System}
+
+\begin{table*}[!t]
+\caption{The served model at its threshold, with Wilson 95\% intervals.
+Never trained, selected or calibrated on any of these sets.}
+\label{tab:served}
+\centering
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Test set & EER (\%) & Real flagged (\%) & Fakes missed (\%) \\
+\midrule
+In-the-Wild & 2.02 & 2.18 (1.99--2.40) & 1.89 (1.66--2.15) \\
+SpeechFake test (en) & 4.15 & 0.00 & 13.65 (13.50--13.81) \\
+ASVspoof 2019 LA eval & 0.53 & 0.00 & 20.65 (20.34--20.97) \\
+Own fakes, heldout-b & 7.70 & 3.51 (2.65--4.64) & 15.27 (14.19--16.42) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\TODO{Table~\ref{tab:served}. The override, in the body: this model missed
+its pre-registered 2\% bar on In-the-Wild real flagged by 0.18 points and was
+served by the project owner's decision, recorded before the swap. Recent
+LLM-codec TTS (Qwen3-TTS, VoxCPM) still passes 64--84\% of the time, and
+codec resynthesis is already flagged at 98--100\% (Finding 19), so they evade
+the detector by some other route.}
+
+% ===========================================================================
+\section{Discussion}
+% ~1 page. Link each point back to Section II.
+\TODO{Why the pretrained front-end generalizes. One threshold for two kinds
+of audio. Bias and error: single seeds; intervals cover clip sampling only and
+In-the-Wild clips share speakers, so they are optimistic; dev reuses training
+attacks; the 2.18\% miss sits at the edge of its interval. Pre-registration
+as a control on researcher bias, and the cost of the two overrides. What the
+one DP point does and does not show. What another researcher can learn from
+the failed experiments.}
+
+\section{Limitations and Future Work}
+\TODO{Only the first 4~s are read; not speaker verification; one seed; DP
+only on the CNN, no $\varepsilon$ sweep; clean real speech flagged more often
+(LibriSpeech 0\% $\to$ 3.5\%). Future: whole-clip scoring, one scale for clean
+and noisy audio, DP on a frozen-front-end SSL-AASIST, a held-out attack set
+for model selection.}
+
+\section{Conclusion}
+\TODO{The answer to the research question in three sentences, the headline
+numbers, and the one weakness a user must know.}
+
+% ===========================================================================
+\section*{Acknowledgment}
+\TODO{Supervisor. MASSIVE M3. Dataset creators and licences.}
+
+\section*{Use of Generative AI}
+\TODO{Required by the rubric. State precisely what generative AI (Claude,
+Anthropic) was used for, for example code, experiment orchestration, the
+web interface and drafting of text, and that the authors reviewed and take
+responsibility for all content.}
+
+\section*{Author Contributions}
+\TODO{Who did what, per team member.}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}
