@@ -9,3 +9,6 @@ librosa>=0.11.0
 pydantic>=2.11.7
 triton==3.2.0
 zhon==2.1.1
+# The tokenizer imports flash_attn unconditionally; the prebuilt wheel the
+# README links (built from source it takes hours).
+flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1/flash_attn-2.7.4.post1+cu12torch2.6cxx11abiFALSE-cp311-cp311-linux_x86_64.whl
