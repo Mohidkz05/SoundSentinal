@@ -5,14 +5,13 @@ import { MotionSwitch } from './motion-switch';
 
 /**
  * One ending for every page. It carries the standing disclaimer — which used
- * to be written separately, and differently, at the foot of each page — the
- * links that are for builders rather than for the person checking a clip
- * (the design system), and the credits the training data's licences ask for.
+ * to be written separately, and differently, at the foot of each page — and
+ * the credits the training data's licences ask for. /design is not linked:
+ * it is for builders, and production serves it as a 404 (design/layout.js).
  */
 const LINKS = [
   { href: '/upload', label: 'Analyse a clip' },
   { href: '/#how-it-works', label: 'How it works' },
-  { href: '/design', label: 'Design system' },
 ];
 
 export default function Footer() {

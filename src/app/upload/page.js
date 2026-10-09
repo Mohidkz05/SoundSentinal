@@ -40,6 +40,12 @@ const ACCEPT = [
   'video/webm',
 ].join(',');
 
+/* 'webm' → 'WebM', the rest upper-case: how people write them. */
+const formatName = (f) => (f === 'webm' ? 'WebM' : f.toUpperCase());
+const listFormats = (list) => list.map(formatName).join(', ');
+/* The limits are whole megabytes; formatBytes would say '5.0 MB'. */
+const wholeMB = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
+
 const isVideo = (name) => VIDEO_FORMATS.includes(extensionOf(name));
 
 function extensionOf(name) {
@@ -330,25 +336,16 @@ export default function UploadPage() {
               entirely. Reading order and depth order agree this way round:
               you read the instruction, then look down at the instrument. The
               wash only has to cover the top band where the two still meet. */}
-          {/* Behind the text column at every height: the field's bars rise
-              to wherever the clip is loud, and copy over them lost its
-              contrast (reported 7 October 2026). Opaque under the column,
-              fading out to the right, so the surface still reads beside it. */}
+          {/* Full width, so it has no edge to read as a block. A wash
+              behind the text column alone (7 October) kept the copy legible
+              but showed as a pale rectangle over the field; this one is
+              opaque down to where the controls end, then fades, so bars
+              rising that high dissolve into it on both sides alike. */}
           <div
-            className="pointer-events-none absolute inset-y-0 left-0 -z-10 w-full max-w-[52rem]"
+            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[62%]"
             style={{
               background:
-                'linear-gradient(to right, var(--canvas) 0%, var(--canvas) 62%, transparent 100%)',
-              maskImage: 'linear-gradient(to bottom, #000 0%, #000 70%, transparent 88%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, #000 0%, #000 70%, transparent 88%)',
-            }}
-            aria-hidden="true"
-          />
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-1/2"
-            style={{
-              background:
-                'linear-gradient(to bottom, var(--canvas) 32%, color-mix(in oklab, var(--canvas) 78%, transparent) 68%, transparent 100%)',
+                'linear-gradient(to bottom, var(--canvas) 0%, var(--canvas) 55%, color-mix(in oklab, var(--canvas) 70%, transparent) 78%, transparent 100%)',
             }}
             aria-hidden="true"
           />
@@ -426,9 +423,11 @@ export default function UploadPage() {
                     <p className="text-small text-secondary">
                       or drag one anywhere on this panel
                     </p>
-                    <p className="tick-label">
-                      {FORMATS.join(' · ')} up to {formatBytes(MAX_BYTES)} ·{' '}
-                      {VIDEO_FORMATS.join(' · ')} up to {formatBytes(MAX_VIDEO_BYTES)}
+                    {/* Its own line, in the body face: as a mono caption
+                        squeezed beside the button it read as a stray label. */}
+                    <p className="w-full text-small text-muted">
+                      {listFormats(FORMATS)} up to {wholeMB(MAX_BYTES)}.{' '}
+                      {listFormats(VIDEO_FORMATS)} up to {wholeMB(MAX_VIDEO_BYTES)}.
                     </p>
                   </>
                 )}

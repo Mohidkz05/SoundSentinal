@@ -80,7 +80,7 @@ export default function Home() {
             next to a question in the visitor's own words. It is DOM, so it
             never depends on WebGL; the spectral field behind the panel is
             ambient and only ever seen in the panel's margins. */}
-        <section className="shell relative isolate grid items-center gap-y-12 pb-[var(--space-section)] pt-[calc(var(--space-section)*0.8)] lg:min-h-[min(46rem,calc(100svh-4rem))] lg:grid-cols-[minmax(0,1fr)_minmax(0,38rem)] lg:gap-x-16">
+        <section className="shell relative isolate grid items-center gap-y-12 pb-[var(--space-section)] pt-[calc(var(--space-section)*0.6)] lg:grid-cols-[minmax(0,1fr)_minmax(0,38rem)] lg:gap-x-16">
           <div className="flex flex-col items-start gap-6">
             <h1 className="text-display text-balance">
               Heard a voice.

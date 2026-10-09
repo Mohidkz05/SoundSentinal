@@ -255,7 +255,7 @@ components/              header.js, theme.js.
 ## Design system
 
 See **`DESIGN.md`** for the rules and the reasoning, and **`/design`** for the
-living reference — it renders from the same CSS the product does, so it can't
+living reference (dev server only — a 404 in production since 9 October) — it renders from the same CSS the product does, so it can't
 drift. Tokens are defined once in `src/app/globals.css`; don't write one-off
 colours, radii or durations in components.
 

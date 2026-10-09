@@ -1,6 +1,6 @@
 # SoundSentinal — design system
 
-**Live reference: `/design`.** It renders from the same CSS the product does, so
+**Live reference: `/design`** (under `npm run dev` only; production builds serve it as a 404 — `src/app/design/layout.js`). It renders from the same CSS the product does, so
 it cannot drift. Read it before building a screen.
 
 Everything is defined in `src/app/globals.css`. Nothing here is decorative — if

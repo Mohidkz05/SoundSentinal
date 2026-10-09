@@ -124,7 +124,7 @@ export function SampleReading({ className = '' }) {
   const flagged = reading.score >= threshold;
 
   return (
-    <figure ref={hostRef} className={`panel-raised p-5 sm:p-7 ${className}`}>
+    <figure ref={hostRef} className={`panel-raised p-5 sm:p-6 ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="tick-label" id="sample-label">Sample reading</p>
         <div role="group" aria-labelledby="sample-label" className="flex gap-1 rounded-[var(--radius-md)] border border-line p-1">
@@ -149,7 +149,7 @@ export function SampleReading({ className = '' }) {
       {/* The clip. Teal, because it is the input, not a result (DESIGN.md
           rule 1); the scanned part is drawn by clipping a second copy, so the
           bars never re-render while the playhead moves. */}
-      <div className="mt-6 flex items-center gap-4">
+      <div className="mt-5 flex items-center gap-4">
         <button
           type="button"
           onClick={toggleAudio}
@@ -191,7 +191,7 @@ export function SampleReading({ className = '' }) {
 
       {/* The reading. Three channels, as on /result: number, tier name,
           needle position. Hue is the tier's, never the brand's. */}
-      <div className="mt-7" aria-live={auto ? 'off' : 'polite'}>
+      <div className="mt-5" aria-live={auto ? 'off' : 'polite'}>
         <p className="tick-label">Model confidence it is {flagged ? 'AI generated' : 'real'}</p>
         <div className="mt-2 flex flex-wrap items-end gap-x-5 gap-y-1">
           <output
@@ -209,11 +209,11 @@ export function SampleReading({ className = '' }) {
         </p>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-4">
         <VerdictScale score={reading.score} threshold={threshold} bandLow={bandLow} height="h-10" compact />
       </div>
 
-      <figcaption className="mt-6 text-small text-muted">
+      <figcaption className="mt-5 text-small text-muted">
         Two clips from ASVspoof 2019, scored by the live model. It trained on
         them, so this shows what a reading looks like, not how often one is
         right.
