@@ -79,8 +79,11 @@ export default function Home() {
             The hook is the product itself: a real reading of a real clip,
             next to a question in the visitor's own words. It is DOM, so it
             never depends on WebGL; the spectral field behind the panel is
-            ambient and only ever seen in the panel's margins. */}
-        <section className="shell relative isolate grid items-center gap-y-12 pb-[var(--space-section)] pt-[calc(var(--space-section)*0.6)] lg:grid-cols-[minmax(0,1fr)_minmax(0,38rem)] lg:gap-x-16">
+            ambient and only ever seen in the panel's margins. The copy column
+            is fixed and the panel takes the rest: with the copy on a 1fr
+            column, a wide window left a gap the width of a third panel
+            between them (9 October). The scale is what width improves. */}
+        <section className="shell relative isolate grid items-center gap-y-12 pb-[var(--space-section)] pt-[calc(var(--space-section)*0.6)] lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:gap-x-16 xl:grid-cols-[minmax(0,32rem)_minmax(0,1fr)]">
           <div className="flex flex-col items-start gap-6">
             <h1 className="text-display text-balance">
               Heard a voice.
