@@ -45,6 +45,10 @@ logs land:
 R1's checkpoints: `.../ssl-aasist/rawboost5/plus-speechfake+synth20/plus-librispeech-bonafide/crop/nodp/`.
 R0's: `.../plus-librispeech-bonafide/nodp/best_calibrated_peoples_speech_1pct_repeatpad.pth`.
 
+**R0 passed Stage A (13 October):** threshold +6.58; A1 24.15%, A2 1.88%, A3
+0.00%, A4 8.41%. Narrow margins on A1 and A2, and A1–A3 were known when it was
+chosen. It waits for R1's Stage A before any Stage B.
+
 **Reading Stage A.** Same four bars as Findings 21 and 22, per candidate: A1
 Qwen3-TTS + VoxCPM passed ≤ 25%; A2 People's Speech check half ≤ 2% (the
 calibration log); A3 `heldout-a` real ≤ 3%; A4 SpeechFake dev fakes passed

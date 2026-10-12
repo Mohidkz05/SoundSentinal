@@ -2613,6 +2613,31 @@ R0: calibration **60960746** (`--pad repeat` on candidate A's `best.pth`,
 written beside it as `best_calibrated_peoples_speech_1pct_repeatpad.pth`),
 Stage A 60960747 and 60960748.
 
+### Stage A result, R0 (13 October): passed all four bars
+
+Calibration 60960746, Stage A 60960747 and 60960748, all logged as
+`padding repeat`. Candidate A's weights, epoch 3.
+
+| Bar | R0 (repeat-padded) | Candidate A as scored in F21 (silence-padded) | Served (F18) |
+| --- | --- | --- | --- |
+| Threshold (log-odds, People's Speech 1%) | +6.58 | +7.60 | +7.07 |
+| A1: Qwen3-TTS + VoxCPM fakes passed ≤ 25% | 24.15% — pass | 39.80% | 73.30% |
+| A2: People's Speech check half flagged ≤ 2% | 1.88% — pass | 1.31% | |
+| A3: `heldout-a` real flagged ≤ 3% | 0.00% — pass | 0.00% | 1.64% |
+| A4: SpeechFake dev fakes passed ≤ 12.94% | 8.41% — pass | 6.86% | 10.94% |
+
+Per model, passed (EER): Qwen3-TTS 0.6B 21.40% (2.41), 1.7B 14.80% (1.80);
+VoxCPM 0.5B 32.20% (5.61), 1.5 28.20% (4.78); Chatterbox, Chatterbox Turbo and
+SpeechT5 ≤ 0.10%. `heldout-a` pooled: 12.10% of fakes passed, EER 2.74%.
+SpeechFake dev: EER 4.59%, real flagged 0.06%.
+
+As expected, A1–A3 reproduce the diagnostic to the digit; they were known when
+R0 was chosen and are not a test of it. A4 is new and passes, but is 1.5
+points worse than candidate A silence-padded (6.86%): most SpeechFake clips
+are under 4 s, and these weights were trained on them silence-padded. A1
+clears its bar by 0.85 points, and A2 its bar by 0.12. **R0 does not go to
+Stage B yet:** by the rule above it waits for R1's Stage A.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
