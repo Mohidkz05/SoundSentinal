@@ -1988,6 +1988,419 @@ of the served model; LibriSpeech real flagged a little higher.
 real sides are the same 1,339 clips. With the deadline, this is the only run:
 there is no second attempt if it fails.
 
+### Runs
+
+Generation (8–9 October): train split for the four promoted families
+(SpeechT5 5,851 clips; Qwen3-TTS, VoxCPM and Chatterbox ~2,910 per model) and
+`heldout-c` (bark 1,000, moss 1,000, mimo 999). Chatterbox-turbo's first job
+ran out of memory (60813310) and was rerun at 96 GB (60860507). Whisper gate
+(60875707, 10 October): every set passes, median WER 0–6.2% against a 30% bar.
+
+Submitted 10 October: Stage 0 job **60884078** (served model on `heldout-c`),
+training job **60884079** (H100, `--extra-train speechfake+synth20 --epochs 4`,
+into `.../plus-speechfake+synth20/nodp/`).
+
+### Stage 0 and training (10–11 October)
+
+Stage 0, job 60884078, the served model (+7.07) on `heldout-c` (2,999 fakes,
+1,339 real): **C0 = 34.78%** of fakes passed, EER 23.29%, real flagged 3.51%.
+Per model: bark 7.40% passed (EER 5.51%), MiMo-Audio 2.00% (2.48%), MOSS-TTS
+v1.5 **94.90%** (46.30%). Nearly all of C0 is one family. The Stage B bar is
+therefore ≤ max(34.78 − 10, 34.78 / 2) = **24.78%**.
+
+Training job 60884079 finished 11 October 01:51 (H100, 13 h 17 min); `best.pth`
+is epoch 4, dev EER 2.70%.
+
+Submitted 11 October: calibration job **60910782** (People's Speech, 1%), then
+Stage A job **60910783** (`heldout-a` at that threshold), dependent on it.
+
+### Stage A result (11 October): failed — outcome **No effect**
+
+Calibration, job 60910782: threshold P(spoof) = 0.999743, log-odds **+8.27**
+(served: +7.07); People's Speech fit half 1.01%, **check half 1.03%** flagged.
+**A2 (≤ 2%) passes.**
+
+Stage A, job 60910783, `heldout-a` at that threshold (same 5,281 clips as
+Finding 18's Stage A; control = the served model):
+
+| Model | EER, control → new | Fakes passed, control → new |
+| --- | --- | --- |
+| Chatterbox | 1.80% → 0.40% | 1.80% → 0.80% |
+| Chatterbox-Turbo | 2.19% → 1.19% | 2.40% → 1.40% |
+| SpeechT5 | 1.40% → 0.79% | 0.90% → 0.90% |
+| VoxCPM 1.5 | 24.24% → 19.81% | 67.00% → 61.40% |
+| VoxCPM 0.5B | 24.42% → 18.19% | 64.00% → 73.00% |
+| Qwen3-TTS 0.6B | 28.23% → 25.03% | 83.80% → 85.00% |
+| Qwen3-TTS 1.7B | 24.99% → 21.43% | 78.40% → 80.40% |
+| **Pooled** | **16.78% → 13.03%** | **37.40% → 37.97%** (real flagged 1.64% → 0.39%) |
+
+**A1 fails**: Qwen3-TTS + VoxCPM fakes passed, pooled over the four models,
+**74.95%** against a bar of ≤ 25% (control 73.30%). By the registration the
+outcome is **No effect**: Stage B is not run, no test set (In-the-Wild,
+SpeechFake test, LA eval, `heldout-b`, `heldout-c` under the new model) is
+read, and the served model stays Finding 18's.
+
+The training data was present: the log shows `synth20 train, 66072 clips`
+(Finding 18's ~44,000 plus the four promoted families). So ~11,700 Qwen3-TTS
+and VoxCPM clips from train-clean-100 voices moved their ranking only a little
+(EER 24–28% → 18–25%) and, with the threshold 1.2 log-odds higher, their misses
+not at all. Expected was "below 15%"; that was wrong. Not measured, and not to
+be run under this registration: whether the model catches the Qwen3-TTS/VoxCPM
+*training* clips, which would separate "cannot learn them" from "learns the
+training voices and text, not the system".
+
+### Why it failed: post-hoc diagnostics (11 October)
+
+Asked for by the owner after the result. These are diagnostics, not a new
+experiment: they read the training clips, `heldout-a` (the Stage A set, read
+four times already) and genuine LibriSpeech / SpeechFake training audio. No
+Stage B set is read, and Finding 20's outcome above does not change. Scripts
+and CSVs: `diag_f20.*`, `probe_f20.*` beside the Finding 20 checkpoint.
+
+**1. It did learn the fakes — and moved clean real speech with them** (job
+60912320; median score in log-odds on the first 4 s, the window the model
+reads):
+
+| Clips | Served (F18, threshold +7.07) | Finding 20 (threshold +8.27) |
+| --- | --- | --- |
+| Qwen3-TTS, VoxCPM — the clips F20 trained on | −1.4 to +1.0 | +8.17 to +8.22 |
+| Qwen3-TTS, VoxCPM — `heldout-a`, unseen speakers | −0.3 to +3.3 | +8.15 to +8.23 |
+| Chatterbox, SpeechT5 — `heldout-a` | +8.55 | +8.30 to +8.31 |
+| Genuine LibriSpeech test-clean (`heldout-a` real side) | −6.46 | **+5.95** |
+| Genuine LibriSpeech train-clean-100 | −6.72 | **+6.36** |
+| Genuine LibriTTS train-clean-100, SpeechFake's copy (trained on as real) | −6.83 | −5.38 |
+| Genuine VCTK, SpeechFake's copy (trained on as real) | −7.14 | −6.79 |
+
+So it is not memorisation of voices or text: trained-on and unseen-speaker
+fakes score the same. Training moved the Qwen3-TTS/VoxCPM fakes up by ~8
+log-odds, to within 0.1 of the model's ceiling (~+8.33). But genuine
+LibriSpeech rose by ~12.5, and the threshold (1% of People's Speech) sits at
++8.27, 0.06 under the ceiling. The fakes are scored P(spoof) = 0.9997 and
+still pass.
+
+**2. The cause: a packaging shortcut in our own fakes.** LibriTTS
+train-clean-100 and LibriSpeech train-clean-100 are the *same recordings of the
+same speakers*, released twice with different processing. Finding 20 scores
+them **11.7 log-odds apart** (−5.38 against +6.36); the served model scores
+them 0.1 apart. Every voice-cloning fake in `synth/` is prompted with a
+LibriSpeech file, and a cloning model copies its prompt's recording character;
+the only genuine audio of those speakers in training is SpeechFake's LibriTTS
+copy. The cheapest rule that separates the two is "sounds like a LibriSpeech
+file → spoof", and `heldout-a`'s real side is LibriSpeech. `synth.py`'s header
+claims "the model sees the same people real and faked — the difference it can
+learn is the generator's"; that was not true of the files. Finding 18 has the
+same confound in weaker form (its LibriSpeech real flagged rose 0% → 3.5%).
+
+**3. The window position matters to F20.** On genuine LibriSpeech the first
+4 s scores +5.95 but windows starting at 2, 4 and 6 s score −3.0; Qwen3-TTS
++8.15 against +2.2 to +2.9. Training and serving both read only the first 4 s,
+so this does not affect a reported number, but the model has tied its decision
+to how a file begins.
+
+**4. It is not the 16 kHz input, and not that the front-end cannot see them**
+(job 60912774). A logistic-regression probe on frozen, mean-pooled hidden
+states, fitted on train-split Qwen3-TTS/VoxCPM against genuine LibriSpeech
+train-clean-100 (so the packaging is the same on both sides) and tested on
+`heldout-a`'s unseen speakers:
+
+| Front-end (frozen) | Best layer: EER, Qwen3-TTS + VoxCPM | Last layer | Same probe on Chatterbox + SpeechT5 (never shown to it), best layer |
+| --- | --- | --- | --- |
+| XLS-R 300M as pretrained | **0.85%** (layer 3; 1.0–1.3% for 4–8) | 5.79% | 0.79% (layers 6–7) |
+| XLS-R as fine-tuned in F18 (served) | 1.49% (layer 4) | 7.43% | 0.09% |
+| XLS-R as fine-tuned in F20 | 1.10% (layer 3) | 3.66% | 0.00% |
+| WavLM-large | 0.46% (layers 0, 3) | 12.01% | 1.10% |
+| w2v-BERT 2.0 | 1.25% (layer 3); 1.64% all layers averaged | 10.61% | 1.01% |
+
+The full Finding 20 model scores 21–25% EER on the same clips. A linear
+read-out of the same network's own last layer gets 3.7%, and of its early
+layers 1.1%. The information is there at 16 kHz in every front-end tried, most
+of it in layers 3–8; SSL-AASIST reads only the last layer, the worst one in
+every row. Caveat: a probe fitted and tested against LibriSpeech real is
+partly LibriSpeech-specific (it flags 10–30% of LibriTTS real at its EER
+threshold), so these are upper bounds on separability, not deployable numbers.
+
+**Elsewhere.** VoxENES 2026 (arXiv 2607.11706) scored eight public pretrained
+detectors on VoxCPM 1.5, Qwen3-TTS and eight other 2025–26 systems: the best
+reached 28.98% EER and most were at chance, so the starting point here is the
+field's. Public XLS-R systems that read every layer (SLS, Zhang et al.,
+ACM MM 2024; layer-wise fusion, Interspeech 2025) report 6.9–7.5% on
+In-the-Wild from ASVspoof2019 alone, against 11.2% for wav2vec2-AASIST (Speech
+DF Arena, arXiv 2509.02859) — the same direction as the probe.
+
+**5. The cause, tested directly** (pilot jobs 60913132 / 60913133, L40S).
+Starting from the served Finding 18 weights, one pass (~40 min, lr 1e-6) over
+the four promoted families' train fakes, 10,000 of Finding 18's own fakes and
+40,000 rehearsal clips from LA + SpeechFake — with, or without, the 28,539
+genuine LibriSpeech train-clean-100 recordings the cloning prompts were cut
+from. `heldout-a`, first 4 s, EER at each model's own threshold:
+
+| | Before (served) | Control: no paired real | With paired real |
+| --- | --- | --- | --- |
+| Qwen3-TTS + VoxCPM EER | 25.51% | 22.34% | **4.54%** |
+| Chatterbox / Turbo / SpeechT5 EER | 1.80 / 2.19 / 1.40% | 1.58 / 1.62 / 1.31% | 0.18 / 0.04 / 0.09% |
+| Genuine LibriSpeech test-clean, median score | −6.45 | **+8.00** | −0.38 |
+| Qwen3-TTS + VoxCPM, median score | −0.3 to +3.3 | +8.57 to +8.59 | +8.56 to +8.57 |
+| SpeechFake dev sample (6,000 clips) EER | 2.40% | 2.86% | 3.34% |
+
+The control reproduces Finding 20's failure in half an hour: the fakes go to
+the ceiling and genuine LibriSpeech follows them. Adding the paired recordings
+is the only difference between the two columns, and it takes the EER from
+22% to 4.5%. This is a pilot, not a model: genuine clean speech still moved up
+(median −6.45 → −0.38, 95th percentile +8.0), so at a People's Speech
+threshold it would flag too much clean real speech, and SpeechFake dev drifted.
+It establishes the cause; Finding 21 is the fix, trained properly.
+
+A second pass widened the gap (read after Finding 21 was registered and
+submitted): Qwen3-TTS + VoxCPM EER **2.96%** with paired real, 25.91% without;
+genuine LibriSpeech median +2.20 against +8.48; SpeechFake dev sample 3.95%
+against 3.12%. Genuine clean speech keeps drifting up in the pilot, which is
+what Stage A's A3 bar is there to catch in the real runs.
+
+## Finding 21 — train on the recordings our fakes were cloned from; read every XLS-R layer (pre-registered)
+
+Written 11 October 2026, after Finding 20's diagnostics and pilot, before any
+Finding 21 training job was submitted. **The owner reopened training on 11
+October** ("investigate the cause and fix"). Nothing below may be changed
+after Stage B is scored; the result is reported whatever it is.
+
+**Question.** Finding 20 failed because our voice-cloning fakes are prompted
+with LibriSpeech files while the genuine audio of the same speakers was in
+training only as SpeechFake's LibriTTS copy, so the model learned the
+packaging (diagnostics 1–2, 5 above). Does training on the genuine recordings
+themselves make the model catch Qwen3-TTS and VoxCPM — and, the question that
+matters for a user, other recent systems it has never heard — without costing
+In-the-Wild?
+
+**Two candidates, trained in parallel** (H100, 4 epochs, one seed each):
+
+- **A — paired real.** Finding 20's run exactly, plus `--extra-bonafide
+  librispeech`: the 28,539 genuine LibriSpeech train-clean-100 utterances
+  (CC BY 4.0, OpenSLR 12, no account) labelled bona fide. One change.
+- **B — paired real + every layer.** A, with `--arch ssl-aasist-ml`: the
+  AASIST head reads a learned softmax-weighted sum of all 25 XLS-R hidden
+  states (each layer-normalised; weights start uniform, lr 1e-3) instead of
+  the last one. Diagnostic 4 is the reason; the public precedent is SLS
+  (ACM MM 2024) and layer-wise fusion (Interspeech 2025). Same recipe otherwise.
+
+**Calibration**, fixed now: Finding 12's procedure (People's Speech, 1%), per
+candidate.
+
+**Stage A — no final test set touched.** Per candidate, at its threshold:
+- A1: `heldout-a` Qwen3-TTS + VoxCPM fakes passed, pooled over the four
+  models, **≤ 25%** (Finding 20's bar; served 73.30%).
+- A2: People's Speech check half real flagged ≤ 2%.
+- A3: `heldout-a` real (LibriSpeech test-clean) flagged ≤ 3% (served 1.64%).
+- A4: SpeechFake dev (English) fakes passed ≤ 12.94% (served 10.94% + 2).
+
+A candidate that fails any is out. Both out → **No effect**, nothing served.
+Both pass → the one with lower A1 goes to Stage B; if they are within 2
+points, **A** does (same architecture as the served model, one change).
+
+**Stage B — once, for the one candidate.** Finding 20's criteria, unchanged:
+In-the-Wild EER ≤ 2.5%, real flagged ≤ 2.5%, fakes missed ≤ 2.5%; `heldout-c`
+fakes passed ≤ 24.78% (C0 34.78%); `heldout-b` fakes passed ≤ 17.27%;
+SpeechFake test fakes passed ≤ 15.65%. Reported, not criteria: LA eval,
+`heldout-b`/`-c` real flagged, per-model rates (MOSS-TTS v1.5 above all).
+
+**Outcomes:** **Served**; **Improved, not served** (A passed, a B criterion
+failed); **No effect**; **Broken** (In-the-Wild EER ≥ 5%).
+
+**Expected** (so it can be wrong): both pass Stage A with Qwen3-TTS/VoxCPM
+passed under 15%; B lower than A; `heldout-c` falls by a third or more, MOSS
+included; In-the-Wild within 0.3 points of served; LibriSpeech real flagged
+falls, since the model has now heard it as real.
+
+**Limits, stated now.** `heldout-a` is no longer a test of anything: its
+families are trained on, and the diagnostics and pilot above read it
+repeatedly. It is a development gate. The real side of `heldout-a`, `-b` and
+`-c` is LibriSpeech test-clean, whose speakers are unseen but whose corpus is
+now training data, as VCTK is for LA eval; their real-flagged rates are
+in-domain and say so wherever quoted. The evidence for never-heard systems is
+`heldout-b` and `heldout-c`'s fakes-passed, and In-the-Wild. One seed per
+candidate; choosing between two at Stage A is a selection on `heldout-a`. If B
+is served the server needs the new architecture deployed (`ssl-aasist-ml`).
+
+### Runs
+
+Submitted 11 October, after the registration above: candidate A job
+**60915043** (`--arch ssl-aasist ... --extra-bonafide librispeech`), candidate
+B job **60915044** (`--arch ssl-aasist-ml`, same data), both H100,
+`--extra-train speechfake+synth20 --rawboost 5 --epochs 4`. Run from a copy of
+commit `4749ab6` on M3 scratch (`f21-src/`) with the Finding 21 changes to
+`ai_model/` applied as `f21.patch` (sha256 `f64b737792c0b890…`), because the
+changes were not yet committed; the logs' `commit` line therefore reads
+`4749ab6`. Checkpoints: `.../ssl-aasist[-ml]/rawboost5/plus-speechfake+synth20/plus-librispeech-bonafide/nodp/`.
+
+**Progress check, 12 October (not a gate, decides nothing).** At the owner's
+request for evidence that the runs are moving, the epoch-2 checkpoints of both
+candidates are scored on `heldout-a` before training ends. Only the ranking
+(EER on Qwen3-TTS + VoxCPM, and where genuine LibriSpeech test-clean sits) is
+read: these weights have no calibrated threshold. Stage A is still judged on
+each run's final `best.pth` exactly as registered above; no epoch is chosen
+from this look and neither run is stopped or altered by it.
+
+Result (jobs 60927705 A, 60927706 B; epoch-2 weights, `heldout-a`, EER against
+all 1,281 genuine clips): pooled 4.84% (A) / 5.23% (B). Per model, A / B:
+Qwen3-TTS 0.6B 4.96 / 5.18%, Qwen3-TTS 1.7B 4.39 / 4.96%, VoxCPM 0.5B 10.00 /
+11.18%, VoxCPM 1.5 6.62 / 7.63%; Chatterbox and SpeechT5 ≤ 0.22%. The served
+model's EER on Qwen3-TTS and VoxCPM is ~25%. So the ranking has moved, as in
+the pilot. Not yet known: whether a People's Speech 1% threshold keeps both
+the fakes above it (A1) and clean real speech below it (A3) — at the
+uncalibrated dev threshold 11.40% (A) / 15.85% (B) of genuine clips are
+flagged, which says nothing about the calibrated one.
+
+### Stage A result (12 October): both candidates failed A1 — outcome No effect
+
+Training finished 04:32 (A, 13 h 33 min) and 05:01 (B, 13 h 44 min); `best.pth`
+is epoch 3 for both (dev EER 2.61% A, 2.47% B). Calibration jobs 60915061 (A)
+and 60915064 (B); Stage A jobs 60915062/60915063 (A), 60915065/60915066 (B).
+
+| Bar | Candidate A | Candidate B | Served (F18) |
+| --- | --- | --- | --- |
+| Threshold (log-odds, People's Speech 1%) | +7.60 | +7.86 | +7.07 |
+| A1: Qwen3-TTS + VoxCPM fakes passed ≤ 25% | **39.80% — fail** | **81.40% — fail** | 73.30% |
+| A2: People's Speech check half flagged ≤ 2% | 1.31% — pass | 1.67% — pass | |
+| A3: `heldout-a` real flagged ≤ 3% | 0.00% — pass | 0.00% — pass | 1.64% |
+| A4: SpeechFake dev fakes passed ≤ 12.94% | 6.86% — pass | 7.84% — pass | 10.94% |
+
+Per model, passed at the threshold (EER in brackets), A then B: Qwen3-TTS 0.6B
+39.60% (2.41) / 87.80% (3.16); Qwen3-TTS 1.7B 30.80% (2.01) / 84.20% (2.81);
+VoxCPM 0.5B 46.20% (6.18) / 81.80% (7.80); VoxCPM 1.5 42.60% (5.39) / 71.80%
+(6.40). Chatterbox and SpeechT5 pass ≤ 2.20%. `heldout-a` pooled EER 2.89% (A),
+3.58% (B).
+
+**Outcome, by the rule above: No effect. Stage B is not run and nothing is
+served; Finding 18 stays.** The expectation written before the run (both pass
+Stage A) was wrong.
+
+What the numbers say, stated separately from the outcome. The cause found in
+Finding 20's diagnostics was real and the fix removed it: the model now ranks
+these fakes above genuine speech (EER 2–6% against ~25% for the served model),
+and the feared side effect did not appear (no genuine LibriSpeech clip flagged;
+SpeechFake dev improved). What failed is the threshold. One per cent of noisy
+real People's Speech scores above +7.60, and a third to a half of the clean
+Qwen3-TTS/VoxCPM fakes score below that although they score above all clean
+real speech — Finding 13's clean-versus-noisy scale problem. On `heldout-a`
+alone a threshold of +1.11 would separate them at 2.89% error; the served
+threshold is 6.5 log-odds higher. Reading every XLS-R layer (B) did not help
+and at the threshold was much worse than A.
+
+## Finding 22 — four labels: real or fake, as recorded or through a channel (pre-registered)
+
+Written 12 October 2026, after Finding 21's Stage A result and before any
+Finding 22 code was run or job submitted. **The owner reopened training on 12
+October** for one four-label run, after a literature search (sources below).
+Nothing below may be changed after Stage B is scored; the result is reported
+whatever it is.
+
+**Question.** Finding 21's candidate A ranks Qwen3-TTS and VoxCPM above
+genuine speech (EER 2–6%) and still passes 39.80% of them, because 1% of noisy
+real People's Speech scores above +7.60. If the model is trained to say two
+things about a clip — real or fake, and as recorded or passed through a
+channel — does noisy real speech stop scoring towards "fake", so that one
+threshold set on noisy real speech also catches clean fakes?
+
+**Why this, after Finding 16.** Finding 16 passed clips through the same
+channels with the two labels unchanged; the threshold fell 1.4 log-odds and
+clean-fake misses 2 points. The model was shown that noise does not change the
+label and was never asked to represent the channel itself. Here it is asked.
+Published precedent, none on this setup: a four-way head (bona fide / processed
+bona fide / spoofed / processed spoofed) raised bona fide accuracy from 73.4%
+to 94.7% on ASVspoof 5 with a frozen wav2vec 2.0 (arXiv 2603.14033); a
+four-class authenticity × noise formulation is the recipe recommended in arXiv
+2512.13744; and an audit of SSL-AASIST shows that score transforms applied
+after training cannot repair this (arXiv 2606.21584), which is why the change
+is in training.
+
+**The candidate — D, four labels.** Finding 21's candidate A exactly
+(SSL-AASIST, RawBoost 5, `--extra-train speechfake+synth20`,
+`--extra-bonafide librispeech`, 4 epochs, batch 14, constant lr 1e-6, one
+seed), with two changes that only make sense together:
+
+- `--condition-aug`: each training clip, real or fake, after RawBoost, is with
+  probability 0.5 passed through Finding 16's channel (`channel_aug.py`:
+  reverb p 0.3, MUSAN noise or music p 0.5 at 5–25 dB, MP3 / Opus / 8 kHz phone
+  band p 0.5; the same commercial-use files as Finding 16's amendment), the
+  three stages redrawn until at least one applies. The other half is untouched.
+- `--arch ssl-aasist-4w`: the same network with four outputs instead of two —
+  real as recorded, fake as recorded, real through a channel, fake through a
+  channel — trained with cross-entropy over the four, the real/fake class
+  weights applied as before. **The score everything downstream reads is
+  unchanged in kind:** log-odds of fake against real, each summed over the two
+  conditions. The server, `calibrate.py` and `evaluate.py` see two logits.
+
+Selection is unchanged: `best.pth` by EER on LA dev + SpeechFake dev, both left
+clean.
+
+**The control — C, same audio, two labels. Reported, never served.** D's run
+with `--arch ssl-aasist`: the identical `--condition-aug` audio with the
+ordinary two labels. It runs in parallel and is scored at Stage A only, so
+that a change in D can be attributed to the labels rather than to adding the
+channel to candidate A's recipe. It is not a candidate: whatever it scores, it
+is not taken to Stage B and decides nothing.
+
+**Calibration**, fixed now: Finding 12's procedure (People's Speech, 1%,
+n 10,000, seed 42), per run.
+
+**Stage A — no final test set touched.** Finding 21's bars, unchanged, for D
+at its threshold:
+- A1: `heldout-a` Qwen3-TTS + VoxCPM fakes passed, pooled over the four
+  models, **≤ 25%** (candidate A 39.80%, served 73.30%).
+- A2: People's Speech check half real flagged ≤ 2%.
+- A3: `heldout-a` real (LibriSpeech test-clean) flagged ≤ 3%.
+- A4: SpeechFake dev (English) fakes passed ≤ 12.94%.
+
+D fails any → **No effect**, nothing served, Stage B not run.
+
+**Stage B — once, for D.** Finding 20's criteria, unchanged: In-the-Wild EER
+≤ 2.5%, real flagged ≤ 2.5%, fakes missed ≤ 2.5%; `heldout-c` fakes passed
+≤ 24.78% (C0 34.78%); `heldout-b` fakes passed ≤ 17.27%; SpeechFake test
+fakes passed ≤ 15.65%. Reported, not criteria: LA eval, `heldout-b`/`-c` real
+flagged, per-model rates.
+
+**Outcomes:** **Served**; **Improved, not served** (Stage A passed, a Stage B
+criterion failed); **No effect**; **Broken** (In-the-Wild EER ≥ 5%, or A2
+> 2%).
+
+**Reported, not criteria:** each run's threshold; the dev EER by epoch; and
+for D, how often it calls a clip "through a channel" on People's Speech and on
+`heldout-a`'s real clips — whether the second label learned anything about
+recordings it was not made from.
+
+**Expected** (so it can be wrong): D's threshold falls to between +4.5 and
++6.5 (A: +7.60); A1 lands between 20% and 35%, so passing is about even odds;
+A2–A4 pass; C sits between A and D on A1. If D passes, In-the-Wild EER stays
+within 0.5 points of the served 2.02%.
+
+**Limits, stated now.** The precedent is from other models, data and kinds of
+processing; nothing published tests this on a fine-tuned XLS-R against a
+threshold set on noisy real speech. "As recorded" means "not passed through
+our channel": those clips still carry RawBoost, and whatever their own
+recording did. `heldout-a` has now been read by Findings 18, 20 and 21 and is
+a development gate, not a test. One seed. If D is served the server needs the
+new architecture deployed (`ssl-aasist-4w`). Two changes come together in D;
+C separates the labels from the audio but not from each other's interaction.
+
+### Runs
+
+Smoke test on the M3 login node before submission (`diag/smoke_f22.py`, no
+test set read): 300 training clips drawn from LA, LibriSpeech and the synth
+families through RawBoost and the half-applied channel came out as all four
+labels (51 / 90 / 54 / 105), and the four-output network took one optimiser
+step and returned two logits in eval mode.
+
+Submitted 12 October, after the registration above. D: training job
+**60941447** (`--arch ssl-aasist-4w`), calibration 60941448, Stage A 60941449
+(`heldout-a`) and 60941450 (SpeechFake dev). C: training **60941451**
+(`--arch ssl-aasist`), calibration 60941452, Stage A 60941453 and 60941454.
+Both H100, `--no-dp --rawboost 5 --extra-train speechfake+synth20
+--extra-bonafide librispeech --condition-aug --epochs 4`, 16 CPUs and 64 GB as
+in Finding 16's amendment (the channel costs CPU, not model). Run from a copy
+of commit `4749ab6` on M3 scratch (`f22-src/`) with the Finding 21 and 22
+changes to `ai_model/` applied as `f22.patch` (sha256 `65df04c5e03fb849…`),
+because they are not yet committed; the logs' `commit` line reads `4749ab6`.
+Checkpoints: `.../ssl-aasist[-4w]/rawboost5/plus-speechfake+synth20/plus-librispeech-bonafide/condition/nodp/`.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

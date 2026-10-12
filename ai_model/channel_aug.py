@@ -186,38 +186,64 @@ class ChannelAug:
     (1, <= MAX_LEN) tensor at SAMPLE_RATE out. `before` (e.g. RawBoost) runs
     first, on the clip at its own sample rate, as it always has."""
 
-    def __init__(self, root, before=None, max_len=MAX_LEN):
+    def __init__(self, root, before=None, max_len=MAX_LEN, p_apply=None):
+        """`p_apply=None` is Finding 16: every clip draws the three stages
+        independently. A number is Finding 22 (--condition-aug): a clip goes
+        through the channel with that probability, the stages redrawn until at
+        least one applies, and is otherwise left alone — so "through a channel"
+        is a fact about the clip that apply() can report and a label can hold."""
         self.root = str(root)
         self.before = before
         self.max_len = max_len
+        self.p_apply = p_apply
         self.noises, self.rirs = index(root)
 
     def __call__(self, waveform, sample_rate):
+        return self.apply(waveform, sample_rate)[0]
+
+    def _stages(self):
+        """Which of (reverb, noise, codec) this clip gets."""
+        rng = np.random
+        draw = lambda: (rng.rand() < P_REVERB, rng.rand() < P_NOISE, rng.rand() < P_CODEC)
+        if self.p_apply is None:
+            return draw()
+        if rng.rand() >= self.p_apply:
+            return False, False, False
+        stages = draw()
+        while not any(stages):
+            stages = draw()
+        return stages
+
+    def apply(self, waveform, sample_rate):
+        """-> (clip, whether any stage ran)."""
         if self.before is not None:
             waveform = self.before(waveform, sample_rate)
         x = standard_waveform(waveform, sample_rate, self.max_len)[0].numpy().astype(np.float64)
         n = len(x)
         if n == 0:
-            return torch.from_numpy(x.astype(np.float32)).unsqueeze(0)
+            return torch.from_numpy(x.astype(np.float32)).unsqueeze(0), False
         rng = np.random
-        if rng.rand() < P_REVERB:
+        do_reverb, do_noise, do_codec = self._stages()
+        if do_reverb:
             x = reverb(x, _mono16k(self.rirs[rng.randint(len(self.rirs))]))
-        if rng.rand() < P_NOISE:
+        if do_noise:
             path, frames = self.noises[rng.randint(len(self.noises))]
             start = rng.randint(max(1, frames - n))
             noise = _mono16k(path, start, min(n, frames))
             noise = np.resize(noise, n)          # loop a short file
             x = add_noise(x, noise, rng.uniform(*SNR_DB))
-        if rng.rand() < P_CODEC:
+        if do_codec:
             kind = CODECS[rng.randint(len(CODECS))]
             x = codec(x, kind, rng.uniform(*CODEC_LEVEL[kind]) if kind in CODEC_LEVEL else None)
         peak = np.abs(x).max()
         if peak > 1:
             x = x / peak
-        return torch.from_numpy(x.astype(np.float32)).unsqueeze(0)
+        return (torch.from_numpy(x.astype(np.float32)).unsqueeze(0),
+                do_reverb or do_noise or do_codec)
 
     def __repr__(self):
-        return (f"ChannelAug(reverb p={P_REVERB}, noise p={P_NOISE} at {SNR_DB} dB, "
+        applied = "" if self.p_apply is None else f"applied to p={self.p_apply} of clips; "
+        return (f"ChannelAug({applied}reverb p={P_REVERB}, noise p={P_NOISE} at {SNR_DB} dB, "
                 f"codec p={P_CODEC} {CODECS}; {len(self.noises)} noise files, "
                 f"{len(self.rirs)} RIRs; before={self.before})")
 

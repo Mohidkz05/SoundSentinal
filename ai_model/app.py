@@ -149,11 +149,15 @@ def load_model():
         "aasist": "SincConv, 6 residual blocks, spectro-temporal graph attention",
         "aasist-l": "SincConv, 6 residual blocks, spectro-temporal graph attention (light)",
         "ssl-aasist": "XLS-R 300M (wav2vec 2.0), spectro-temporal graph attention",
+        "ssl-aasist-ml": "XLS-R 300M (wav2vec 2.0), all layers weighted, "
+                         "spectro-temporal graph attention",
+        "ssl-aasist-4w": "XLS-R 300M (wav2vec 2.0), spectro-temporal graph attention, "
+                         "four outputs (real/fake × as recorded/through a channel)",
     }
 
     # SSL-AASIST reads the raw waveform too, but through XLS-R's convolutional
     # feature encoder, not AASIST's sinc filterbank.
-    if arch == "ssl-aasist":
+    if arch in ("ssl-aasist", "ssl-aasist-ml", "ssl-aasist-4w"):
         representations["raw"] = "Raw waveform, XLS-R convolutional features"
 
     # --extra-train corpora join ASVspoof2019 in training; a card naming only

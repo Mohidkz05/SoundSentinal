@@ -38,6 +38,7 @@ from channel_aug import ChannelAug
 import asvspoof5
 import commonvoice
 import voxpopuli
+import librispeech
 import speechfake
 import synth
 
@@ -71,7 +72,22 @@ TRAIN_DEFAULTS = {
     # constant rate also means --epochs can be extended by a resumed run without
     # changing the schedule the earlier epochs had.
     "ssl-aasist": {"epochs": 100, "batch_size": 14, "lr": 1e-6, "weight_decay": 1e-4, "lr_min": None},
+    # The same recipe; its 25 layer weights alone get LAYER_WEIGHT_LR (below).
+    "ssl-aasist-ml": {"epochs": 100, "batch_size": 14, "lr": 1e-6, "weight_decay": 1e-4, "lr_min": None},
+    # The same recipe again; only the output layer and the labels differ.
+    "ssl-aasist-4w": {"epochs": 100, "batch_size": 14, "lr": 1e-6, "weight_decay": 1e-4, "lr_min": None},
 }
+# Architectures trained on four labels (authenticity x condition, see
+# ssl_aasist.SSLAASISTFourWay). They need --condition-aug, which is what makes
+# the second label true of a clip.
+FOUR_WAY_ARCHITECTURES = ("ssl-aasist-4w",)
+# --condition-aug: the share of training clips passed through the channel.
+CONDITION_P = 0.5
+# ssl-aasist-ml's layer weights are 25 scalars starting from zero (a uniform
+# average). At the network's 1e-6 Adam moves each by at most ~1e-6 a step, so
+# over a 228k-step run they could not leave uniform; they get their own rate
+# and no weight decay, which would pull them back to uniform.
+LAYER_WEIGHT_LR = 1e-3
 
 # --- NEW: Reproducibility ---
 SEED = 42
@@ -149,18 +165,23 @@ CKPT_DIR = Path(os.getenv("CKPT_ROOT", SCRIPT_DIR / "checkpoints"))
 # split. The value is stored in the checkpoint as-is, and calibrate.py splits
 # it on "+" to know which sources it must not calibrate on.
 BONAFIDE_SOURCES = {"commonvoice": commonvoice.load_protocol,
-                    "voxpopuli": voxpopuli.load_protocol}
+                    "voxpopuli": voxpopuli.load_protocol,
+                    "librispeech": librispeech.load_protocol}
 # --extra-train values -> the corpora they add. "speechfake+synth" keeps
 # SpeechFake's dev in selection, exactly as "speechfake" alone does.
 EXTRA_TRAIN_MIXES = {"asvspoof5": ("asvspoof5",), "speechfake": ("speechfake",),
                      "speechfake+synth": ("speechfake", "synth"),
                      "speechfake+synth20": ("speechfake", "synth20")}
 BONAFIDE_MIXES = {"commonvoice": ("commonvoice",),
-                  "commonvoice+voxpopuli": ("commonvoice", "voxpopuli")}
+                  "commonvoice+voxpopuli": ("commonvoice", "voxpopuli"),
+                  # Finding 21: the genuine recordings our cloning fakes were
+                  # prompted with (librispeech.py), not real-world speech.
+                  "librispeech": ("librispeech",)}
 
 def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH,
                    rawboost: int | None = None, extra_train: str | None = None,
-                   extra_bonafide: str | None = None, channel_aug: bool = False):
+                   extra_bonafide: str | None = None, channel_aug: bool = False,
+                   condition_aug: bool = False):
     """Each (architecture, front-end, privacy regime) triple gets its own directory.
 
     Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
@@ -179,7 +200,8 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
     Extra training data gets one more level, for the same reason again: a run
     on LA + ASVspoof 5 is a different model from the LA-only one, and the two
     must never share a last.pth. Extra bona fide speech (--extra-bonafide)
-    nests one level below that, and --channel-aug one below that.
+    nests one level below that, and --channel-aug or --condition-aug one
+    below that.
     """
     ckpt_dir = CKPT_DIR if arch == DEFAULT_ARCH else CKPT_DIR / arch
     if frontend != default_frontend_for(arch):
@@ -192,6 +214,8 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
         ckpt_dir = ckpt_dir / f"plus-{extra_bonafide}-bonafide"
     if channel_aug:
         ckpt_dir = ckpt_dir / "channel"
+    if condition_aug:
+        ckpt_dir = ckpt_dir / "condition"
     if not use_dp:
         ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -204,7 +228,8 @@ def unwrap(model):
 def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=None,
               is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND,
               arch=DEFAULT_ARCH, batch_size=None, scheduler=None, rawboost=None,
-              extra_train=None, extra_bonafide=None, channel_aug=False):
+              extra_train=None, extra_bonafide=None, channel_aug=False,
+              condition_aug=False):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -241,6 +266,8 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         # Training-time channel augmentation (channel_aug.py, Finding 16).
         # Provenance only, like rawboost.
         "channel_aug": channel_aug,
+        # The channel applied to half the clips (Finding 22). Provenance only.
+        "condition_aug": condition_aug,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
         # Restored on resume so a cosine schedule survives a job hitting its
@@ -287,7 +314,7 @@ class AVSpoofDataset(Dataset):
 
     def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE,
                  max_len=MAX_LEN, protocol=None, suffix=".flac", augment=None,
-                 degradation="none", with_cleanliness=False):
+                 degradation="none", with_cleanliness=False, condition_labels=False):
         if protocol is not None:
             self.protocol = protocol.reset_index(drop=True)
         else:
@@ -310,6 +337,10 @@ class AVSpoofDataset(Dataset):
         # Also return model.cleanliness_db of the raw clip, for scoring with a
         # clean-audio threshold (Finding 15). Scoring only.
         self.with_cleanliness = with_cleanliness
+        # Training only (Finding 22): return authenticity + 2 * "the augment
+        # passed this clip through a channel", the four classes of
+        # ssl_aasist.SSLAASISTFourWay. Needs an augment with .apply().
+        self.condition_labels = condition_labels
 
     def __len__(self):
         return len(self.protocol)
@@ -320,7 +351,10 @@ class AVSpoofDataset(Dataset):
         label = self.label_map[label_str]
 
         waveform, sample_rate = load_audio(str(self.audio_dir / f"{audio_name}{self.suffix}"))
-        if self.augment is not None:
+        if self.condition_labels:
+            waveform, through_channel = self.augment.apply(waveform, sample_rate)
+            label += 2 * int(through_channel)
+        elif self.augment is not None:
             waveform = self.augment(waveform, sample_rate)
 
         # Same preprocessing the Flask server applies at inference time.
@@ -479,6 +513,15 @@ def main():
                              "RESULTS.md Finding 16: so that noise says nothing about "
                              "the label. Runs after --rawboost. Checkpoints go to "
                              "<dir>/channel/.")
+    parser.add_argument("--condition-aug", action="store_true",
+                        help=f"Pass each training clip, real or fake, through "
+                             f"--channel-aug's channel with probability {CONDITION_P}, at "
+                             "least one of its stages applied, and leave the rest "
+                             "alone (RESULTS.md Finding 22). With --arch ssl-aasist-4w "
+                             "the model is also trained to say which half a clip is "
+                             "in; with any other architecture the labels stay two, "
+                             "which is that finding's control. Runs after --rawboost; "
+                             "not with --channel-aug. Checkpoints go to <dir>/condition/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
     parser.add_argument("--batch-size", type=int, default=None,
@@ -503,6 +546,13 @@ def main():
         raise SystemExit(
             f"ERROR: {args.arch!r} does not train under DP (see DP_ARCHITECTURES in "
             f"model.py). Pass --no-dp.")
+
+    four_way = args.arch in FOUR_WAY_ARCHITECTURES
+    if four_way and not args.condition_aug:
+        raise SystemExit(f"ERROR: {args.arch!r} is trained on four labels and needs "
+                         f"--condition-aug to make the second one.")
+    if args.condition_aug and args.channel_aug:
+        raise SystemExit("ERROR: --condition-aug and --channel-aug are alternatives.")
 
     recipe = dict(TRAIN_DEFAULTS[args.arch])
     if args.epochs is not None:
@@ -536,14 +586,19 @@ def main():
           f"cosine floor {recipe['lr_min'] or 'none (constant lr)'}")
 
     augment = RawBoost(args.rawboost) if args.rawboost else None
-    if args.channel_aug:
+    if args.channel_aug or args.condition_aug:
         root = os.getenv("CHANNEL_AUG_ROOT")
         if not root:
-            raise SystemExit("ERROR: --channel-aug needs $CHANNEL_AUG_ROOT (hpc/env.sh sets it).")
-        augment = ChannelAug(root, before=augment)
+            raise SystemExit("ERROR: --channel-aug and --condition-aug need "
+                             "$CHANNEL_AUG_ROOT (hpc/env.sh sets it).")
+        augment = ChannelAug(root, before=augment,
+                             p_apply=CONDITION_P if args.condition_aug else None)
     print(f"Augmentation: {augment or 'none'}")
+    if four_way:
+        print("Labels: four (real/fake x as recorded/through the channel)")
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
-                                   transform_pipeline, augment=augment)
+                                   transform_pipeline, augment=augment,
+                                   condition_labels=four_way)
     extra_parts = []
     for source in EXTRA_TRAIN_MIXES.get(args.extra_train, ()):
         # (loader, audio-file suffix): ASVspoof 5 names files without an
@@ -563,7 +618,7 @@ def main():
               f"{len(extra_protocol)} clips from {extra_dir}")
         extra_parts.append(AVSpoofDataset(None, extra_dir, transform_pipeline,
                                           protocol=extra_protocol, suffix=suffix,
-                                          augment=augment))
+                                          augment=augment, condition_labels=four_way))
     for source in BONAFIDE_MIXES.get(args.extra_bonafide, ()):
         bf_protocol, bf_dir = BONAFIDE_SOURCES[source]("train")
         print(f"Extra bona fide: {source} train, "
@@ -571,7 +626,8 @@ def main():
         # Augmented like everything else: RawBoost stays a property of the run,
         # not of which corpus a clip came from.
         extra_parts.append(AVSpoofDataset(None, bf_dir, transform_pipeline,
-                                          protocol=bf_protocol, suffix="", augment=augment))
+                                          protocol=bf_protocol, suffix="", augment=augment,
+                                          condition_labels=four_way))
     if extra_parts:
         parts = [train_dataset, *extra_parts]
         train_dataset = ConcatDataset(parts)
@@ -602,8 +658,16 @@ def main():
     model = build_model(args.arch, pretrained=True).to(DEVICE)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Parameters: {n_params:,}")
-    optimizer = optim.Adam(model.parameters(), lr=recipe["lr"],
-                           weight_decay=recipe["weight_decay"])
+    layer_weights = [p for n, p in model.named_parameters() if n == "layer_weights"]
+    if layer_weights:
+        rest = [p for n, p in model.named_parameters() if n != "layer_weights"]
+        optimizer = optim.Adam([
+            {"params": rest, "lr": recipe["lr"], "weight_decay": recipe["weight_decay"]},
+            {"params": layer_weights, "lr": LAYER_WEIGHT_LR, "weight_decay": 0.0}])
+        print(f"Layer weights: lr {LAYER_WEIGHT_LR}, no weight decay")
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=recipe["lr"],
+                               weight_decay=recipe["weight_decay"])
     # Cosine annealing is part of AASIST's published recipe and the CNN rows
     # never had it, so it is per-architecture rather than global. Its state is
     # checkpointed: at 100 epochs a job WILL hit its Slurm time limit, and a
@@ -615,6 +679,12 @@ def main():
     )
     class_weights = compute_class_weights(train_dataset, DEVICE) if args.use_class_weights else None
     criterion = nn.CrossEntropyLoss(weight=class_weights)
+    # Four labels: the same real/fake weights for both conditions, which are
+    # balanced by construction. `criterion` stays two-class for the dev set,
+    # which is scored on the model's real/fake output like every other run.
+    train_criterion = (nn.CrossEntropyLoss(
+        weight=None if class_weights is None else class_weights.repeat(2))
+        if four_way else criterion)
 
     privacy_engine = None
     if args.use_dp:
@@ -625,7 +695,7 @@ def main():
         )
 
     paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost, args.extra_train,
-                           args.extra_bonafide, args.channel_aug)
+                           args.extra_bonafide, args.channel_aug, args.condition_aug)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
@@ -673,6 +743,12 @@ def main():
                 f"{bool(ckpt.get('channel_aug'))}, but this run has channel_aug="
                 f"{args.channel_aug}. Check $CKPT_ROOT, currently {CKPT_DIR}."
             )
+        if bool(ckpt.get("condition_aug")) != args.condition_aug:
+            raise SystemExit(
+                f"ERROR: {LAST_CKPT} was trained with condition_aug="
+                f"{bool(ckpt.get('condition_aug'))}, but this run has condition_aug="
+                f"{args.condition_aug}. Check $CKPT_ROOT, currently {CKPT_DIR}."
+            )
         unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         start_epoch = ckpt.get("epoch", 0) + 1
@@ -707,8 +783,15 @@ def main():
         for batch_idx, (inputs, labels) in enumerate(progress_bar, start=1):
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            if four_way:
+                # The loss is over the four classes; accuracy below is on real
+                # against fake, so the log line means what it always has.
+                joint = model.forward_joint(inputs)
+                loss = train_criterion(joint, labels)
+                outputs, labels = model.marginal(joint), labels % 2
+            else:
+                outputs = model(inputs)
+                loss = train_criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             steps_done += 1
@@ -764,6 +847,7 @@ def main():
             "extra_train": args.extra_train,
             "extra_bonafide": args.extra_bonafide,
             "channel_aug": args.channel_aug,
+            "condition_aug": args.condition_aug,
             "lr": optimizer.param_groups[0]["lr"],
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
@@ -771,7 +855,8 @@ def main():
                   metrics=metrics, best_eer=best_eer, frontend=frontend,
                   arch=args.arch, batch_size=batch_size, scheduler=scheduler,
                   rawboost=args.rawboost, extra_train=args.extra_train,
-                  extra_bonafide=args.extra_bonafide, channel_aug=args.channel_aug)
+                  extra_bonafide=args.extra_bonafide, channel_aug=args.channel_aug,
+                  condition_aug=args.condition_aug)
         if scheduler is not None:
             scheduler.step()
 

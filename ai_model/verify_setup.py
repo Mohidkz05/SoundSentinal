@@ -33,7 +33,11 @@ SAMPLE = SCRIPT_DIR / "LA_T_1000137.flac"
 EXPECTED_PARAMS = {"cnn": 267_330, "aasist": 297_354, "aasist-l": 85_034,
                    # XLS-R 300M as transformers counts it (315,437,696) plus the
                    # 446,730-parameter AASIST head of ssl_aasist.py.
-                   "ssl-aasist": 315_884_426}
+                   "ssl-aasist": 315_884_426,
+                   # ...plus one weight per XLS-R hidden state (25).
+                   "ssl-aasist-ml": 315_884_451,
+                   # ...or two more outputs on the 160-wide readout (322).
+                   "ssl-aasist-4w": 315_884_748}
 
 failures = []
 

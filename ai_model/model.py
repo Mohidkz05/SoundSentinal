@@ -15,7 +15,7 @@ import torch.nn.functional as F
 import torchaudio.transforms as T
 
 from aasist import AASIST, AASISTLight
-from ssl_aasist import SSLAASIST
+from ssl_aasist import SSLAASIST, SSLAASISTFourWay, SSLAASISTMultiLayer
 
 # --- Audio constants (shared by training and inference) ---
 SAMPLE_RATE = 16000
@@ -58,7 +58,12 @@ DEFAULT_FRONTEND = "logmel"
 # parameters) instead of the sinc filterbank — the answer to RESULTS.md
 # Finding 7, where neither augmentation nor more lab data moved In-the-Wild.
 # See ssl_aasist.py. It needs `transformers`, imported only when it is built.
-ARCHITECTURES = ("cnn", "aasist", "aasist-l", "ssl-aasist")
+# "ssl-aasist-ml" is ssl-aasist reading a learned weighted sum of all 25 XLS-R
+# layers instead of the last one (RESULTS.md Finding 21).
+# "ssl-aasist-4w" is ssl-aasist with four outputs, real or fake by as recorded
+# or through a channel, which it sums back to the usual two (Finding 22).
+ARCHITECTURES = ("cnn", "aasist", "aasist-l", "ssl-aasist", "ssl-aasist-ml",
+                 "ssl-aasist-4w")
 DEFAULT_ARCH = "cnn"
 
 ARCH_FRONTENDS = {
@@ -66,6 +71,8 @@ ARCH_FRONTENDS = {
     "aasist": ("raw",),
     "aasist-l": ("raw",),
     "ssl-aasist": ("raw",),
+    "ssl-aasist-ml": ("raw",),
+    "ssl-aasist-4w": ("raw",),
 }
 
 # Architectures DP-SGD can train. SSL-AASIST is excluded on purpose: per-sample
@@ -363,6 +370,10 @@ def build_model(arch=DEFAULT_ARCH, pretrained=False):
         return AASISTLight()
     if arch == "ssl-aasist":
         return SSLAASIST(pretrained=pretrained)
+    if arch == "ssl-aasist-ml":
+        return SSLAASISTMultiLayer(pretrained=pretrained)
+    if arch == "ssl-aasist-4w":
+        return SSLAASISTFourWay(pretrained=pretrained)
     return AudioClassifierCNN()
 
 

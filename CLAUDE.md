@@ -8,15 +8,92 @@ on the CNN as a research result and every architecture stays DP-compatible
 
 University project. Work is on `main` — see "Branching" below.
 
-## Where things stand (updated 3 October 2026)
+## Where things stand (updated 12 October 2026)
 
 Read this first. `RESULTS.md` has every number with its job ID; its
 "Summary → The served system" section is the one-screen version.
 
 **State of play: training is closed (owner's decision, 4 October 2026).**
-Finding 18 (training on our own generated fakes) was the last training run (Finding 19 stopped at Stage 0, No room); its model
+Reopened on 8 October for Finding 20, which failed Stage A on 11 October (No effect, nothing served); the owner then asked for the cause and a fix, which was **Finding 21: also No effect at Stage A (12 October)**, though it fixed the ranking (see the table below).
+**Reopened again 12 October for Finding 22 (four labels): pre-registered, submitted, results not in yet — see "In flight" just below.**
+Finding 18 (training on our own generated fakes) is the last run that changed the served model (Finding 19 stopped at Stage 0, No room); its model
 is now served by owner override. The next step is the project write-up;
 the open problems below go in it as limitations and future work.
+
+### In flight: Finding 22 (submitted 12 October, 13:10 AEDT) — pick up here
+
+**What it is.** Finding 21 fixed the ranking but not the threshold, and the
+owner ruled out threshold/after-the-fact fixes ("cheap fixes are a waste of
+time") and asked for literature-backed retraining. The search (arXiv
+2606.21584, 2603.14033, 2512.13744, 2608.17585; nothing useful on Reddit)
+says score corrections after training cannot repair this and that training
+with four labels can. So: candidate A's recipe, each clip passed through
+Finding 16's noise/reverb/codec channel with probability 0.5, and the model
+trained to say real/fake **and** as-recorded/through-a-channel. Full
+pre-registration, bars and expectation: RESULTS.md "Finding 22".
+
+**Jobs** (`ssh m3 'squeue -u $USER'`; `sacct -X -j <id>`), all run from
+`$HOME/df37_scratch/$USER/f22-src/`, where their `.out` logs land:
+
+| Run | Train (H100, ~13.5 h) | Calibrate | Stage A `heldout-a` | Stage A SpeechFake dev |
+| --- | --- | --- | --- | --- |
+| **D**, four labels, `--arch ssl-aasist-4w` — the candidate | 60941447 | 60941448 | 60941449 | 60941450 |
+| **C**, same audio, two labels, `--arch ssl-aasist` — control, **never served** | 60941451 | 60941452 | 60941453 | 60941454 |
+
+Calibration and Stage A are chained with `afterok`, so they run by themselves.
+When submitted both training jobs were pending with an estimated start of
+22:00 on 12 October, so Stage A numbers arrive around midday 13 October at
+the earliest. Checkpoints:
+`.../checkpoints/ssl-aasist[-4w]/rawboost5/plus-speechfake+synth20/plus-librispeech-bonafide/condition/nodp/`.
+
+**Reading Stage A (D only decides anything).** All four must hold:
+
+- A1: Qwen3-TTS + VoxCPM fakes passed, pooled over the four models, ≤ 25% —
+  from `stageA-f22d-60941449.out` (per-attack "passed" rates; A scored 39.80%,
+  served 73.30%).
+- A2: People's Speech check half flagged ≤ 2% — the "check half" line of
+  `calib-f22d-60941448.out`.
+- A3: `heldout-a` real flagged ≤ 3% — same file as A1.
+- A4: SpeechFake dev fakes passed ≤ 12.94% — `stageA-sfdev-f22d-60941450.out`.
+
+Write the result into RESULTS.md under Finding 22 (`### Stage A result`), with
+C's numbers beside D's, the thresholds, and dev EER by epoch. Also owed there,
+as "reported, not criteria": how often D calls People's Speech and
+`heldout-a` real clips "through a channel" (`SSLAASISTFourWay.condition()`;
+needs a small script, none written yet).
+
+- **D fails any bar → No effect.** Stage B is not run, In-the-Wild is not
+  read, Finding 18 stays served. Only the owner can override, and the override
+  is written into RESULTS.md first.
+- **D passes all four → Stage B, once**, on D's
+  `best_calibrated_peoples_speech_1pct.pth`, from `f22-src/` with
+  `--gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints
+  hpc/evaluate.slurm --ckpt <that file>` plus, per job: `--dataset itw`;
+  `--dataset synth --synth-split heldout-b`; `--dataset synth --synth-split
+  heldout-c`; `--dataset speechfake` (add `--time=01:00:00`); and LA eval
+  (default dataset; reported only). Criteria: In-the-Wild EER, real flagged and
+  fakes missed each ≤ 2.5%; `heldout-c` fakes passed ≤ 24.78%; `heldout-b`
+  ≤ 17.27%; SpeechFake test ≤ 15.65%. All met → **Served**: swap the checkpoint
+  and the four `best.measured-*.json` locally, upload the weights to the Azure
+  blob, redeploy the image (the server must contain `ssl-aasist-4w`, so the
+  code has to be committed and pushed first), refresh `src/lib/measured.js`,
+  and update this file and RESULTS.md's summary.
+
+**Code state.** The Finding 21 and 22 changes to `ai_model/` are **uncommitted
+locally** and exist on M3 only as `f22-src/f22.patch` over commit `4749ab6`
+(sha256 `65df04c5…`; the files there are byte-identical to the local ones).
+The owner has not asked for a commit. The frontend redesign (10 October) is
+also uncommitted in the same working tree — commit the two separately.
+What Finding 22 added: `SSLAASISTFourWay` in `ssl_aasist.py` (four outputs;
+`forward()` still returns the usual two logits by summing over condition, so
+`evaluate.py`, `calibrate.py` and `app.py` need nothing new; only the trainer
+calls `forward_joint()`); `--condition-aug` and the four-label path in
+`train_dp_avspoof.py`; `p_apply` and `apply()` in `channel_aug.py`.
+`verify_setup.py` passes locally. Smoke script: `diag/smoke_f22.py` on M3
+scratch.
+
+**Deadline.** The paper is due around 15 October. There is no time for another
+13-hour run after this one; whatever Finding 22 shows goes in the write-up.
 
 ### The served system (changed 3 October — Finding 18, by override)
 
@@ -66,6 +143,9 @@ the open problems below go in it as limitations and future work.
 | 18 | Train on 8 more open TTS families we generated | Improved everything; ITW real flagged 2.18% missed the 2% bar by 0.18. **Served by owner override** |
 | 15 | Second threshold for "clean" recordings (loudness-range cutoff) | Clean-fake misses fell (SF 32.7%→23.5%, LA 46%→29%) but 61% of ITW real routed "clean", real flagged 0.62%→4.00%; not served. Stage A's bar was missed and overridden by the owner — disclosed in RESULTS.md |
 | 19 | Real speech through open neural codecs (SNAC, WavTokenizer) as training fakes | **No room** at Stage 0: served model already flags 100% / 98.3% of codec-resynthesised real speech. Not trained. Qwen3-TTS/VoxCPM evade it by something other than a generic codec fingerprint |
+| 20 | Train on the families that still pass (Chatterbox, SpeechT5, Qwen3-TTS, VoxCPM train split; training reopened by the owner 8 Oct for one run) | **No effect** at Stage A (11 Oct): Qwen3-TTS + VoxCPM on unseen speakers still pass 74.95% (control 73.30%, bar ≤ 25%). Stage B not run; nothing served. New never-heard set `heldout-c` (bark, MOSS-TTS v1.5, MiMo-Audio): served model passes 34.78%, almost all MOSS-TTS (94.9%) |
+| 21 | F20's cause found: our cloning fakes are prompted with LibriSpeech files but the same speakers' real audio was in training only as LibriTTS, so the model learned the packaging. Fix: add genuine LibriSpeech train-clean-100 as real (`--extra-bonafide librispeech`), candidate A; plus all-layer XLS-R (`--arch ssl-aasist-ml`), candidate B | **No effect** at Stage A (12 Oct): Qwen3-TTS + VoxCPM still pass 39.80% (A) / 81.40% (B) at the People's Speech threshold, bar ≤ 25% (served 73.30%). The other three bars passed. Ranking is fixed (EER 2–6%, was ~25%; no clean real flagged) — what fails is the threshold (+7.60, set by noisy real speech; Finding 13). Stage B not run; nothing served. Code is in `f21-src/` on M3 scratch and uncommitted locally |
+| 22 | Four labels: real/fake × as recorded/through a channel (`--arch ssl-aasist-4w --condition-aug`), on F21's candidate A recipe; control with the same audio and two labels | **Running** — submitted 12 Oct, see "In flight" above |
 
 **If continuing:** the remaining lever is retraining (≈12–13 h per run on an
 H100) so that clean fakes and noisy real speech share one scale; or a better
@@ -160,6 +240,14 @@ decodes MP3; tested). MP4 / M4A / MOV / WebM are decoded **in the browser**
 (`src/lib/extract.js`), mixed to mono, resampled to 16 kHz, cut to 120 s and
 sent as WAV — the server never sees video and needs no FFmpeg. Video limit
 200 MB client-side; the extracted WAV is always under the 5 MB upload limit.
+**Recording (10 October):** `/upload` can also record from the microphone
+(`src/lib/recorder.js`). MediaRecorder's WebM/MP4 goes through the same
+`extractAudio()` path as video, so the server sees an ordinary WAV. Voice
+processing (echo cancellation, noise suppression, AGC) is switched off.
+**Home error-rate table (10 October):** renders from `src/lib/measured.js`,
+a copy of `/api/model`'s `measured` rows, and the live fetch replaces it when
+it answers — waiting on a scaled-to-zero server left the panel empty. **Refresh
+that file whenever a new checkpoint is served.**
 
 ### M3 facts that bite
 
@@ -198,6 +286,11 @@ ai_model/
                          BatchNorm swapped for GroupNorm. Its header lists nine
                          deviations from upstream; read them before editing.
   ssl_aasist.py          SSL-AASIST: XLS-R 300M front-end + AASIST back-end.
+                         Also `ssl-aasist-ml` (all XLS-R layers, F21) and
+                         `ssl-aasist-4w` (four outputs summed back to two, F22).
+  channel_aug.py         Random noise / reverb / codec channel, TRAINING ONLY.
+                         `--channel-aug` (F16, every clip) or `--condition-aug`
+                         (F22, half the clips, and a label saying which half).
   asvspoof5.py           Adapter: ASVspoof 5 train as extra training data.
   speechfake.py          Adapter: SpeechFake (bilingual) as extra training
                          data; its dev split joins LA dev for selection.
@@ -279,12 +372,16 @@ Two things that follow from the thesis and are easy to undo by accident:
   prose keeps its own `ch` measure, and what earns the width is the scale and
   the waveform, where width is resolution. See "Layout" in `DESIGN.md`.
 
-Brand is Sentinel Teal (hue 190.3°, viridis at 0.50). The verdict scale is a
-diverging violet↔orange (the ends of `plasma`, same axis as ColorBrewer PuOr).
-Those are separate on purpose — teal↔ember was measured at ΔE 0.048 under
-protanopia, i.e. indistinguishable, so the brand colour *cannot* double as the
-verdict colour. Type is Archivo (two widths off the variable width axis) with
-IBM Plex Mono for every number.
+Brand is **Sentinel Indigo** (OKLCH hue 280°, `#4b2bd7`; redesigned 10
+October 2026, "Bright instrument" — it was teal). The verdict scale is a
+diverging azure↔orange. They are separate on purpose and measured: every
+pairing clears the colourblind ΔE bars in DESIGN.md's Colour section, and a
+brand-aligned verdict (teal↔ember, ΔE 0.048 under protanopia) is known to
+fail. Full-bleed `surface-brand` bands redefine the tokens inside them, so
+components need no on-colour variants. Type is **Bricolage Grotesque** (its optical-size axis
+gives headings a display cut and body a text cut from one file) with
+**Martian Mono** for every number and the wordmark (since 10 October 2026;
+it was Archivo + IBM Plex Mono). Self-hosted in `src/app/fonts/`, OFL.
 
 Note `motion` (Framer Motion), `three` and `@react-three/fiber` are now
 dependencies, and `npm install` has been run — `node_modules/` exists.

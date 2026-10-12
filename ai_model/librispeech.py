@@ -20,6 +20,18 @@
 # contain the same recordings — heard without labels, but heard. Disclosed in
 # Finding 15.
 #
+# TRAIN-CLEAN-100 AS TRAINING REAL (Finding 21). test-clean stays held out;
+# train-clean-100 is a different matter. Every voice-cloning fake in synth/ is
+# prompted with a train-clean-100 FILE from this corpus, and a cloning model
+# copies its prompt's recording character. The only genuine audio of those
+# speakers in training was SpeechFake's LibriTTS copy — the same recordings,
+# processed differently — so Finding 20's model learned to tell the two
+# packagings apart (11.7 log-odds between them) instead of the generator.
+# `load_protocol("train")` adds the genuine files themselves, labelled bona
+# fide (`--extra-bonafide librispeech`), so a cloned clip and the recording it
+# was cloned from differ only by the generator. hpc/get_librispeech.slurm
+# fetches both subsets; test-clean's 40 speakers are in neither.
+#
 #     python librispeech.py check <root>   # speaker overlap with SpeechFake
 
 import os
@@ -53,6 +65,24 @@ def load_clips(root=None):
         "speaker_id": [f"LS{f.parent.parent.name}" for f in files],
     })
     return clips, root
+
+
+def load_protocol(split="train", root=None):
+    """(protocol frame, audio root) for AVSpoofDataset with suffix="": every
+    genuine train-clean-100 utterance, labelled bona fide. Only "train" exists:
+    test-clean is calibration and evaluation data and is never trained on."""
+    if split != "train":
+        raise ValueError("LibriSpeech trains on train-clean-100 only; test-clean is held out.")
+    root = Path(root) if root is not None else get_librispeech_root()
+    base = root / "LibriSpeech" / "train-clean-100"
+    files = sorted(base.glob("*/*/*.flac"))
+    if not files:
+        raise FileNotFoundError(f"No .flac files under {base}.")
+    frame = pd.DataFrame({
+        "speaker_id": [f"LS{f.parent.parent.name}" for f in files],
+        "audio_file_name": [str(f.relative_to(root)) for f in files],
+        "_": "-", "system_id": "-", "label": "bonafide"})
+    return frame, root
 
 
 def speechfake_libritts_speakers():

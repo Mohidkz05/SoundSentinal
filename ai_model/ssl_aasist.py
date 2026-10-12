@@ -164,7 +164,10 @@ class SSLAASIST(GraphBackend):
 
     def forward(self, x):
         """x: (batch, 1, samples) -> (batch, 2) logits."""
-        feats = self.ssl(x.squeeze(1)).last_hidden_state   # (batch, frames, 1024)
+        return self._head(self.ssl(x.squeeze(1)).last_hidden_state)
+
+    def _head(self, feats):
+        """feats: (batch, frames, 1024) XLS-R features -> (batch, 2) logits."""
         x = self.LL(feats).transpose(1, 2).unsqueeze(1)    # (batch, 1, 128, frames)
         x = F.max_pool2d(x, (3, 3))                         # (batch, 1, 42, frames/3)
         x = self.selu(self.first_norm(x))
@@ -178,3 +181,85 @@ class SSLAASIST(GraphBackend):
         # Temporal nodes: each frame, a learned weighted sum over bands.
         e_T = torch.sum(x * F.softmax(w, dim=-2), dim=-2)   # (batch, 64, T)
         return self._graph_readout(e_S.transpose(1, 2), e_T.transpose(1, 2))
+
+
+class SSLAASISTMultiLayer(SSLAASIST):
+    """SSL-AASIST reading every XLS-R layer, not only the last (Finding 21).
+
+    RESULTS.md Finding 20's diagnostics: a linear probe on frozen XLS-R
+    separates Qwen3-TTS and VoxCPM from genuine speech at 0.85% EER from layer
+    3 and 1.0-1.3% from layers 4-8, against 5.79% from the last layer — the
+    only one SSLAASIST reads — and the same holds after fine-tuning (1.1%
+    against 3.7%). Early layers carry how the audio was produced; late layers
+    carry what was said. Public XLS-R detectors that read all layers (SLS,
+    Zhang et al., ACM MM 2024; layer-wise fusion, Interspeech 2025) generalise
+    better from the same training data.
+
+    The 25 hidden states (the convolutional features' projection and 24
+    transformer layers) are each layer-normalised without parameters — XLS-R
+    normalises only its final output, so the raw states differ in scale by
+    layer — and summed with softmax weights, as SUPERB's weighted sum does.
+    The weights start at zero, a uniform average. Everything after the sum is
+    SSLAASIST unchanged, so the two share every other parameter name.
+
+    The weights are a free nn.Parameter on the root module, which Opacus
+    cannot attribute per-sample gradients to (aasist.py, deviation 8). This
+    architecture is not DP-trainable and is not in DP_ARCHITECTURES.
+    """
+
+    def __init__(self, pretrained=False, config=None):
+        super().__init__(pretrained=pretrained, config=config)
+        self.layer_weights = nn.Parameter(torch.zeros(self.ssl.config.num_hidden_layers + 1))
+
+    def forward(self, x):
+        """x: (batch, 1, samples) -> (batch, 2) logits."""
+        states = self.ssl(x.squeeze(1), output_hidden_states=True).hidden_states
+        states = torch.stack([F.layer_norm(h, h.shape[-1:]) for h in states])  # (25, B, T, 1024)
+        w = F.softmax(self.layer_weights, dim=0).view(-1, 1, 1, 1)
+        return self._head((w * states).sum(0))
+
+
+class SSLAASISTFourWay(SSLAASIST):
+    """SSL-AASIST with four outputs: real or fake, each as recorded or passed
+    through a channel (RESULTS.md Finding 22).
+
+    Finding 21: the model ranks clean fakes above clean real speech and still
+    misses them, because noisy real speech scores towards "fake" and sets the
+    threshold. Two labels give noise nowhere to go but along the one axis the
+    model has. Here the channel is a label of its own, so a noisy genuine
+    recording can be "real, through a channel" rather than "a bit fake".
+
+    Classes, authenticity + 2 * condition, authenticity as in LABEL_MAP:
+      0 real, as recorded      1 fake, as recorded
+      2 real, through channel  3 fake, through channel
+
+    forward() keeps the contract every other network here has — (batch, 2)
+    logits, bonafide then spoof — by summing each authenticity's probability
+    over the two conditions (a logsumexp of logits). softmax of the result is
+    exactly the marginal P(real), P(fake), so evaluate.py, calibrate.py and
+    app.py read it unchanged. Only the trainer calls forward_joint().
+    """
+
+    N_CONDITIONS = 2
+
+    def __init__(self, pretrained=False, config=None):
+        super().__init__(pretrained=pretrained, config=config)
+        self.out_layer = nn.Linear(self.out_layer.in_features, 2 * self.N_CONDITIONS)
+
+    def forward_joint(self, x):
+        """x: (batch, 1, samples) -> (batch, 4) logits over the classes above."""
+        return super().forward(x)
+
+    @staticmethod
+    def marginal(joint):
+        """(batch, 4) joint logits -> (batch, 2) real/fake logits."""
+        return torch.logsumexp(joint.view(joint.size(0), -1, 2), dim=1)
+
+    @staticmethod
+    def condition(joint):
+        """(batch, 4) joint logits -> (batch, 2) as-recorded/through-channel logits."""
+        return torch.logsumexp(joint.view(joint.size(0), -1, 2), dim=2)
+
+    def forward(self, x):
+        """x: (batch, 1, samples) -> (batch, 2) logits."""
+        return self.marginal(self.forward_joint(x))
