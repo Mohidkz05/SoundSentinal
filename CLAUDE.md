@@ -79,11 +79,13 @@ needs a small script, none written yet).
   code has to be committed and pushed first), refresh `src/lib/measured.js`,
   and update this file and RESULTS.md's summary.
 
-**Code state.** The Finding 21 and 22 changes to `ai_model/` are **uncommitted
-locally** and exist on M3 only as `f22-src/f22.patch` over commit `4749ab6`
-(sha256 `65df04c5…`; the files there are byte-identical to the local ones).
-The owner has not asked for a commit. The frontend redesign (10 October) is
-also uncommitted in the same working tree — commit the two separately.
+**Code state.** The Finding 21 and 22 changes to `ai_model/` were committed
+and pushed on 12 October as `776bd67`. The jobs themselves ran from
+`f22-src/` on M3 scratch, a copy of `4749ab6` with the same changes applied as
+`f22.patch` (sha256 `65df04c5…`; byte-identical files), so their logs' `commit`
+line reads `4749ab6`. M3's own checkout has not been pulled. The frontend
+redesign (10 October) is **still uncommitted** in the local working tree,
+including staged font deletions — commit by path, never `git commit -a`.
 What Finding 22 added: `SSLAASISTFourWay` in `ssl_aasist.py` (four outputs;
 `forward()` still returns the usual two logits by summing over condition, so
 `evaluate.py`, `calibrate.py` and `app.py` need nothing new; only the trainer
@@ -144,7 +146,7 @@ scratch.
 | 15 | Second threshold for "clean" recordings (loudness-range cutoff) | Clean-fake misses fell (SF 32.7%→23.5%, LA 46%→29%) but 61% of ITW real routed "clean", real flagged 0.62%→4.00%; not served. Stage A's bar was missed and overridden by the owner — disclosed in RESULTS.md |
 | 19 | Real speech through open neural codecs (SNAC, WavTokenizer) as training fakes | **No room** at Stage 0: served model already flags 100% / 98.3% of codec-resynthesised real speech. Not trained. Qwen3-TTS/VoxCPM evade it by something other than a generic codec fingerprint |
 | 20 | Train on the families that still pass (Chatterbox, SpeechT5, Qwen3-TTS, VoxCPM train split; training reopened by the owner 8 Oct for one run) | **No effect** at Stage A (11 Oct): Qwen3-TTS + VoxCPM on unseen speakers still pass 74.95% (control 73.30%, bar ≤ 25%). Stage B not run; nothing served. New never-heard set `heldout-c` (bark, MOSS-TTS v1.5, MiMo-Audio): served model passes 34.78%, almost all MOSS-TTS (94.9%) |
-| 21 | F20's cause found: our cloning fakes are prompted with LibriSpeech files but the same speakers' real audio was in training only as LibriTTS, so the model learned the packaging. Fix: add genuine LibriSpeech train-clean-100 as real (`--extra-bonafide librispeech`), candidate A; plus all-layer XLS-R (`--arch ssl-aasist-ml`), candidate B | **No effect** at Stage A (12 Oct): Qwen3-TTS + VoxCPM still pass 39.80% (A) / 81.40% (B) at the People's Speech threshold, bar ≤ 25% (served 73.30%). The other three bars passed. Ranking is fixed (EER 2–6%, was ~25%; no clean real flagged) — what fails is the threshold (+7.60, set by noisy real speech; Finding 13). Stage B not run; nothing served. Code is in `f21-src/` on M3 scratch and uncommitted locally |
+| 21 | F20's cause found: our cloning fakes are prompted with LibriSpeech files but the same speakers' real audio was in training only as LibriTTS, so the model learned the packaging. Fix: add genuine LibriSpeech train-clean-100 as real (`--extra-bonafide librispeech`), candidate A; plus all-layer XLS-R (`--arch ssl-aasist-ml`), candidate B | **No effect** at Stage A (12 Oct): Qwen3-TTS + VoxCPM still pass 39.80% (A) / 81.40% (B) at the People's Speech threshold, bar ≤ 25% (served 73.30%). The other three bars passed. Ranking is fixed (EER 2–6%, was ~25%; no clean real flagged) — what fails is the threshold (+7.60, set by noisy real speech; Finding 13). Stage B not run; nothing served. Code committed in `776bd67` (run from `f21-src/` on M3 scratch) |
 | 22 | Four labels: real/fake × as recorded/through a channel (`--arch ssl-aasist-4w --condition-aug`), on F21's candidate A recipe; control with the same audio and two labels | **Running** — submitted 12 Oct, see "In flight" above |
 
 **If continuing:** the remaining lever is retraining (≈12–13 h per run on an
