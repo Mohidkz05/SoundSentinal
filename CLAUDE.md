@@ -84,8 +84,8 @@ and pushed on 12 October as `776bd67`. The jobs themselves ran from
 `f22-src/` on M3 scratch, a copy of `4749ab6` with the same changes applied as
 `f22.patch` (sha256 `65df04c5…`; byte-identical files), so their logs' `commit`
 line reads `4749ab6`. M3's own checkout has not been pulled. The frontend
-redesign (10 October) is **still uncommitted** in the local working tree,
-including staged font deletions — commit by path, never `git commit -a`.
+redesign (10 October) was committed and pushed on 12 October as `7e11b21`,
+after lint and a production build passed.
 What Finding 22 added: `SSLAASISTFourWay` in `ssl_aasist.py` (four outputs;
 `forward()` still returns the usual two logits by summing over condition, so
 `evaluate.py`, `calibrate.py` and `app.py` need nothing new; only the trainer
