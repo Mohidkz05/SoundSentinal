@@ -2592,6 +2592,27 @@ Random cropping and repeat-padding come together in R1 and are not separated.
 One seed. In-the-Wild clips average about 4 s, so padding matters there too,
 in a direction not known in advance.
 
+### Runs
+
+Smoke test on the M3 login node before submission (`diag/smoke_f23.py`, no
+test set read): 40 training clips each from SpeechFake, the synth families and
+LibriSpeech through RawBoost with `--random-crop` all came out 4 s long and
+finite, and the window differed from the clip's start for exactly the clips
+longer than 4 s (15, 39 and 38). 25 of the 40 SpeechFake training clips were
+under 4 s, so padding touches most of that corpus. `verify_setup.py` passes
+with new checks that zero-padding is unchanged bit for bit.
+
+Submitted 13 October, about 06:30 AEDT, after the registration above was
+committed and pushed (`8587bc0`), from a clone of that commit on M3 scratch
+(`f23-src/`). R1: training job **60960742** (H100, `--arch ssl-aasist --no-dp
+--rawboost 5 --extra-train speechfake+synth20 --extra-bonafide librispeech
+--random-crop --epochs 4`, 16 CPUs, 64 GB), calibration 60960743, Stage A
+60960744 (`heldout-a`) and 60960745 (SpeechFake dev), chained with `afterok`.
+Checkpoints: `.../ssl-aasist/rawboost5/plus-speechfake+synth20/plus-librispeech-bonafide/crop/nodp/`.
+R0: calibration **60960746** (`--pad repeat` on candidate A's `best.pth`,
+written beside it as `best_calibrated_peoples_speech_1pct_repeatpad.pth`),
+Stage A 60960747 and 60960748.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST
