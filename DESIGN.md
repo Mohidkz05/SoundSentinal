@@ -31,70 +31,70 @@ If a proposed change breaks one of these, it's the wrong change.
 
 ## Colour
 
-Three families. **A colour does one job**; the moment the brand teal appears in a
-result, or a verdict orange appears on a button, the system stops meaning
+**Redesigned 10 October 2026** ("Bright instrument", the owner's choice after a
+competitor review): the old teal-on-pale-petrol world read as washed out. The
+rules below are unchanged; the colours are new.
+
+Three families. **A colour does one job**; the moment the brand indigo appears
+in a result, or a verdict orange appears on a button, the system stops meaning
 anything.
 
-### Sentinel Teal — brand, actions, focus
+### Sentinel Indigo — brand, actions, focus, colour bands
 
-Hue 190.3°, sampled from **viridis at 0.50**: the perceptually-uniform colormap
-that renders the log-Mel spectrograms this model actually consumes. The brand
-colour is drawn from the tool's own subject matter rather than picked for mood.
+Hue 280° in OKLCH, a vivid blue-violet: `--color-indigo-50` … `-950`,
+`--accent` = indigo-700 `#4b2bd7` (8.0:1 on white). In dark mode the accent is
+a pale periwinkle `#c6ccff`, because the saturated indigo fails 4.5:1 on
+near-black and collapses onto the azure verdict end for protanopes (ΔE 0.018).
 
-`--color-teal-50` … `--color-teal-950`. In components use the semantic aliases:
-`--accent`, `--accent-hover`, `--accent-quiet`, `--accent-contrast`.
+Use the semantic aliases: `--accent`, `--accent-hover`, `--accent-quiet`,
+`--accent-wash`, `--accent-contrast`.
 
-Chosen partly by elimination. The competitive field is crowded and predictable:
+**Colour bands.** A long page is structured by full-bleed brand surfaces, not
+only hairlines: `surface-brand` (indigo-700) and `surface-brand-deep`
+(indigo-900, the footer). Both *redefine the semantic tokens inside
+themselves* — text, lines, accent, focus ring — so anything placed in a band
+re-themes with no per-component variant. Secondary text on a band is a tint of
+its hue (indigo-100 on indigo-700, 6.6:1), never grey. One band per page body
+at most; on `/` it is "How it works", on `/result` "What it can't tell you".
 
-| Product | Signature colour |
-| --- | --- |
-| Pindrop | orange-red `#ff4b20` on charcoal |
-| Reality Defender | periwinkle `#5a79bf` + orange gradient |
-| Hiya / Loccus | violet `#6629e3`, electric blue `#4d65ff` |
-| Deepware | crimson `#cd2653` |
-| AI or Not | acid green `#96e071` on near-black |
-| ElevenLabs classifier | plain blue `#2b7fff` |
-| Resemble Detect | near-monochrome warm greys |
+The field, measured 10 October: Resemble is a deep rust gradient, Pindrop
+orange on brown, Hiya violet, Sensity indigo with warm yellow, AI or Not a dark
+HUD. The vivid ones commit to one bold field of colour and show the product in
+the hero; that is what this palette does.
 
-Nobody holds teal, and category research is explicit that fintech/security blue
-has become saturated to the point of meaninglessness while deep teal still reads
-as trustworthy. Teal is both differentiated and defensible.
+### Ink — surfaces and text
 
-### Petrol — surfaces and text
-
-The same 190.3° hue at near-zero chroma. Neutrals that sit *under* the brand
-rather than fighting it, and a dark theme that reads as an instrument panel
-instead of default-dark-mode black.
+The same 280° hue at low chroma (`--color-ink-*`). Neutrals that sit under the
+brand rather than fighting it; the dark theme is an indigo-black, not grey.
 
 Use `--canvas`, `--panel`, `--raised`, `--overlay`, `--line`, `--line-strong`
 and `--text-primary/secondary/muted/faint`.
 
 ### Verdict scale — results only
 
-Diverging **violet ↔ orange**: the two ends of `plasma`, the other
-perceptually-uniform spectrogram colormap, and the same axis as ColorBrewer's
-PuOr.
+Diverging **azure ↔ orange**, the canonical colourblind-safe blue/orange axis.
+It was violet ↔ orange until the brand became indigo-violet; it moved so a
+reading can never be mistaken for chrome.
 
 - **Hue** says which side of the decision threshold the reading falls on.
 - **Chroma** says how far from it. The scale drains towards grey at the
   boundary, so "the model is unsure" is expressed by the colour draining out —
   not by a fourth hue nobody can name.
 
-This structure was chosen on measurements, not taste. Candidate scales were
-simulated through protanopia, deuteranopia and tritanopia (Machado 2009) and
-scored on OKLab ΔE:
+Chosen on measurements, not taste: simulated through protanopia, deuteranopia
+and tritanopia (Machado 2009), scored on OKLab ΔE, worst case over all four
+kinds of vision:
 
-| Scale | Separation across threshold (worst case) |
-| --- | --- |
-| **violet ↔ orange (chosen)** | **ΔE ≥ 0.096** |
-| indigo ↔ ember | ΔE ≥ 0.090 |
-| blue ↔ ember | ΔE ≥ 0.085 |
-| teal ↔ amber (brand-aligned) | ΔE ≥ 0.071 |
-| teal ↔ ember (brand-aligned) | **ΔE ≥ 0.048 — fails** |
+| Check | Light | Dark | Bar |
+| --- | --- | --- | --- |
+| Across the threshold (possibly ↔ likely) | 0.097 | 0.119 | 0.096 |
+| Endpoints (unlikely ↔ very likely) | 0.226 | 0.227 | 0.207 |
+| Brand accent vs either end | 0.119 | 0.18 | 0.10 |
 
-The brand-aligned options are the two worst. Teal and ember collapse to nearly
-the same grey under protanopia, which is why **the brand colour cannot double as
-the verdict colour** — that's a measured constraint, not a stylistic preference.
+The bars are the old palette's own measured values, so the redesign is no
+worse for colourblind readers than what it replaced. The earlier finding still
+holds: a brand-aligned verdict (teal ↔ ember, ΔE 0.048 under protanopia) fails,
+which is why **the brand colour cannot double as the verdict colour**.
 
 Every verdict colour clears 4.5:1 on its own surface in both themes.
 
@@ -158,20 +158,62 @@ for a result.
 
 ## Type
 
-**Archivo** for everything, at two widths. Headlines set expanded
-(`font-variation-settings: "wdth" 112`) against normal-width body — the contrast
-between display and body comes from the width axis rather than from dragging in
-a second typeface.
+**Changed 10 October 2026: Bricolage Grotesque + Martian Mono** replaced
+Archivo + IBM Plex Mono, which the owner found generic (and Plex Mono is the
+default "technical" mono of half the developer tools on the web).
 
-**IBM Plex Mono** for every number, with tabular figures, because every number
-this app shows is a measurement: probabilities, thresholds, sample rates,
-durations. Tabular stops a changing readout from reflowing.
+**Bricolage Grotesque** (OFL) for everything that is words. Its optical-size
+axis does the job the width axis used to: at headline sizes the browser draws
+the display cut — ink traps, tight apertures, a voice with some grit, which
+suits a tool about telling a human voice from a synthetic one — and at
+15–17px the same file draws calmer, opener text shapes. One 131 KB variable
+file covers 200–800 weight, 75–100 width and 12–96 opsz. Headings are 700 and
+tracked looser than Archivo was (−0.012em display): the display cut is
+already tight, and −0.03em made "it's" touch.
+
+**Martian Mono** (OFL, Evil Martians) for every number, with tabular figures,
+because every number this app shows is a measurement: probabilities,
+thresholds, sample rates, durations. It is an engineered, squared mono — an
+instrument panel's numerals rather than a code editor's — and its width axis
+sets the wordmark at 112.5, so the brand nameplate and the readouts share one
+voice. 38 KB, variable.
+
+**Rejected:** Inter, Space Grotesk, JetBrains Mono, Fira (the generic AI
+defaults; the font-pairing lookup returned exactly these); Funnel Display
+(characterful but weak at body size); a serif (no job here the optical-size
+axis doesn't already do).
 
 Use the generated utilities — `text-display`, `text-h1`, `text-h2`, `text-h3`,
-`text-body`, `text-small`, `text-readout`, `text-score`, `text-tick`.
-`display`, `h1`, `h2` and `score` are fluid (`clamp()` between a 360px phone
-and a 1440px desktop); body sizes are fixed. A fixed 68px display once
-overflowed a phone.
+`text-body`, `text-small`, `text-label`, `text-readout`, `text-score`,
+`text-tick`. `display`, `h1`, `h2`, `h3` and `score` are fluid (`clamp()`
+between a 360px phone and a 1440px desktop); body sizes are fixed. A fixed
+68px display once overflowed a phone.
+
+### The roles (type audit, 10 October 2026)
+
+| Role | Style | Where | Why |
+| --- | --- | --- | --- |
+| Display | Bricolage 700 (display opsz), 43→68px | page headline | the one voice; expanded width does what a second family would |
+| Score | Martian Mono 500, 75→144px | the reading on `/result` | the product is the number; tabular so it never reflows |
+| Section heading | Bricolage 700, 28→32px | every band | |
+| Step / card title | Bricolage 700, 18→22px | steps, tips card | was a fixed 22px: on a phone it sat at 1.1× under a 24px h2 and read as the same rank. Now ≥1.45× apart at every width |
+| Lead | Bricolage 400, 19px | the hero sentence, the wordmark | |
+| Body | Bricolage 400, 17px, lh 1.6 | prose, nav links, **section intros and step text** | raised from 16px for the general public reading on a phone; intros and steps were 14px |
+| Small | Bricolage 400, 15px, lh 1.5 | captions, footnotes, metadata | was 14px |
+| Field label | Bricolage 600, 14px, muted, sentence case (`field-label`) | "Duration", "Real flagged", table headers, "Model confidence…" | these were 11px mono caps: below the 12px floor, and mono on words that are not measurements is costume. Weight and tone separate a label from 14px body; a costume does not |
+| Scale marking | Martian Mono 400, 12px caps, +0.12em (`tick-label`) | tick numbers, threshold mark, band names, the score line | the only place mono caps are earned: it is a measuring instrument's engraving. Up from 11px |
+| Readout value | Martian Mono, 18→22px | error rates, clip facts | measurements, tabular |
+
+Buttons use `text-body` (md, lg) and `text-small` (sm); they used three
+off-scale sizes (13, 15, 16px). **The header** is 72px tall with a 36px mark, an 18px wordmark (hidden below 640px, where mark + wordmark + nav + toggle need ~500px) and 17px nav links.
+
+**WCAG check, 10 October 2026**, at 1440 / 720 (200% zoom) / 390 / 320px, light and dark: no horizontal scroll at 320px (1.4.10), no clipping under the 1.4.12 text-spacing override, every text element ≥ 4.5:1 (≥ 3:1 large) against its actual background (1.4.3), every control ≥ 24px (2.5.8). Smallest visible text: 14px; only the scale's engraving is 12px, and it is `aria-hidden` with the reading stated in text.
+
+Prose is held to 45–75 characters: the
+`Details` panels were running 97 characters a line and are now capped at
+68ch of their own size. Nothing in the product renders below 12px.
+
+**Font weights in use:** Bricolage 400/500/600/700; Martian 400/500/600. Both are single variable files, so weights cost nothing extra.
 
 **The font variables live on `<html>`.** `--font-sans` is declared in
 `@theme`, which Tailwind emits on `:root`, and a custom property resolves its
@@ -218,8 +260,17 @@ content where width does real work:
   apart.
 - The **waveform**, because it is a signal on a time axis and width buys
   visible detail.
-- The **intake surface** on `/upload`, which is both the illustration and the
-  drop target and so is the page.
+- The **intake deck** on `/upload`, which is both the illustration and the
+  drop target and so is the page. Since 10 October it is a framed `raised`
+  surface (radius-xl) with the way in — drop, *Choose a file*, *Record* —
+  laid over the faded idle timeline (below it on phones). The whole window
+  takes a drop; dragging a file over the page draws a dashed accent outline
+  round the deck, and over the deck it turns solid with the accent wash. The
+  dashed outline appears only while a drag is real — never as resting
+  decoration. Recording draws the take onto the ruler live (the lit window
+  fills first) with its controls in a strip under the ruler, never on top of
+  the take. The browser's echo cancellation, noise suppression and gain are
+  off: they are processing, which is what the model looks for.
 
 Those three span the bleed. Everything else is a grid.
 
@@ -240,6 +291,16 @@ against the *heading's* font size, not the body's, so it comes out far narrower
 than it looks. Size hero text columns in rem.
 
 ---
+
+### /upload is one instrument panel (10 October 2026)
+
+Headline and sentence above at full width; below them **one raised panel**
+that is the whole drop target: the controls centred at the top, the intake
+field in its own strip under them, the three tips along its foot. It replaced
+a full-bleed field behind the page with the copy squeezed into a column and a
+tips card floating at the right — three things that read as unrelated, with
+the controls set over bars. Nothing is read over the field now, so it needs no
+wash; a drag over the panel draws an accent ring round it.
 
 ## Space
 
@@ -305,7 +366,46 @@ carries the standing disclaimer and the training data's licence credits.
 
 ---
 
+## Components: shadcn/ui on this system's tokens (10 October 2026)
+
+Interactive primitives come from **shadcn/ui** (Radix underneath), copied into
+`components/ui/*.jsx` and **re-themed**: every shadcn token name was mapped to
+ours (`bg-primary`→`bg-accent`, `text-muted-foreground`→`text-muted`,
+`bg-background`/`bg-card`→`bg-raised`, `border-input`→`border-line-strong`,
+`destructive`→`danger`…), and shadcn's own focus ring was removed in favour of
+the global `:focus-visible` outline. Its default zinc look is the v0 / AI
+default, so it is never used as shipped.
+
+| Piece | shadcn component | Why |
+| --- | --- | --- |
+| `Button` (`button.js`) | Button (cva + Slot) | variants as before; links render as `<a>` through Slot |
+| Sample toggle | ToggleGroup | one tab stop, arrow keys; Motion `layoutId` highlight slides |
+| `/result` Details | Accordion | animated open/close; several open at once |
+| `Notice` | Alert | `danger` boxed, `caveat` inline (it sits inside cards) |
+| Error-rate table | Table | row hover tint |
+| Theme toggle | Tooltip | names the action |
+
+**Do not run `shadcn init`, and back up `globals.css` before `shadcn add`**:
+both rewrite it with shadcn's zinc variables (it happened once and was
+restored). `components.json` is hand-written; the `@components/*` alias in
+`jsconfig.json` is what lets the CLI find `components/ui`. `cn()` in
+`src/lib/utils.js` registers this system's text sizes with tailwind-merge, or
+`text-body` and `text-secondary` would be merged as one group and one dropped.
+
+**Accents and shadows.** The primary button sits on a brand-tinted shadow
+(`--shadow-action`) and lifts 1px on hover; in dark mode it glows instead of
+casting. Step numbers on the brand band are solid white discs. Static panels
+do not lift on hover — a lift says "clickable".
+
 ## Motion
+
+**Framer Motion (`motion/react`) is used through `components/motion/reveal.js`**
+(10 October 2026): `Rise` above the fold (travels, starts opaque — LCP),
+`Reveal` below it (fades and rises once, at 20% in view), `Stagger` /
+`StaggerItem` for lists whose order is the information. Plus: the sample
+toggle's sliding highlight, the upload timeline unrolling a chosen clip left
+to right (3ms per bar) and its end marker. `MotionConfig reducedMotion="user"`
+in `components/providers.js` strips travel for reduced-motion users.
 
 Tokens live in both `globals.css` and `src/lib/motion.js`, and the two must stay
 in agreement. A button that hovers in CSS and mounts in Motion should feel like
@@ -414,7 +514,7 @@ second to deliver a value React never displays. The canvas stays
 geometry can never intercept a drag.
 
 That constraint is what makes the layer defensible rather than decorative, and
-it is also what lets the hero be brand teal: a spectrogram pictures the
+it is also what lets the hero be brand indigo: a spectrogram pictures the
 *input*, not a result, so rule 1 is intact.
 
 **Eight rules, all enforced through `Stage`** — the single component every canvas

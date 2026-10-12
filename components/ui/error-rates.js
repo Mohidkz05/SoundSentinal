@@ -1,5 +1,6 @@
 import React from 'react';
 import { formatPercent } from '../../src/lib/verdict';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@components/ui/table';
 
 /**
  * How often the served model is wrong, per test set: genuine recordings it
@@ -15,7 +16,7 @@ import { formatPercent } from '../../src/lib/verdict';
 function Figure({ label, value, of }) {
   return (
     <div className="flex flex-col gap-[var(--space-tight)]">
-      <span className="tick-label">{label}</span>
+      <span className="field-label">{label}</span>
       <span className="tabular text-h3 leading-none text-primary">{formatPercent(value)}</span>
       <span className="tabular text-small text-muted">of {of.toLocaleString('en-GB')}</span>
     </div>
@@ -43,42 +44,36 @@ export function ErrorRates({ measured }) {
         ))}
       </ul>
 
-    <div className="hidden overflow-x-auto sm:block">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th scope="col">Tested on</th>
-            <th scope="col">Real recordings flagged</th>
-            <th scope="col">Fakes missed</th>
-          </tr>
-        </thead>
-        <tbody>
+    {/* Wider screens: shadcn/ui's Table, on this system's tokens. Rows lift
+        to the panel tint under the pointer so a row can be followed across. */}
+    <div className="hidden sm:block">
+      <Table>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="field-label h-auto pb-[var(--space-stack)] pl-0">Tested on</TableHead>
+            <TableHead className="field-label h-auto pb-[var(--space-stack)]">Real recordings flagged</TableHead>
+            <TableHead className="field-label h-auto pb-[var(--space-stack)] pr-0">Fakes missed</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {measured.map((m) => (
-            <tr key={m.set}>
-              <th scope="row" className="max-w-[38ch] font-normal">
-                <span className="block font-semibold text-primary">{m.set}</span>
+            <TableRow key={m.set} className="align-top">
+              <TableHead scope="row" className="h-auto max-w-[38ch] whitespace-normal py-[1.125rem] pl-0 font-normal">
+                <span className="block text-body font-semibold text-primary">{m.set}</span>
                 {m.about && <span className="mt-1 block text-small text-muted">{m.about}</span>}
-              </th>
-              <td>
-                <span className="tabular block text-h3 leading-none text-primary">
-                  {formatPercent(m.real_flagged)}
-                </span>
-                <span className="tabular mt-2 block text-small text-muted">
-                  of {m.n_real.toLocaleString('en-GB')}
-                </span>
-              </td>
-              <td>
-                <span className="tabular block text-h3 leading-none text-primary">
-                  {formatPercent(m.fakes_passed)}
-                </span>
-                <span className="tabular mt-2 block text-small text-muted">
-                  of {m.n_fake.toLocaleString('en-GB')}
-                </span>
-              </td>
-            </tr>
+              </TableHead>
+              <TableCell className="py-[1.125rem]">
+                <span className="tabular block text-h3 leading-none text-primary">{formatPercent(m.real_flagged)}</span>
+                <span className="tabular mt-2 block text-small text-muted">of {m.n_real.toLocaleString('en-GB')}</span>
+              </TableCell>
+              <TableCell className="py-[1.125rem] pr-0">
+                <span className="tabular block text-h3 leading-none text-primary">{formatPercent(m.fakes_passed)}</span>
+                <span className="tabular mt-2 block text-small text-muted">of {m.n_fake.toLocaleString('en-GB')}</span>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
     </>
   );

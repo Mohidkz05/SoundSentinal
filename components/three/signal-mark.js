@@ -39,7 +39,7 @@ function Bars() {
   const material = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: new THREE.Color('#056e6a'),
+        color: new THREE.Color('#4b2bd7'),
         roughness: 0.42,
         metalness: 0.08,
       }),
@@ -96,10 +96,10 @@ function Bars() {
 export function SignalMark() {
   return (
     <Stage
-      className="h-7 w-7 shrink-0"
+      className="h-9 w-9 shrink-0"
       camera={{ position: [0, 0, 3.4], fov: 34 }}
       dpr={[1, 2]}
-      fallback={<FlatMark className="h-7 w-7 p-0.5 text-accent" />}
+      fallback={<FlatMark className="h-9 w-9 p-0.5 text-accent" />}
     >
       <Bars />
     </Stage>

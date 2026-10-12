@@ -184,8 +184,8 @@ function Bars({ peaks, energy }) {
       uReveal: { value: 0 },
       uEnergy: { value: 0 },
       uHeight: { value: 1.05 },
-      uQuiet: { value: new THREE.Color('#bfcac9') },
-      uLoud: { value: new THREE.Color('#056e6a') },
+      uQuiet: { value: new THREE.Color('#b4b6c5') },
+      uLoud: { value: new THREE.Color('#4b2bd7') },
       uOpacity: { value: 0.96 },
     }),
     [blank]

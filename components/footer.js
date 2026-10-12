@@ -16,7 +16,7 @@ const LINKS = [
 
 export default function Footer() {
   return (
-    <footer className="band mt-auto">
+    <footer className="surface-brand-deep shell mt-auto py-[calc(var(--space-section)*0.6)]">
       <div className="grid gap-[var(--space-group)] lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)_auto] lg:gap-x-14">
         <div className="flex flex-col gap-[var(--space-stack)]">
           <span className="flex items-center gap-2.5 text-primary">

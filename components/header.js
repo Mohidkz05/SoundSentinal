@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTheme } from './theme';
 import { SignalMark } from './three/lazy';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@components/ui/tooltip';
 
 /* The product's navigation, not the site map. /result is the second step of
    the analyse flow and empty when visited directly, so it is reached through
@@ -44,7 +45,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-line bg-canvas/85 backdrop-blur-md">
-      <div className="shell flex h-16 items-center gap-3 sm:gap-6">
+      <div className="shell flex h-[4.5rem] items-center gap-3 sm:gap-6">
         <Link
           href="/"
           className="flex min-h-[var(--hit)] items-center gap-2.5 rounded-sm text-primary"
@@ -55,7 +56,7 @@ export default function Header() {
               nav links and a 44px toggle do not fit on one row, and the nav is
               the thing a phone user can't do without. The mark still goes home
               and the footer carries the full wordmark. */}
-          <span className="wordmark hidden text-small sm:inline" aria-hidden="true">
+          <span className="wordmark hidden text-lead sm:inline" aria-hidden="true">
             SOUNDSENTINAL
           </span>
         </Link>
@@ -68,7 +69,7 @@ export default function Header() {
                 key={href}
                 href={href}
                 aria-current={active ? 'page' : undefined}
-                className={`flex min-h-[var(--hit)] items-center rounded-md px-3 text-small transition-colors duration-fast ease-instrument ${
+                className={`flex min-h-[var(--hit)] items-center rounded-md px-3 text-body font-medium transition-colors duration-fast ease-instrument ${
                   active
                     ? 'bg-overlay text-primary'
                     : 'text-secondary hover:bg-overlay hover:text-primary'
@@ -83,15 +84,20 @@ export default function Header() {
         {/* The pause-animation switch moved to the footer (7 October 2026):
             the header keeps only the theme toggle. */}
         <div className="flex shrink-0 items-center">
-          <button
-            type="button"
-            onClick={toggleDarkMode}
-            aria-label="Dark mode"
-            aria-pressed={darkMode}
-            className={ICON_BUTTON}
-          >
-            <ThemeIcon />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={toggleDarkMode}
+                aria-label="Dark mode"
+                aria-pressed={darkMode}
+                className={ICON_BUTTON}
+              >
+                <ThemeIcon />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{darkMode ? 'Switch to light' : 'Switch to dark'}</TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </header>

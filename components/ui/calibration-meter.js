@@ -34,7 +34,7 @@ export function CalibrationMeter({ score = 0, threshold, bandLow }) {
       {/* Readout. The tier name and the side of the threshold sit under the
           number as its own caption, rather than opposite it — at these sizes a
           justified pair reads as two competing headlines. */}
-      <p className="tick-label">Model score</p>
+      <p className="field-label">Model score</p>
       <div className="mt-3 flex flex-wrap items-end gap-x-8 gap-y-4">
         <output
           data-readout
@@ -47,7 +47,7 @@ export function CalibrationMeter({ score = 0, threshold, bandLow }) {
         <div className="flex flex-col gap-1 pb-1">
           <p
             className="text-h3 font-bold leading-none"
-            style={{ color: tier.token, fontVariationSettings: '"wdth" 112' }}
+            style={{ color: tier.token }}
           >
             {tier.label}
           </p>

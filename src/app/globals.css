@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* shadcn/ui's enter/exit and accordion animations (tooltip, accordion). */
+@import "tw-animate-css";
 
 /* Dark mode is driven by a class on <html>, set by components/theme.js.
    Tailwind v4 defaults the `dark:` variant to prefers-color-scheme, which
@@ -14,67 +16,71 @@
    lightness, so "600" means the same perceived darkness in every ramp.
    ========================================================================= */
 @theme {
-  /* -- Sentinel Teal: the brand. Hue 190.3deg, sampled from viridis at 0.50,
-        the colormap that renders the log-Mel spectrograms this model reads.
-        Used for chrome, actions and focus. Never for a verdict. ------------ */
-  --color-teal-50:  #eefaf8;
-  --color-teal-100: #daf3f1;
-  --color-teal-200: #b2e5e1;
-  --color-teal-300: #84d3ce;
-  --color-teal-400: #53bdb7;
-  --color-teal-500: #1ca5a0;
-  --color-teal-600: #078b86;
-  --color-teal-700: #056e6a;
-  --color-teal-800: #03524f;
-  --color-teal-900: #013735;
-  --color-teal-950: #012422;
+  /* -- Sentinel Indigo: the brand (redesign, 10 October 2026). Hue 280deg
+        in OKLCH, a vivid blue-violet. Used for chrome, actions, focus and the
+        colour bands that structure a page. Never for a verdict. ------------- */
+  --color-indigo-50:  #f2f4ff;
+  --color-indigo-100: #e5e9ff;
+  --color-indigo-200: #ccd2ff;
+  --color-indigo-300: #adb4ff;
+  --color-indigo-400: #8b8dff;
+  --color-indigo-500: #6d65fe;
+  --color-indigo-600: #5c46f0;
+  --color-indigo-700: #4b2bd7;
+  --color-indigo-800: #3b22ab;
+  --color-indigo-900: #281a78;
+  --color-indigo-950: #17114a;
 
-  /* -- Petrol: neutrals carrying the same 190.3deg hue at near-zero chroma.
-        Greys that sit under the brand instead of fighting it. -------------- */
-  --color-petrol-50:  #f7fbfb;
-  --color-petrol-100: #eff5f4;
-  --color-petrol-200: #e8eeee;
-  --color-petrol-300: #d7e0df;
-  --color-petrol-400: #bfcac9;
-  --color-petrol-500: #889594;
-  --color-petrol-600: #5f6c6b;
-  --color-petrol-700: #42504f;
-  --color-petrol-800: #2a3938;
-  --color-petrol-850: #1f2d2c;
-  --color-petrol-900: #142120;
-  --color-petrol-950: #0a1514;
+  /* -- Ink: neutrals carrying the same 280deg hue at low chroma, so greys sit
+        under the brand instead of fighting it. ------------------------------ */
+  --color-ink-50:  #f9fafd;
+  --color-ink-100: #f2f3fa;
+  --color-ink-200: #e6e7f1;
+  --color-ink-300: #d5d6e3;
+  --color-ink-400: #b4b6c5;
+  --color-ink-500: #838596;
+  --color-ink-600: #65677c;
+  --color-ink-700: #494b62;
+  --color-ink-800: #2c2e47;
+  --color-ink-850: #1d1e39;
+  --color-ink-900: #12122e;
+  --color-ink-950: #080721;
 
-  /* -- Verdict scale: diverging, violet <-> orange. These are the two ends of
-        `plasma`, the other perceptually-uniform spectrogram colormap, and the
-        same axis as ColorBrewer's PuOr, which is validated colourblind-safe.
+  /* -- Verdict scale: diverging, azure <-> orange — the blue/orange axis that
+        is the canonical colourblind-safe diverging pair. It moved off violet
+        when the brand became indigo-violet, so a reading can never be
+        mistaken for chrome.
 
         Hue says which side of the decision threshold the reading falls on.
         Chroma says how far from it — the scale desaturates towards the
         boundary, so "the model is unsure" is shown by the colour draining out
         rather than by a fourth hue nobody can name.
 
-        Measured across normal vision, protanopia, deuteranopia and
-        tritanopia: separation across the threshold dE >= 0.096, between the
-        endpoints dE >= 0.207. ---------------------------------------------- */
-  --color-verdict-unlikely-d:   #9775de;
-  --color-verdict-possibly-d:   #b9afd7;
-  --color-verdict-likely-d:     #e4ae96;
-  --color-verdict-verylikely-d: #f87c3c;
+        Measured (Machado 2009 simulation, OKLab) across normal vision,
+        protanopia, deuteranopia and tritanopia, worst case:
+          across the threshold  light dE 0.097, dark 0.119   (bar 0.096)
+          endpoints             light dE 0.226, dark 0.227   (bar 0.207)
+          brand vs either end   light dE 0.119, dark 0.18    (bar 0.10)
+        Every step clears 4.5:1 as text on its theme's raised surface. ------ */
+  --color-verdict-unlikely-d:   #0098da;
+  --color-verdict-possibly-d:   #77adc9;
+  --color-verdict-likely-d:     #f3b48e;
+  --color-verdict-verylikely-d: #ff8c3f;
 
-  --color-verdict-unlikely-l:   #683baf;
-  --color-verdict-possibly-l:   #6a549a;
-  --color-verdict-likely-l:     #ad5b32;
-  --color-verdict-verylikely-l: #bb4f05;
+  --color-verdict-unlikely-l:   #0079b5;
+  --color-verdict-possibly-l:   #396a81;
+  --color-verdict-likely-l:     #976346;
+  --color-verdict-verylikely-l: #c74200;
 
   /* -- Danger: system failures only (upload rejected, server down). Hue 25deg,
-        held 20deg off the verdict orange so "something broke" never reads as
+        held 23deg off the verdict orange so "something broke" never reads as
         "this audio is fake". ----------------------------------------------- */
   --color-danger-d: #f66d67;
-  --color-danger-l: #c02b2f;
+  --color-danger-l: #c21725;
 
   /* -- Type ---------------------------------------------------------------- */
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", monospace;
+  --font-sans: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-martian), ui-monospace, "SF Mono", monospace;
 
   /* Display sizes use a 1.26 ratio and tighten as they grow. Readouts and
      body text stay on a calmer 1.2. The three display steps are fluid between
@@ -83,17 +89,29 @@
      already the reading size at every width. */
   --text-display: clamp(2.625rem, 1.75rem + 3.9vw, 4.25rem);
   --text-display--line-height: 0.96;
-  --text-display--letter-spacing: -0.03em;
+  --text-display--letter-spacing: -0.012em;  /* Bricolage's display cut is already tight; Archivo's -0.03 made "it's" touch */
   --text-h1: clamp(2.125rem, 1.6rem + 2.2vw, 3rem);
   --text-h1--line-height: 1.04;
-  --text-h1--letter-spacing: -0.025em;
-  --text-h2: clamp(1.5rem, 1.25rem + 1.1vw, 2rem);
+  --text-h1--letter-spacing: -0.01em;
+  /* h2's floor is 1.75rem and h3 is fluid from 1.125rem: on a phone they
+     were 24px and 22px, a 1.1 ratio, and a section heading read as the same
+     rank as the step titles under it. Now 28 / 18 (1.55) on a phone and
+     32 / 22 (1.45) on a desktop (type audit, 10 October 2026). */
+  --text-h2: clamp(1.75rem, 1.5rem + 0.6vw, 2rem);
   --text-h2--line-height: 1.12;
-  --text-h2--letter-spacing: -0.02em;
-  --text-h3: 1.375rem;       --text-h3--line-height: 1.25;
-  --text-h3--letter-spacing: -0.01em;
-  --text-body: 1rem;         --text-body--line-height: 1.6;
-  --text-small: 0.875rem;    --text-small--line-height: 1.5;
+  --text-h2--letter-spacing: -0.008em;
+  --text-h3: clamp(1.125rem, 1rem + 0.45vw, 1.375rem);
+  --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: 0em;
+  /* Reading sizes, raised for readability (10 October 2026, owner's
+     request, WCAG 1.4 as the reference): body 17px, small 15px, label 14px.
+     WCAG sets no minimum size, but the public reading this are not
+     specialists and many will be on a phone at arm's length; 16/14/13 read
+     as small next to the 68px display. `lead` is the hero sentence and the
+     wordmark. */
+  --text-lead: 1.1875rem;    --text-lead--line-height: 1.55;
+  --text-body: 1.0625rem;    --text-body--line-height: 1.6;
+  --text-small: 0.9375rem;   --text-small--line-height: 1.5;
   --text-readout: 3.5rem;    --text-readout--line-height: 1;
   --text-readout--letter-spacing: -0.04em;
   /* The reading on /result: the largest type in the product, because it is
@@ -101,8 +119,15 @@
   --text-score: clamp(4.5rem, 2.5rem + 9vw, 9rem);
   --text-score--line-height: 0.85;
   --text-score--letter-spacing: -0.04em;
-  --text-tick: 0.6875rem;    --text-tick--line-height: 1.2;
-  --text-tick--letter-spacing: 0.14em;
+  /* Scale engraving: the one place mono caps are earned, because it is a
+     measuring instrument's markings. 12px, the floor for any text here; it
+     was 11px, below it. */
+  --text-tick: 0.75rem;      --text-tick--line-height: 1.2;
+  --text-tick--letter-spacing: 0.12em;
+  /* A field's name — "Duration", "Real flagged". Words, not measurements, so
+     the body face: semibold and muted, which separates it from 14px regular
+     body copy by weight and tone rather than by a costume. */
+  --text-label: 0.875rem;    --text-label--line-height: 1.35;
 
   /* -- Rounding: an instrument's radii are modest and consistent. Panels are
         the largest thing that rounds; nothing goes past 20px except pills. -- */
@@ -161,22 +186,32 @@
 :root {
   color-scheme: light;
 
-  --canvas: var(--color-petrol-50);
-  --panel: var(--color-petrol-100);
+  --canvas: var(--color-ink-50);
+  --panel: var(--color-ink-100);
   --raised: #ffffff;
-  --overlay: var(--color-petrol-200);
-  --line: var(--color-petrol-300);
-  --line-strong: #bfcac9;
+  --overlay: var(--color-ink-200);
+  --line: var(--color-ink-200);
+  --line-strong: var(--color-ink-400);
 
-  --text-primary: #142221;
-  --text-secondary: var(--color-petrol-700);
-  --text-muted: var(--color-petrol-600);
-  --text-faint: #7d8988;
+  --text-primary: var(--color-ink-900);
+  --text-secondary: var(--color-ink-700);
+  --text-muted: var(--color-ink-600);
+  --text-faint: var(--color-ink-500);
 
-  --accent: var(--color-teal-700);
-  --accent-hover: #035854;
-  --accent-quiet: var(--color-teal-200);
+  --accent: var(--color-indigo-700);
+  --accent-hover: var(--color-indigo-800);
+  --accent-quiet: var(--color-indigo-100);
+  --accent-wash: var(--color-indigo-50);
   --accent-contrast: #ffffff;
+
+  /* The colour band: a full-bleed section in the brand colour, the device
+     that gives a long page its structure. Text on it is white, secondary text
+     a tint of the band's own hue (6.6:1), never grey. */
+  --band: var(--color-indigo-700);
+  --band-deep: var(--color-indigo-900);
+  --on-band: #ffffff;
+  --on-band-muted: var(--color-indigo-100);
+  --on-band-line: rgb(255 255 255 / 0.22);
 
   --verdict-unlikely: var(--color-verdict-unlikely-l);
   --verdict-possibly: var(--color-verdict-possibly-l);
@@ -184,33 +219,50 @@
   --verdict-verylikely: var(--color-verdict-verylikely-l);
   --danger: var(--color-danger-l);
 
-  /* Elevation on paper behaves normally: light from above, tinted with the
-     petrol hue rather than pure black so shadows don't grey out the page. */
-  --shadow-panel: 0 1px 2px rgb(20 34 33 / 0.05), 0 2px 8px rgb(20 34 33 / 0.04);
-  --shadow-raised: 0 2px 4px rgb(20 34 33 / 0.06), 0 8px 24px rgb(20 34 33 / 0.07);
-  --shadow-lifted: 0 4px 8px rgb(20 34 33 / 0.07), 0 16px 40px rgb(20 34 33 / 0.10);
+  /* Elevation: light from above, tinted with the ink hue rather than pure
+     black, and a faint brand cast on the largest shadow so a raised panel
+     sits in the page's colour instead of greying it. */
+  --shadow-panel: 0 1px 2px rgb(18 18 46 / 0.05), 0 2px 8px rgb(18 18 46 / 0.04);
+  --shadow-raised: 0 1px 2px rgb(18 18 46 / 0.06), 0 12px 32px -8px rgb(59 34 171 / 0.16);
+  --shadow-lifted: 0 2px 6px rgb(18 18 46 / 0.07), 0 24px 56px -12px rgb(59 34 171 / 0.24);
   --edge-highlight: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  /* The primary action's own elevation: a brand-tinted shadow, so the one
+     thing to press sits a little above the page in its own colour. */
+  --shadow-action: 0 1px 2px rgb(59 34 171 / 0.22), 0 6px 16px -6px rgb(75 43 215 / 0.45);
+  --shadow-action-hover: 0 2px 4px rgb(59 34 171 / 0.22), 0 12px 24px -8px rgb(75 43 215 / 0.55);
+  /* A panel the pointer is over lifts towards it. */
+  --shadow-hover: 0 2px 6px rgb(18 18 46 / 0.07), 0 18px 40px -12px rgb(59 34 171 / 0.22);
 }
 
 .dark {
   color-scheme: dark;
 
-  --canvas: var(--color-petrol-950);
-  --panel: var(--color-petrol-900);
-  --raised: var(--color-petrol-850);
-  --overlay: var(--color-petrol-800);
-  --line: #304140;
-  --line-strong: #445755;
+  --canvas: var(--color-ink-950);
+  --panel: var(--color-ink-900);
+  --raised: var(--color-ink-850);
+  --overlay: var(--color-ink-800);
+  --line: var(--color-ink-800);
+  --line-strong: #44466a;
 
-  --text-primary: #ecf6f5;
-  --text-secondary: #b4c1c0;
-  --text-muted: var(--color-petrol-500);
-  --text-faint: #5e6c6b;
+  --text-primary: #eef0fb;
+  --text-secondary: #b9bbd0;
+  --text-muted: #9597ac;
+  --text-faint: #5d5f78;
 
-  --accent: var(--color-teal-400);
-  --accent-hover: var(--color-teal-300);
-  --accent-quiet: var(--color-teal-800);
-  --accent-contrast: #04211f;
+  /* Pale periwinkle, not the saturated indigo: on a near-black ground the
+     saturated one fails 4.5:1 as text and sits within dE 0.02 of the azure
+     verdict end for protanopes. The bands keep the saturated hue. */
+  --accent: #c6ccff;
+  --accent-hover: var(--color-indigo-100);
+  --accent-quiet: var(--color-indigo-900);
+  --accent-wash: var(--color-indigo-950);
+  --accent-contrast: var(--color-ink-950);
+
+  --band: var(--color-indigo-800);
+  --band-deep: var(--color-indigo-950);
+  --on-band: #ffffff;
+  --on-band-muted: var(--color-indigo-200);
+  --on-band-line: rgb(255 255 255 / 0.18);
 
   --verdict-unlikely: var(--color-verdict-unlikely-d);
   --verdict-possibly: var(--color-verdict-possibly-d);
@@ -219,12 +271,16 @@
   --danger: var(--color-danger-d);
 
   /* On a dark panel a big black shadow reads as mud, so elevation is carried
-     by surface lightness and a 1px top edge highlight — the way light catches
-     the machined edge of a panel. The drop shadow only anchors it. */
+     by surface lightness and a 1px top edge highlight. */
   --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.30);
   --shadow-raised: 0 2px 6px rgb(0 0 0 / 0.36), 0 12px 32px rgb(0 0 0 / 0.24);
   --shadow-lifted: 0 4px 12px rgb(0 0 0 / 0.44), 0 24px 60px rgb(0 0 0 / 0.34);
-  --edge-highlight: inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --edge-highlight: inset 0 1px 0 rgb(255 255 255 / 0.07);
+  /* On a dark ground the action glows rather than casts: the periwinkle
+     button's light spilling, not a shadow under it. */
+  --shadow-action: 0 0 0 1px rgb(198 204 255 / 0.25), 0 8px 24px -8px rgb(139 141 255 / 0.45);
+  --shadow-action-hover: 0 0 0 1px rgb(198 204 255 / 0.35), 0 12px 32px -8px rgb(139 141 255 / 0.6);
+  --shadow-hover: 0 4px 12px rgb(0 0 0 / 0.44), 0 24px 56px -16px rgb(109 101 254 / 0.28);
 }
 
 /* Bridge the semantic tokens into Tailwind so `bg-canvas`, `text-muted`,
@@ -245,6 +301,11 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-quiet: var(--accent-quiet);
+  --color-accent-wash: var(--accent-wash);
+  --color-band: var(--band);
+  --color-band-deep: var(--band-deep);
+  --color-on-band: var(--on-band);
+  --color-on-band-muted: var(--on-band-muted);
   --color-accent-contrast: var(--accent-contrast);
 
   --color-unlikely: var(--verdict-unlikely);
@@ -256,6 +317,7 @@
   --shadow-panel: var(--shadow-panel);
   --shadow-raised: var(--shadow-raised);
   --shadow-lifted: var(--shadow-lifted);
+  --shadow-hover: var(--shadow-hover);
 }
 
 /* ============================================================================
@@ -277,12 +339,13 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Display type uses Archivo's width axis — expanded headlines against
-     normal-width body is what separates the two roles, rather than a second
-     typeface. */
+  /* Headings: Bricolage at 700. What separates them from body is not a second
+     family but the optical-size axis — the browser draws the display cut
+     (ink traps, tight apertures) at heading sizes and the text cut at body
+     sizes, from the one file. */
   h1, h2, h3 {
-    font-variation-settings: "wdth" 112;
     font-weight: 700;
+    font-optical-sizing: auto;
     color: var(--text-primary);
   }
 
@@ -291,6 +354,9 @@
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
+  /* Martian Mono's x-height is far taller than Bricolage's, so a number set
+     inline in a sentence read a size too big. Inside running text only. */
+  :where(p, li, dd, span.block) > .tabular { font-size: 0.9em; }
 
   :focus-visible {
     outline: 2px solid var(--accent);
@@ -312,7 +378,7 @@
   a { text-underline-offset: 0.22em; text-decoration-thickness: 1px; }
 
   /* Anchor targets clear the sticky header. */
-  [id] { scroll-margin-top: 5rem; }
+  [id] { scroll-margin-top: 5.5rem; }  /* the 4.5rem header plus room */
 
   /* Taps act immediately: no double-tap-zoom wait on controls. */
   a, button, label, [role="button"] { touch-action: manipulation; }
@@ -355,24 +421,39 @@
   box-shadow: var(--shadow-raised), var(--edge-highlight);
 }
 
-/* Eyebrow / tick labels — the small spaced mono caps used on scale markings,
-   section labels and metadata. */
+/* Tick labels — the small spaced mono caps engraved on the scale: tick
+   numbers, the threshold mark, band names, the score line under a reading.
+   Scale markings only. A field's name uses `field-label` instead: mono caps
+   on words that are not measurements is costume (type audit, 10 October). */
 @utility tick-label {
   font-family: var(--font-mono);
   font-size: var(--text-tick);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   /* --text-muted, not --text-faint: at 11px this is small text and has to
      clear 4.5:1. `faint` measures 3.4:1 and is only valid for decoration. */
   color: var(--text-muted);
 }
 
-/* The wordmark: expanded width, bold, slightly open caps. One definition for
-   the header and the footer. */
+/* A field label: the name of a value, a table column or a definition. Every
+   label that is not a scale marking uses this; see --text-label. */
+@utility field-label {
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--text-muted);
+}
+
+/* The wordmark: Martian Mono at its widest, semibold caps — the instrument's
+   nameplate, set in the face its readouts use, so the brand and the
+   measurements share one voice. One definition for the header and footer. */
 @utility wordmark {
-  font-weight: 700;
-  font-variation-settings: "wdth" 112;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-variation-settings: "wdth" 112.5;
+  letter-spacing: 0.02em;
 }
 
 /* Hairline rule that fades at both ends, like a scale engraved on a panel. */
@@ -419,6 +500,46 @@
   padding-block: var(--space-section);
 }
 
+/* A brand surface: a full-bleed block in the brand colour. Rather than giving
+   every child an on-colour variant, it redefines the semantic tokens inside
+   itself — text, lines, accent, focus — so headings, buttons, tables and the
+   focus ring re-theme themselves. Secondary text is a tint of the band's hue
+   (indigo-100 on indigo-700, 6.6:1), never grey. `surface-brand-deep` is the
+   darker bookend used by the footer. */
+@utility surface-brand {
+  background: var(--band);
+  border-top: 0;
+  --text-primary: var(--on-band);
+  --text-secondary: var(--on-band-muted);
+  --text-muted: var(--on-band-muted);
+  --text-faint: var(--on-band-muted);
+  --line: var(--on-band-line);
+  --line-strong: rgb(255 255 255 / 0.4);
+  --accent: #ffffff;
+  --accent-hover: var(--color-indigo-100);
+  --accent-contrast: var(--color-indigo-800);
+  --accent-quiet: rgb(255 255 255 / 0.16);
+  --overlay: rgb(255 255 255 / 0.12);
+  --raised: rgb(255 255 255 / 0.08);
+  color: var(--text-primary);
+}
+
+@utility surface-brand-deep {
+  background: var(--band-deep);
+  border-top: 0;
+  --text-primary: var(--on-band);
+  --text-secondary: var(--color-indigo-200);
+  --text-muted: var(--color-indigo-200);
+  --text-faint: var(--color-indigo-300);
+  --line: var(--on-band-line);
+  --line-strong: rgb(255 255 255 / 0.4);
+  --accent: #ffffff;
+  --accent-hover: var(--color-indigo-100);
+  --accent-contrast: var(--color-indigo-900);
+  --overlay: rgb(255 255 255 / 0.1);
+  color: var(--text-primary);
+}
+
 /* Data tables: hairline rows, mono tick-label headers, generous row padding.
    One definition for every table in the product (bands on /result, error
    rates on /result and /, tokens on /design). */
@@ -430,11 +551,10 @@
   & thead tr { border-bottom: 1px solid var(--line); }
   & thead th {
     padding: 0 1.5rem var(--space-stack) 0;
-    font-family: var(--font-mono);
-    font-size: var(--text-tick);
-    font-weight: 400;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+    font-family: var(--font-sans);
+    font-size: var(--text-label);
+    font-weight: 600;
+    letter-spacing: 0.005em;
     color: var(--text-muted);
     vertical-align: bottom;
   }
@@ -543,6 +663,94 @@
 @utility animate-sweep {
   transform-origin: left center;
   animation: sweep var(--duration-sweep) var(--ease-needle) both;
+}
+
+/* ============================================================================
+   The intake deck (/upload, 10 October 2026)
+
+   The timeline sits in a framed surface that reads as the place a clip goes.
+   Drop-zone language people already know, used only when it is true: the
+   dashed outline appears while a file is being dragged over the page (armed),
+   and turns solid with a wash once it is over the deck (over).
+   ========================================================================= */
+.intake-deck {
+  position: relative;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-panel), var(--edge-highlight);
+  padding: clamp(0.75rem, 0.4rem + 1.2vw, 1.5rem);
+  outline: 2px dashed transparent;
+  outline-offset: 6px;
+  transition:
+    outline-color var(--duration-fast) var(--ease-instrument),
+    outline-offset var(--duration-base) var(--ease-instrument),
+    background-color var(--duration-base) var(--ease-instrument);
+}
+.intake-deck.is-armed {
+  outline-color: var(--accent);
+}
+.intake-deck.is-over {
+  outline-style: solid;
+  outline-color: var(--accent);
+  outline-offset: 2px;
+  background: var(--accent-wash);
+}
+
+/* The way in. Below the timeline on narrow screens; laid over the unlit part
+   of it from lg, where the faint idle envelope is only texture. */
+.intake-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-stack);
+  padding-block: var(--space-group) 0.5rem;
+  text-align: center;
+}
+@media (min-width: 64rem) {
+  .intake-prompt {
+    position: absolute;
+    inset: 0 0 3.25rem 26%;
+    justify-content: center;
+    padding: 1rem;
+  }
+}
+
+.intake-glyph {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-bottom: 0.25rem;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-quiet);
+  transition:
+    background-color var(--duration-fast) var(--ease-instrument),
+    color var(--duration-fast) var(--ease-instrument),
+    transform var(--duration-base) var(--ease-instrument);
+}
+/* The recording controls: a strip under the ruler, so they never sit on top
+   of the take being drawn. */
+.intake-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-stack) var(--space-group);
+  margin-top: var(--space-stack);
+  padding-top: var(--space-stack);
+  border-top: 1px solid var(--line);
+}
+
+/* The take is live. A slow breath, not a blink. */
+.recording-dot {
+  animation: recording 1.6s var(--ease-instrument) infinite;
+}
+@keyframes recording {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-quiet); }
+  50% { opacity: 0.55; box-shadow: 0 0 0 6px var(--accent-quiet); }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -135,8 +135,8 @@ function Field({ opacity }) {
       uTime: { value: 0 },
       uSize: { value: new THREE.Vector2(WIDTH, DEPTH) },
       uLift: { value: 0.78 },
-      uQuiet: { value: new THREE.Color('#7d8988') },
-      uLoud: { value: new THREE.Color('#056e6a') },
+      uQuiet: { value: new THREE.Color('#838596') },
+      uLoud: { value: new THREE.Color('#4b2bd7') },
       uOpacity: { value: opacity },
     }),
     // Built once; values are pushed in below so a theme change never remounts

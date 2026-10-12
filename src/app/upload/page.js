@@ -8,7 +8,7 @@ import { Button } from '../../../components/ui/button';
 import { Stat } from '../../../components/ui/stat';
 import { Notice } from '../../../components/ui/notice';
 import { Stepper } from '../../../components/ui/stepper';
-import { IntakeField } from '../../../components/three/lazy';
+import { ListeningWindow } from '../../../components/ui/listening-window';
 import { storeClip, formatBytes } from '../../lib/clip';
 import {
   analyseAudioFile,
@@ -18,7 +18,8 @@ import {
   MODEL_SAMPLE_RATE,
   MODEL_WINDOW_SECONDS,
 } from '../../lib/peaks';
-import { extractAudio, MAX_VIDEO_BYTES, VIDEO_FORMATS } from '../../lib/extract';
+import { extractAudio, MAX_EXTRACT_SECONDS, MAX_VIDEO_BYTES, VIDEO_FORMATS } from '../../lib/extract';
+import { canRecord, useRecorder } from '../../lib/recorder';
 
 /* The page used to advertise "up to 5mb" and "MP3, Wav" without checking
    either. These are the numbers it now actually enforces — keep them in step
@@ -45,6 +46,73 @@ const formatName = (f) => (f === 'webm' ? 'WebM' : f.toUpperCase());
 const listFormats = (list) => list.map(formatName).join(', ');
 /* The limits are whole megabytes; formatBytes would say '5.0 MB'. */
 const wholeMB = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
+
+/* Shorter than this is a mis-click, not a clip. */
+const MIN_RECORDING_SECONDS = 1;
+
+const TIPS = [
+  'Use the original file if you have it. Re-recording through a speaker or a phone call changes the sound, and the reading with it.',
+  'Clean, studio-quality audio is the hardest case. A low reading on a clean clip is weak evidence that it is real.',
+];
+
+const ICON = {
+  viewBox: '0 0 20 20',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+};
+
+function UploadIcon({ className = 'h-4 w-4' }) {
+  return (
+    <svg {...ICON} className={className}>
+      <path d="M10 13V3.5M6 7.5l4-4 4 4M4 13.5v2a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-2" />
+    </svg>
+  );
+}
+
+function DropIcon() {
+  return (
+    <svg {...ICON} className="h-6 w-6">
+      <path d="M10 3.5V13M6 9l4 4 4-4M4 13.5v2a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-2" />
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg {...ICON} className="h-4 w-4">
+      <rect x="7" y="2.5" width="6" height="9.5" rx="3" />
+      <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="currentColor" aria-hidden="true">
+      <rect x="4" y="4" width="12" height="12" rx="2" />
+    </svg>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg {...ICON} className="h-4 w-4">
+      <path d="M11.5 2.5H6A1.5 1.5 0 0 0 4.5 4v12A1.5 1.5 0 0 0 6 17.5h8a1.5 1.5 0 0 0 1.5-1.5V6.5l-4-4Z" />
+      <path d="M11.5 2.5v4h4M8 13v-2M10 14V9.5M12 13v-2" />
+    </svg>
+  );
+}
+
+/** Seconds → '0:03.2', the take's running time. */
+function formatTake(seconds) {
+  const m = Math.floor(seconds / 60);
+  const rest = seconds - m * 60;
+  return `${m}:${rest.toFixed(1).padStart(4, '0')}`;
+}
 
 const isVideo = (name) => VIDEO_FORMATS.includes(extensionOf(name));
 
@@ -79,13 +147,17 @@ export default function UploadPage() {
   const router = useRouter();
   const inputId = useId();
   const inputRef = useRef(null);
-  const fieldRef = useRef(null);
 
+  /* `pageDrag`: a file is being dragged anywhere over the window, so the deck
+     announces itself as the place to put it. `dragging`: it is over the deck. */
+  const [pageDrag, setPageDrag] = useState(false);
   const [dragging, setDragging] = useState(false);
   /* `source` is what you chose; `file` is what gets sent. They are the same
-     file for audio. For a video, `file` is the WAV extracted from it, and
-     stays null until extraction has finished. */
+     file for audio. For a video or a recording, `file` is the WAV extracted
+     from it, and stays null until extraction has finished. */
   const [source, setSource] = useState(null);
+  /** 'file' | 'mic' — where `source` came from. */
+  const [origin, setOrigin] = useState('file');
   const [file, setFile] = useState(null);
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState(null);
@@ -99,13 +171,10 @@ export default function UploadPage() {
     return () => clearTimeout(t);
   }, [submitting]);
 
-  /* Pointer position over the intake field, normalised to 0–1 each way with y
-     measured from the top. A ref rather than state: only the render loop reads
-     it, and putting a mousemove through setState would re-render this whole page
-     sixty times a second to deliver a value React never displays. The canvas is
-     `pointer-events-none` by design, so this element does the listening and the
-     geometry reads the ref — it never intercepts a drag. */
-  const pointerRef = useRef({ x: 0.5, y: 0.5, active: false });
+  /* Recording needs MediaRecorder and a secure context. Known only after
+     mount, so the server render and the first client render agree. */
+  const [micAvailable, setMicAvailable] = useState(false);
+  useEffect(() => setMicAvailable(canRecord()), []);
 
   /* The decoded clip, used for the display, the readouts, and the handoff to
      /result. Decoding is a preview, never a gate: a browser that can't decode
@@ -118,7 +187,7 @@ export default function UploadPage() {
   // Guards against a slow decode of an abandoned file landing after a newer one.
   const decodeToken = useRef(0);
 
-  const accept = useCallback((candidate) => {
+  const accept = useCallback((candidate, from = 'file') => {
     const problem = validate(candidate);
     decodeToken.current += 1;
     const token = decodeToken.current;
@@ -136,11 +205,13 @@ export default function UploadPage() {
 
     setError(null);
     setSource(candidate);
+    setOrigin(from);
     setAnalysis(null);
     setPreviewFailed(false);
 
-    /* A video has to decode: unlike the preview, extraction is the only way
-       its audio reaches the model, so a failure here is an error. */
+    /* A video (or a recording, which arrives as WebM or MP4) has to decode:
+       unlike the preview, extraction is the only way its audio reaches the
+       model, so a failure here is an error. */
     if (isVideo(candidate.name)) {
       setFile(null);
       setExtracting(true);
@@ -166,7 +237,9 @@ export default function UploadPage() {
           setSource(null);
           setExtracting(false);
           setError(
-            "This browser couldn't read an audio track from that file. It may have no sound, or use a codec the browser can't decode — try exporting the audio as MP3 or WAV."
+            from === 'mic'
+              ? "This browser couldn't decode its own recording. Try recording again, or record with another app and choose the file."
+              : "This browser couldn't read an audio track from that file. It may have no sound, or use a codec the browser can't decode — try exporting the audio as MP3 or WAV."
           );
         });
       return;
@@ -189,56 +262,83 @@ export default function UploadPage() {
       });
   }, []);
 
-  const trackPointer = useCallback((e) => {
-    const box = fieldRef.current?.getBoundingClientRect();
-    if (!box || box.width === 0 || box.height === 0) return;
-    const p = pointerRef.current;
-    p.x = Math.min(Math.max((e.clientX - box.left) / box.width, 0), 1);
-    p.y = Math.min(Math.max((e.clientY - box.top) / box.height, 0), 1);
-    p.active = true;
-  }, []);
-
-  const releasePointer = useCallback(() => {
-    pointerRef.current.active = false;
-  }, []);
-
-  const onDragEnter = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer.items?.length) setDragging(true);
-  }, []);
-
-  const onDragLeave = useCallback(
-    (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragging(false);
-      releasePointer();
+  const recorder = useRecorder({
+    maxSeconds: MAX_EXTRACT_SECONDS,
+    onDone: (recording, seconds) => {
+      if (seconds < MIN_RECORDING_SECONDS) {
+        setError(
+          `That recording was under ${MIN_RECORDING_SECONDS} second. Speak for at least ${MODEL_WINDOW_SECONDS} seconds — that is how much the model hears.`
+        );
+        return;
+      }
+      accept(recording, 'mic');
     },
-    [releasePointer]
-  );
+    onError: setError,
+  });
+  const recording = recorder.state !== 'idle';
 
-  const onDragOver = useCallback(
-    (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      /* A drag fires dragover, not pointermove, so the swell would freeze
-         mid-drag without this. */
-      trackPointer(e);
-    },
-    [trackPointer]
-  );
+  /* Each control here unmounts the moment it is used, so focus is moved to
+     the next thing to press rather than dropped onto <body>. */
+  const chooseRef = useRef(null);
+  const recordRef = useRef(null);
+  const stopRef = useRef(null);
+  const analyseRef = useRef(null);
+  const refocus = (ref) => requestAnimationFrame(() => ref.current?.focus());
+  useEffect(() => {
+    if (recorder.state === 'recording') stopRef.current?.focus();
+  }, [recorder.state]);
+  useEffect(() => {
+    if (origin === 'mic' && file) analyseRef.current?.focus();
+  }, [origin, file]);
 
-  const onDrop = useCallback(
-    (e) => {
+  /* Busy: a drop now would land on top of a send or a take in progress. */
+  const busy = useRef(false);
+  busy.current = submitting || recording;
+
+  /* The whole window takes the drop. Without this, a file released a few
+     pixels off the deck makes the browser navigate away to play it — the page,
+     and anything chosen on it, gone. */
+  useEffect(() => {
+    let depth = 0;
+    const carriesFiles = (e) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    const enter = (e) => {
+      if (!carriesFiles(e)) return;
+      depth += 1;
+      setPageDrag(true);
+    };
+    const leave = (e) => {
+      if (!carriesFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) {
+        setPageDrag(false);
+        setDragging(false);
+      }
+    };
+    const over = (e) => {
+      if (!carriesFiles(e)) return;
       e.preventDefault();
-      e.stopPropagation();
+      e.dataTransfer.dropEffect = busy.current ? 'none' : 'copy';
+    };
+    const drop = (e) => {
+      if (!carriesFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      setPageDrag(false);
       setDragging(false);
       const dropped = e.dataTransfer.files?.[0];
-      if (dropped) accept(dropped);
-    },
-    [accept]
-  );
+      if (dropped && !busy.current) accept(dropped);
+    };
+    window.addEventListener('dragenter', enter);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('dragover', over);
+    window.addEventListener('drop', drop);
+    return () => {
+      window.removeEventListener('dragenter', enter);
+      window.removeEventListener('dragleave', leave);
+      window.removeEventListener('dragover', over);
+      window.removeEventListener('drop', drop);
+    };
+  }, [accept]);
 
   const clear = () => {
     decodeToken.current += 1;
@@ -250,6 +350,7 @@ export default function UploadPage() {
     setDecoding(false);
     setSubmitting(false);
     setError(null);
+    setOrigin('file');
     if (inputRef.current) inputRef.current.value = '';
   };
 
@@ -278,9 +379,9 @@ export default function UploadPage() {
       }
 
       storeClip({
-        name: source?.name ?? file.name,
+        name: origin === 'mic' ? 'Microphone recording' : source?.name ?? file.name,
         size: source?.size ?? file.size,
-        extracted: source !== file,
+        extracted: origin !== 'mic' && source !== file,
         duration: analysis?.duration ?? null,
         sampleRate: analysis?.sampleRate ?? null,
         channels: analysis?.channels ?? null,
@@ -302,139 +403,228 @@ export default function UploadPage() {
       ? `First ${MODEL_WINDOW_SECONDS} s analysed`
       : null;
 
+  /* What the deck draws: the live take while recording, else the clip. */
+  const shown = recording ? recorder.levels : analysis;
+  const elapsed = recorder.levels?.duration ?? 0;
+  const empty = !source && !recording;
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
 
       <main id="main" className="flex-1">
-        {/* The intake field is the page, not an illustration on it. It runs
-            the full bleed and the drop target is the field itself — you drop a
-            clip onto the surface it is about to become, rather than onto a
-            dashed rectangle that happens to sit near a picture. */}
-        <div
-          ref={fieldRef}
-          onDragEnter={onDragEnter}
-          onDragLeave={onDragLeave}
-          onDragOver={onDragOver}
-          onDrop={onDrop}
-          onPointerMove={trackPointer}
-          onPointerLeave={releasePointer}
-          className="relative isolate flex min-h-[clamp(32rem,78vh,50rem)] flex-col overflow-hidden"
-        >
-          <div className="absolute inset-0 -z-20">
-            <IntakeField
-              className="h-full w-full"
-              peaks={analysis?.peaks ?? null}
-              active={dragging}
-              pointerRef={pointerRef}
-            />
-          </div>
-
-          {/* Copy at the top, surface below it. The first arrangement put the
-              text over the field and needed a wash heavy enough to bury the
-              thing the page is built around — in dark mode it erased it
-              entirely. Reading order and depth order agree this way round:
-              you read the instruction, then look down at the instrument. The
-              wash only has to cover the top band where the two still meet. */}
-          {/* Full width, so it has no edge to read as a block. A wash
-              behind the text column alone (7 October) kept the copy legible
-              but showed as a pale rectangle over the field; this one is
-              opaque down to where the controls end, then fades, so bars
-              rising that high dissolve into it on both sides alike. */}
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[62%]"
-            style={{
-              background:
-                'linear-gradient(to bottom, var(--canvas) 0%, var(--canvas) 55%, color-mix(in oklab, var(--canvas) 70%, transparent) 78%, transparent 100%)',
-            }}
-            aria-hidden="true"
-          />
-
-          <div className="shell pb-40 pt-[calc(var(--space-section)*0.6)]">
-            <div className="animate-rise flex flex-col gap-4">
-              <Stepper current={0} />
-              {/* The headline follows the state, so the screen always says
-                  what to do next: choose, then analyse, then wait. */}
-              <h1 className="max-w-[18ch] text-display text-balance">
-                {submitting
-                  ? 'Reading your clip.'
+        <div className="shell pb-[var(--space-section)] pt-[calc(var(--space-section)*0.6)]">
+          <div className="animate-rise flex flex-col gap-4">
+            <Stepper current={0} />
+            {/* The headline follows the state, so the screen always says
+                what to do next: choose, then analyse, then wait. */}
+            <h1 className="max-w-[22ch] text-display text-balance">
+              {submitting
+                ? 'Reading your clip.'
+                : recording
+                  ? 'Listening.'
                   : source
                     ? 'Ready to analyse.'
-                    : 'Drop a clip on the surface.'}
-              </h1>
-              <p className="max-w-[48ch] text-body text-primary/80">
-                {source
-                  ? `The model reads the first ${MODEL_WINDOW_SECONDS} seconds. Nothing is stored.`
-                  : `A voice note, call recording or video. The model reads the first ${MODEL_WINDOW_SECONDS} seconds; nothing is stored.`}
-              </p>
+                    : 'Drop in a clip, or record one.'}
+            </h1>
+            <p className="max-w-[58ch] text-lead text-secondary">
+              A voice note, call recording or video{micAvailable ? ', or your own voice' : ''}.
+              The model listens to the first {MODEL_WINDOW_SECONDS} seconds — the
+              lit window below — and nothing is stored.
+            </p>
+          </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-                {source ? (
-                  <>
-                    <Button
-                      variant="primary"
-                      size="lg"
-                      onClick={analyse}
-                      loading={submitting || extracting}
-                      disabled={!file}
-                    >
-                      {submitting ? 'Analysing…' : extracting ? 'Extracting audio…' : 'Analyse clip'}
-                    </Button>
-                    {/* The file, its state, and the way to change it, on one
-                        raised chip. The line used to sit straight on the
-                        intake surface, where the bars rose through it and took
-                        its contrast — and so did the "change file" control. */}
-                    <div className="panel-raised flex min-h-[var(--hit)] items-center gap-4 py-1.5 pl-4 pr-1.5">
-                      <div className="flex min-w-0 flex-col gap-0.5">
-                        <p className="truncate text-small font-semibold text-primary">{source.name}</p>
-                        <p className="text-small text-secondary">
-                          {formatBytes(source.size)} ·{' '}
-                          {submitting
-                            ? 'Sending to the model'
-                            : extracting
-                              ? 'Extracting audio'
-                              : decoding
-                                ? 'Reading waveform'
-                                : source !== file
-                                  ? 'Audio extracted, ready'
-                                  : 'Ready'}
-                        </p>
-                      </div>
-                      {!submitting && (
-                        <Button variant="quiet" size="sm" onClick={clear}>
-                          Change file
-                        </Button>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
+          {/* The intake deck (10 October 2026). One framed surface that is
+              obviously the place a clip goes: the timeline of what the model
+              hears, with the way in — drop, choose or record — on top of it
+              until a clip arrives. Dragging a file anywhere over the page
+              outlines it; over the deck itself, it lights. */}
+          <div
+            onDragEnter={() => setDragging(true)}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
+            }}
+            className={`intake-deck mt-[var(--space-head)] ${
+              dragging ? 'is-over' : pageDrag && !(submitting || recording) ? 'is-armed' : ''
+            }`}
+          >
+            <div className="relative">
+              <ListeningWindow
+                peaks={shown?.peaks ?? null}
+                duration={shown?.duration ?? null}
+                active={dragging}
+                live={recording}
+                dim={empty}
+              />
+
+              {empty && (
+                <div className="intake-prompt">
+                  <span className="intake-glyph" aria-hidden="true">
+                    {/* Over the deck the arrow turns to point into the tray:
+                        "put it here", not "send it off". */}
+                    {dragging ? <DropIcon /> : <UploadIcon className="h-6 w-6" />}
+                  </span>
+                  <p className="text-h3 font-semibold text-primary" aria-live="polite">
+                    {dragging ? 'Release to load it' : 'Drop an audio or video file here'}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
                     {/* Opens the input rather than wrapping it in a label: a
                         button inside a label is invalid nesting, and this keeps
                         the control a real button for keyboard and AT. */}
                     <Button
+                      ref={chooseRef}
                       variant="primary"
                       size="lg"
                       onClick={() => inputRef.current?.click()}
                       aria-controls={inputId}
                     >
+                      <UploadIcon className="h-4 w-4" />
                       Choose a file
                     </Button>
-                    <p className="text-small text-secondary">
-                      or drag one anywhere on this panel
-                    </p>
-                    {/* Its own line, in the body face: as a mono caption
-                        squeezed beside the button it read as a stray label. */}
-                    <p className="w-full text-small text-muted">
-                      {listFormats(FORMATS)} up to {wholeMB(MAX_BYTES)}.{' '}
-                      {listFormats(VIDEO_FORMATS)} up to {wholeMB(MAX_VIDEO_BYTES)}.
-                    </p>
-                  </>
-                )}
-              </div>
+                    {micAvailable && (
+                      <>
+                        <span className="text-small text-muted">or</span>
+                        <Button
+                          ref={recordRef}
+                          variant="secondary"
+                          size="lg"
+                          onClick={() => {
+                            setError(null);
+                            recorder.start();
+                          }}
+                        >
+                          <MicIcon />
+                          Record
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-small text-muted">
+                    {listFormats(FORMATS)} up to {wholeMB(MAX_BYTES)} ·{' '}
+                    {listFormats(VIDEO_FORMATS)} up to {wholeMB(MAX_VIDEO_BYTES)}
+                  </p>
+                </div>
+              )}
 
-              {/* The wait is the most important thing on screen while it lasts,
-                  so it gets body text in the primary ink, not a caption. */}
+            </div>
+
+            {recording && (
+              <div className="intake-strip">
+                <div className="flex min-w-0 items-center gap-4">
+                  <span
+                    className={`h-3 w-3 flex-none rounded-full bg-accent ${
+                      recorder.state === 'recording' ? 'recording-dot' : 'opacity-40'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className="tabular w-[6ch] flex-none text-h3 text-primary">{formatTake(elapsed)}</span>
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <p className="text-small font-semibold text-primary" aria-live="polite">
+                      {recorder.state === 'requesting'
+                        ? 'Waiting for microphone permission'
+                        : elapsed < MODEL_WINDOW_SECONDS
+                          ? 'Speak — the lit window fills first'
+                          : 'The model has its 4 seconds. Stop when you are done.'}
+                    </p>
+                    <p className="text-small text-secondary">
+                      A clip played through a speaker changes its sound; the original file reads better.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-none items-center gap-2">
+                  <Button
+                    variant="quiet"
+                    size="md"
+                    onClick={() => {
+                      recorder.cancel();
+                      refocus(recordRef);
+                    }}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    ref={stopRef}
+                    variant="primary"
+                    size="md"
+                    onClick={recorder.stop}
+                    disabled={recorder.state !== 'recording'}
+                  >
+                    <StopIcon />
+                    Stop
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-[var(--space-group)] grid items-start gap-x-16 gap-y-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+            <div className="flex flex-col items-start gap-4">
+              {source && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    ref={analyseRef}
+                    variant="primary"
+                    size="lg"
+                    onClick={analyse}
+                    loading={submitting || extracting}
+                    disabled={!file}
+                  >
+                    {submitting
+                      ? 'Analysing…'
+                      : extracting
+                        ? origin === 'mic'
+                          ? 'Preparing recording…'
+                          : 'Extracting audio…'
+                        : 'Analyse clip'}
+                  </Button>
+                  {/* The clip, its state, and the way to change it, on one chip. */}
+                  <div className="flex min-h-[var(--hit)] max-w-full items-center gap-4 rounded-[var(--radius-md)] border border-line bg-raised py-1.5 pl-4 pr-1.5 shadow-[var(--shadow-panel)]">
+                    <span className="flex-none text-accent" aria-hidden="true">
+                      {origin === 'mic' ? <MicIcon /> : <FileIcon />}
+                    </span>
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <p className="truncate text-small font-semibold text-primary">
+                        {origin === 'mic' ? 'Microphone recording' : source.name}
+                      </p>
+                      <p className="text-small text-secondary">
+                        {origin === 'mic' && analysis
+                          ? formatDuration(analysis.duration)
+                          : formatBytes(source.size)}{' '}
+                        ·{' '}
+                        {submitting
+                          ? 'Sending to the model'
+                          : extracting
+                            ? origin === 'mic'
+                              ? 'Preparing'
+                              : 'Extracting audio'
+                            : decoding
+                              ? 'Reading waveform'
+                              : origin === 'mic'
+                                ? 'Recorded, ready'
+                                : source !== file
+                                  ? 'Audio extracted, ready'
+                                  : 'Ready'}
+                      </p>
+                    </div>
+                    {!submitting && (
+                      <Button
+                        variant="quiet"
+                        size="sm"
+                        onClick={() => {
+                          const fromMic = origin === 'mic';
+                          clear();
+                          refocus(fromMic && micAvailable ? recordRef : chooseRef);
+                        }}
+                      >
+                        {origin === 'mic' ? 'Start over' : 'Change file'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* The wait is the most important thing on screen while it
+                  lasts, so it gets body text in the primary ink. */}
               <p
                 aria-live="polite"
                 className={`flex max-w-[52ch] items-center gap-2.5 text-body text-primary ${
@@ -449,19 +639,33 @@ export default function UploadPage() {
                   : ''}
               </p>
 
-              {error && (
-                <Notice tone="danger" className="mt-2">
-                  {error}
-                </Notice>
-              )}
+              {error && <Notice tone="danger">{error}</Notice>}
 
               {previewFailed && source && (
-                <Notice className="mt-2">
+                <Notice>
                   This browser couldn&apos;t decode the file for a preview —
                   often the case for FLAC outside Chrome. It can still be
                   analysed; the server decodes it separately.
                 </Notice>
               )}
+            </div>
+
+            {/* The two caveats the window cannot draw. */}
+            <div className={source ? '' : 'lg:col-span-2'}>
+              <h2 className="field-label">For a reading worth more</h2>
+              {/* Beside the clip once one is chosen; two columns under the
+                  empty deck, where a lone right-hand column read as stranded. */}
+              <ul className={`mt-3 grid gap-3 ${source ? '' : 'lg:grid-cols-2 lg:gap-x-16'}`}>
+                {TIPS.map((tip) => (
+                  <li key={tip} className="flex gap-2.5 text-small text-secondary">
+                    <svg viewBox="0 0 20 20" className="mt-[0.2em] h-4 w-4 flex-none text-accent" fill="none"
+                         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="m4.5 10.5 3.5 3.5 7.5-8" />
+                    </svg>
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
 

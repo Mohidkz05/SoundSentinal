@@ -50,6 +50,6 @@ export const SignalMark = dynamic(
   () => import('./signal-mark').then((m) => m.SignalMark),
   {
     ssr: false,
-    loading: () => <FlatMark className="h-7 w-7 shrink-0 p-0.5 text-accent" />,
+    loading: () => <FlatMark className="h-9 w-9 shrink-0 p-0.5 text-accent" />,
   }
 );

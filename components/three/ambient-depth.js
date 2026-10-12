@@ -104,7 +104,7 @@ function Depth() {
     () => ({
       uTime: { value: 0 },
       uPixelRatio: { value: 1 },
-      uColour: { value: new THREE.Color('#056e6a') },
+      uColour: { value: new THREE.Color('#4b2bd7') },
       uOpacity: { value: 0.5 },
     }),
     []

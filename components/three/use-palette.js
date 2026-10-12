@@ -14,7 +14,7 @@ import { useTheme } from '../theme';
  * future change to a token, reach the geometry for free.
  *
  * `getComputedStyle` substitutes `var()` chains at computed-value time, so
- * `--accent` comes back as the literal hex of `--color-teal-700`, not as the
+ * `--accent` comes back as the literal hex of `--color-indigo-700`, not as the
  * reference.
  */
 
@@ -38,20 +38,20 @@ const TOKENS = {
 /* Light-theme values, used for the single render that happens before the first
    effect runs. Without these the geometry would flash black. */
 const FALLBACK = {
-  canvas: '#f7fbfb',
-  panel: '#eff5f4',
+  canvas: '#f9fafd',
+  panel: '#f2f3fa',
   raised: '#ffffff',
-  line: '#d7e0df',
-  lineStrong: '#bfcac9',
-  accent: '#056e6a',
-  accentQuiet: '#b2e5e1',
-  faint: '#7d8988',
-  muted: '#5f6c6b',
-  primary: '#142221',
-  unlikely: '#683baf',
-  possibly: '#6a549a',
-  likely: '#ad5b32',
-  veryLikely: '#bb4f05',
+  line: '#d5d6e3',
+  lineStrong: '#b4b6c5',
+  accent: '#4b2bd7',
+  accentQuiet: '#e5e9ff',
+  faint: '#838596',
+  muted: '#65677c',
+  primary: '#12122e',
+  unlikely: '#0079b5',
+  possibly: '#396a81',
+  likely: '#976346',
+  veryLikely: '#c74200',
 };
 
 function read() {

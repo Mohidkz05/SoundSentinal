@@ -268,8 +268,8 @@ function Surface({ peaks, energy, pointerRef }) {
       uEnergy: { value: 0 },
       uPointer: { value: new THREE.Vector2(0.5, 0.5) },
       uFocus: { value: 0 },
-      uQuiet: { value: new THREE.Color('#bfcac9') },
-      uLoud: { value: new THREE.Color('#056e6a') },
+      uQuiet: { value: new THREE.Color('#b4b6c5') },
+      uLoud: { value: new THREE.Color('#4b2bd7') },
       uOpacity: { value: 0.92 },
     }),
     [blank]
@@ -424,14 +424,14 @@ function resample(peaks, n) {
 function FlatSurface({ peaks, active }) {
   const bars = peaks?.length ? resample(peaks, FLAT_BARS) : IDLE;
   return (
-    <div className="absolute inset-x-0 bottom-0 flex h-[46%] items-end gap-[2px] px-[var(--gutter)] pb-10">
+    <div className="absolute inset-0 flex items-end gap-[2px] px-5 pb-5 pt-2 sm:px-8">
       {bars.map((v, i) => (
         <span
           key={i}
           className="flex-1 rounded-full bg-accent transition-[height,opacity] duration-[var(--duration-base)] ease-[var(--ease-instrument)]"
           style={{
             height: `${Math.max(v, 0.04) * (active ? 100 : 82)}%`,
-            opacity: peaks?.length ? 0.55 : active ? 0.4 : 0.18,
+            opacity: peaks?.length ? 0.7 : active ? 0.55 : 0.3,
           }}
         />
       ))}

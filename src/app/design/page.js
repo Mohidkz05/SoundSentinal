@@ -258,7 +258,7 @@ export default function DesignSystem() {
               <span className="font-semibold text-[var(--text-primary)]">
                 Spectral field
               </span>{' '}
-              — a spectrogram of speech as a ridgeline. Brand teal, because it
+              — a spectrogram of speech as a ridgeline. Brand indigo, because it
               pictures the input, not a result.
             </p>
           </div>

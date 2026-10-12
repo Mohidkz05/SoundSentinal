@@ -9,6 +9,8 @@ import { Notice } from '../../../components/ui/notice';
 import { Stepper } from '../../../components/ui/stepper';
 import { SectionHead } from '../../../components/ui/section-head';
 import { ErrorRates } from '../../../components/ui/error-rates';
+import { Reveal, Stagger, StaggerItem } from '../../../components/motion/reveal';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@components/ui/accordion';
 import { VerdictScale } from '../../../components/ui/verdict-scale';
 import { WaveformDisplay } from '../../../components/three/lazy';
 import { readClip, formatBytes } from '../../lib/clip';
@@ -64,18 +66,19 @@ function bandRange(band) {
   return `${formatScore(band.from)} to ${formatScore(band.to)}`;
 }
 
-/* A native disclosure: keyboard and screen-reader behaviour for free. */
+/* shadcn/ui's Accordion (Radix): keyboard and screen-reader behaviour, and
+   an animated open/close where the native <details> snapped. Several can be
+   open at once — they are references, not steps. */
 function Detail({ title, children }) {
   return (
-    <details className="group border-b border-line">
-      <summary className="flex min-h-[var(--hit)] cursor-pointer list-none items-center justify-between gap-4 py-3 text-body font-semibold text-primary hover:text-accent [&::-webkit-details-marker]:hidden">
+    <AccordionItem value={title} className="border-line">
+      <AccordionTrigger className="min-h-[var(--hit)] items-center py-3 text-body font-semibold text-primary hover:text-accent hover:no-underline [&>svg]:size-5 [&>svg]:translate-y-0">
         {title}
-        <svg viewBox="0 0 24 24" className="h-4 w-4 flex-none transition-transform duration-[var(--duration-base)] group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M6 9.5l6 6 6-6" />
-        </svg>
-      </summary>
-      <div className="flex flex-col gap-[var(--space-stack)] pb-5 text-small text-secondary">{children}</div>
-    </details>
+      </AccordionTrigger>
+      <AccordionContent className="flex max-w-[68ch] flex-col gap-[var(--space-stack)] pb-5 text-small text-secondary">
+        {children}
+      </AccordionContent>
+    </AccordionItem>
   );
 }
 
@@ -132,7 +135,7 @@ export default function ResultPage() {
             <>
               <div className="mt-8 flex flex-wrap items-end gap-x-12 gap-y-6">
                 <div className="flex flex-col gap-2">
-                  <p className="tick-label">
+                  <p className="field-label">
                     Model confidence it is {clears ? 'AI generated' : 'real'}
                   </p>
                   <output
@@ -182,11 +185,13 @@ export default function ResultPage() {
 
               {/* The next thing to do sits with the reading, not under eight
                   screens of explanation. */}
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                <Button href="/upload" variant="primary">
+              {/* On a phone the two stack full-width: wrapped, the quiet one
+                  started its text a padding's width in from the column edge. */}
+              <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <Button href="/upload" variant="primary" className="w-full sm:w-auto">
                   Analyse another clip
                 </Button>
-                <Button href="#how-often-wrong" variant="quiet">
+                <Button href="#how-often-wrong" variant="quiet" className="w-full sm:w-auto">
                   How often it is wrong
                 </Button>
               </div>
@@ -304,7 +309,7 @@ export default function ResultPage() {
           </SectionHead>
 
           {measured.length > 0 ? (
-            <div className="mt-[var(--space-head)]">
+            <Reveal className="panel-raised mt-[var(--space-head)] p-5 sm:p-8">
               <ErrorRates measured={measured} />
               <Notice className="mt-[var(--space-group)]">
                 It misses more clean, studio-quality fakes than noisy ones, and
@@ -313,7 +318,7 @@ export default function ResultPage() {
                   If a clip sounds studio-clean, a low reading is not evidence it is real.
                 </strong>
               </Notice>
-            </div>
+            </Reveal>
           ) : (
             <p className="mt-[var(--space-head)] max-w-[68ch] text-small text-muted">
               {hasReading
@@ -323,26 +328,28 @@ export default function ResultPage() {
           )}
         </section>
 
-        {/* Limits: the weaknesses stay where the reading is (PRODUCT.md). */}
-        <section className="band">
+        {/* Limits: the weaknesses stay where the reading is (PRODUCT.md), and
+            get the page's colour band — the strongest surface on it — so the
+            caveats are the thing a skimming reader cannot miss. */}
+        <section className="surface-brand shell py-[var(--space-section)]">
           <div className="grid gap-x-14 gap-y-[var(--space-group)] lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
             <h2 className="text-h2 text-balance">What it can&apos;t tell you</h2>
-            <ul className="grid gap-x-12 gap-y-[var(--space-group)] sm:grid-cols-2">
+            <Stagger as="ul" className="grid gap-x-12 gap-y-[var(--space-group)] sm:grid-cols-2">
               {LIMITS.map(([title, body]) => (
-                <li key={title} className="flex flex-col gap-[var(--space-tight)]">
-                  <p className="text-small font-semibold text-primary">{title}</p>
+                <StaggerItem as="li" key={title} className="flex flex-col gap-[var(--space-tight)]">
+                  <p className="text-body font-semibold text-primary">{title}</p>
                   <p className="text-small text-secondary">{body}</p>
-                </li>
+                </StaggerItem>
               ))}
-            </ul>
+            </Stagger>
           </div>
         </section>
 
         {/* Details, closed by default: everything a reader who wants to check
             the reading needs, without making everyone else read it. */}
-        <section className="band">
+        <section className="band border-t-0">
           <h2 className="text-h2">Details</h2>
-          <div className="mt-[var(--space-group)] flex max-w-[72ch] flex-col border-t border-line">
+          <Accordion type="multiple" className="mt-[var(--space-group)] flex max-w-[72ch] flex-col border-t border-line">
             <Detail title="How the scale works">
               <p>
                 {hasReading ? (
@@ -394,7 +401,7 @@ export default function ResultPage() {
                       key={term}
                       className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-b border-line py-2.5 last:border-0"
                     >
-                      <dt className="tick-label">{term}</dt>
+                      <dt className="field-label">{term}</dt>
                       <dd className="text-small text-secondary">{value}</dd>
                     </div>
                   ))}
@@ -403,7 +410,7 @@ export default function ResultPage() {
                 <p>The model card is read from the checkpoint, so it appears once a clip has been analysed.</p>
               )}
             </Detail>
-          </div>
+          </Accordion>
         </section>
       </main>
 

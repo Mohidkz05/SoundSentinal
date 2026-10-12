@@ -21,7 +21,7 @@ export function SectionHead({ id, title, children, aside, level = 2 }) {
       {(children || aside) && (
         <div className="flex flex-col gap-[var(--space-stack)] lg:flex-row lg:items-start lg:justify-between lg:gap-10">
           {children && (
-            <div className="flex max-w-[72ch] flex-col gap-[var(--space-stack)] text-small text-secondary">
+            <div className="flex max-w-[68ch] flex-col gap-[var(--space-stack)] text-body text-secondary">
               {children}
             </div>
           )}

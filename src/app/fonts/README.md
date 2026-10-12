@@ -1,11 +1,13 @@
 # Fonts
 
-Self-hosted, Latin subset, downloaded from Google Fonts on 1 October 2026.
+Self-hosted, Latin subset, from Fontsource (`@fontsource-variable/*@5.3.0`,
+the "standard" axis files) on 10 October 2026. They replaced Archivo and IBM
+Plex Mono, which read as generic.
 
 | File | Face | Licence |
 | --- | --- | --- |
-| `archivo-latin-100-900.woff2` | Archivo, variable (wdth 62–125, wght 100–900) | SIL Open Font License 1.1 — Omnibus-Type |
-| `plex-latin-{400,500,600}.woff2` | IBM Plex Mono | SIL Open Font License 1.1 — IBM Corp. |
+| `bricolage-grotesque-latin-variable.woff2` | Bricolage Grotesque, variable (wght 200–800, wdth 75–100, opsz 12–96) | SIL Open Font License 1.1 — Mathieu Triay |
+| `martian-mono-latin-variable.woff2` | Martian Mono, variable (wght 100–800, wdth 75–112.5) | SIL Open Font License 1.1 — Evil Martians |
 
 Both licences allow commercial use, embedding and redistribution with the
 product. Loaded by `src/app/layout.js` through `next/font/local`.

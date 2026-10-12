@@ -8,7 +8,7 @@ import React from 'react';
 export function Stat({ label, value, note }) {
   return (
     <div className="flex flex-col gap-[var(--space-tight)]">
-      <p className="tick-label">{label}</p>
+      <p className="field-label">{label}</p>
       <p className="tabular text-h3 leading-none text-primary">{value}</p>
       {note && <p className="text-small text-muted">{note}</p>}
     </div>

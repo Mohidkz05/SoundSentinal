@@ -15,6 +15,9 @@ import {
   usePrefersReducedMotion,
 } from '../three/use-stage';
 import { VerdictScale } from './verdict-scale';
+import { motion } from 'motion/react';
+import { ToggleGroup, ToggleGroupItem } from '@components/ui/toggle-group';
+import { duration, easing } from '../../src/lib/motion';
 
 /**
  * The home page's hook: a real reading, shown before anyone uploads anything.
@@ -126,24 +129,34 @@ export function SampleReading({ className = '' }) {
   return (
     <figure ref={hostRef} className={`panel-raised p-5 sm:p-6 ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="tick-label" id="sample-label">Sample reading</p>
-        <div role="group" aria-labelledby="sample-label" className="flex gap-1 rounded-[var(--radius-md)] border border-line p-1">
+        <p className="field-label" id="sample-label">Sample reading</p>
+        {/* shadcn/ui's ToggleGroup (Radix: one tab stop, arrow keys move
+            between options), with a Motion-driven highlight that slides to the
+            chosen sample instead of jumping. */}
+        <ToggleGroup
+          type="single"
+          value={String(index)}
+          onValueChange={(v) => v !== '' && choose(Number(v))}
+          aria-labelledby="sample-label"
+          className="relative gap-1 rounded-[var(--radius-md)] border border-line bg-panel p-1"
+        >
           {samples.map((s, i) => (
-            <button
+            <ToggleGroupItem
               key={s.id}
-              type="button"
-              aria-pressed={i === index}
-              onClick={() => choose(i)}
-              className={`min-h-[var(--hit)] rounded-[var(--radius-sm)] px-3.5 text-small transition-colors duration-[var(--duration-fast)] ease-[var(--ease-instrument)] ${
-                i === index
-                  ? 'bg-overlay font-semibold text-primary'
-                  : 'text-secondary hover:text-primary'
-              }`}
+              value={String(i)}
+              className="relative min-h-[var(--hit)] rounded-[var(--radius-sm)] px-3.5 text-small text-secondary hover:bg-transparent hover:text-primary data-[state=on]:bg-transparent data-[state=on]:font-semibold data-[state=on]:text-primary"
             >
+              {i === index && (
+                <motion.span
+                  layoutId="sample-toggle-highlight"
+                  className="absolute inset-0 -z-10 rounded-[var(--radius-sm)] bg-raised shadow-[var(--shadow-panel)]"
+                  transition={{ duration: duration.base, ease: easing.instrument }}
+                />
+              )}
               {s.title}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </div>
 
       {/* The clip. Teal, because it is the input, not a result (DESIGN.md
@@ -192,7 +205,7 @@ export function SampleReading({ className = '' }) {
       {/* The reading. Three channels, as on /result: number, tier name,
           needle position. Hue is the tier's, never the brand's. */}
       <div className="mt-5" aria-live={auto ? 'off' : 'polite'}>
-        <p className="tick-label">Model confidence it is {flagged ? 'AI generated' : 'real'}</p>
+        <p className="field-label">Model confidence it is {flagged ? 'AI generated' : 'real'}</p>
         <div className="mt-2 flex flex-wrap items-end gap-x-5 gap-y-1">
           <output
             className="font-mono text-readout font-medium tabular"
@@ -204,8 +217,12 @@ export function SampleReading({ className = '' }) {
             {tier.headline}
           </p>
         </div>
-        <p className="tick-label tabular mt-2">
-          Score {formatScore(reading.score)} · threshold {formatScore(threshold)}
+        {/* A sentence, so sentence type: the same line /result shows under
+            its reading, with the two numbers in the mono face. It was 12px
+            mono caps, the smallest visible text on the home page. */}
+        <p className="mt-2 text-small text-secondary">
+          Score <span className="tabular font-semibold text-primary">{formatScore(reading.score)}</span>
+          {' · '}threshold <span className="tabular font-semibold text-primary">{formatScore(threshold)}</span>
         </p>
       </div>
 

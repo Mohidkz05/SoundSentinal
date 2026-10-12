@@ -147,7 +147,7 @@ function Field({ score, threshold, bandLow }) {
       uTime: { value: 0 },
       uScatter: { value: target },
       uPixelRatio: { value: 1 },
-      uColour: { value: new THREE.Color('#6a549a') },
+      uColour: { value: new THREE.Color('#396a81') },
       uOpacity: { value: 0.62 },
     }),
     [] // eslint-disable-line react-hooks/exhaustive-deps
