@@ -19,6 +19,7 @@ from model import (
     CLASS_NAMES,
     DEFAULT_ARCH,
     DEFAULT_FRONTEND,
+    DEFAULT_PAD,
     N_LFCC,
     MAX_LEN,
     N_MELS,
@@ -135,6 +136,10 @@ def load_model():
     # against a line drawn for degraded ones.
     degradation = (payload.get("input_degradation") if isinstance(payload, dict) else None) or "none"
 
+    # How a clip shorter than the window is filled (model.pad_waveform), as the
+    # checkpoint was trained and its threshold fitted.
+    pad = (payload.get("pad") if isinstance(payload, dict) else None) or DEFAULT_PAD
+
     # The representation and the network description are read off the
     # checkpoint for the same reason every other field here is: a hand-written
     # model card looks like provenance while describing whichever run someone
@@ -193,9 +198,10 @@ def load_model():
 
     print(f"Loaded model weights from {path}")
     print(f"Decision threshold: {threshold:.4g} ({info['threshold_source']})")
-    print(f"Architecture: {arch}, front-end: {frontend}, input degradation: {degradation}")
+    print(f"Architecture: {arch}, front-end: {frontend}, input degradation: {degradation}, "
+          f"short clips padded by {pad}")
     calibration = (payload.get("calibration") or {}) if isinstance(payload, dict) else {}
-    return net, float(threshold), calibrated, info, frontend, calibration, degradation
+    return net, float(threshold), calibrated, info, frontend, calibration, degradation, pad
 
 
 def logit(p):
@@ -204,7 +210,8 @@ def logit(p):
     return math.log(p) - math.log1p(-p)
 
 
-model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO, FRONTEND, CALIBRATION, DEGRADATION = load_model()
+(model, THRESHOLD, THRESHOLD_CALIBRATED, MODEL_INFO, FRONTEND, CALIBRATION, DEGRADATION,
+ PAD) = load_model()
 
 # ---------------------------------------------------------------------------
 # The reading's scale. SSL-AASIST pushes P(spoof) to within a hair of 0 or 1
@@ -278,6 +285,10 @@ def load_measured():
             print(f"Skipping {f.name}: measured with input degradation "
                   f"{report.get('input_degradation') or 'none'}, serving {DEGRADATION}")
             continue
+        if (report.get("pad") or DEFAULT_PAD) != PAD:
+            print(f"Skipping {f.name}: measured with {report.get('pad') or DEFAULT_PAD} "
+                  f"padding, serving {PAD}")
+            continue
         name, about = MEASURED_SETS.get(report.get("dataset"), (report.get("corpus"), None))
         measured.append({
             "set": name,
@@ -315,7 +326,7 @@ transform_pipeline = build_transform(FRONTEND)
 def preprocess_audio(audio_file):
     waveform, sample_rate = load_audio(audio_file)
     spectrogram = preprocess_waveform(waveform, sample_rate, transform_pipeline,
-                                      degradation=DEGRADATION)
+                                      degradation=DEGRADATION, pad=PAD)
     # Add a "batch" dimension for the model
     return spectrogram.unsqueeze(0)
 

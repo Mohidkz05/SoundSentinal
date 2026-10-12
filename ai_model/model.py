@@ -251,8 +251,32 @@ def cleanliness_db(waveform, sample_rate, max_len=MAX_LEN):
     return float(torch.quantile(level, 0.95) - torch.quantile(level, 0.10))
 
 
+# --- Padding a short clip ----------------------------------------------------
+# What fills the window when a clip is shorter than it. "zero" appends digital
+# silence and is what every checkpoint before Finding 23 was trained and scored
+# with. "repeat" loops the clip, as upstream AASIST does. RESULTS.md Finding 23:
+# with zero-padding, real clips under 2 s were 19% of People's Speech and 42%
+# of the clips that set the threshold. The choice is stored in the checkpoint
+# (`pad`) and read back by calibrate.py, evaluate.py and app.py, like the
+# front-end: a model must be scored with the padding it was trained with.
+PAD_MODES = ("zero", "repeat")
+DEFAULT_PAD = "zero"
+
+
+def pad_waveform(waveform, max_len=MAX_LEN, pad=DEFAULT_PAD):
+    """(1, n) with n <= max_len -> (1, max_len)."""
+    if pad not in PAD_MODES:
+        raise ValueError(f"Unknown pad mode {pad!r}; choose from {PAD_MODES}.")
+    n = waveform.shape[1]
+    if n >= max_len:
+        return waveform[:, :max_len]
+    if pad == "repeat" and n > 0:
+        return waveform.repeat(1, -(-max_len // n))[:, :max_len]
+    return F.pad(waveform, (0, max_len - n))
+
+
 def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_LEN,
-                        degradation="none"):
+                        degradation="none", pad=DEFAULT_PAD):
     """
     Waveform -> standardized features, shape (1, C, frames).
 
@@ -271,17 +295,14 @@ def preprocess_waveform(waveform, sample_rate, transform_pipeline, max_len=MAX_L
     detector should not care how loud the clip is.
 
     Downmix to mono, resample to SAMPLE_RATE, truncate to max_len, degrade (see
-    degrade_waveform; "none" by default), pad to max_len, apply the transform,
+    degrade_waveform; "none" by default), pad to max_len (pad_waveform; zeros
+    by default), apply the transform,
     then standardize per sample. Degrading after truncation keeps the codec off
     the padding; degrading before padding keeps silence silent.
     """
     waveform = standard_waveform(waveform, sample_rate, max_len)
     waveform = degrade_waveform(waveform, degradation)
-    if waveform.shape[1] >= max_len:
-        waveform = waveform[:, :max_len]
-    else:
-        padding = max_len - waveform.shape[1]
-        waveform = F.pad(waveform, (0, padding))
+    waveform = pad_waveform(waveform, max_len, pad)
 
     spectrogram = transform_pipeline(waveform)
 

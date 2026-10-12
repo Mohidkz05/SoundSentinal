@@ -2401,6 +2401,197 @@ changes to `ai_model/` applied as `f22.patch` (sha256 `65df04c5e03fb849…`),
 because they are not yet committed; the logs' `commit` line reads `4749ab6`.
 Checkpoints: `.../ssl-aasist[-4w]/rawboost5/plus-speechfake+synth20/plus-librispeech-bonafide/condition/nodp/`.
 
+### Stage A result (13 October): D failed A1 and A4 — outcome **No effect**
+
+Training finished 03:37 (D, 13 h 36 min) and 03:41 (C, 13 h 31 min);
+`best.pth` is epoch 4 for both. Dev EER by epoch: D 11.94 / 5.04 / 4.24 /
+3.05%, C 5.74 / 3.83 / 2.89 / 2.87%. The chained calibration and Stage A jobs
+listed above ran by themselves.
+
+| Bar | D (four labels) | C (control, two labels) | Candidate A (F21) | Served (F18) |
+| --- | --- | --- | --- | --- |
+| Threshold (log-odds, People's Speech 1%) | +5.20 | +6.02 | +7.60 | +7.07 |
+| A1: Qwen3-TTS + VoxCPM fakes passed ≤ 25% | **100.00% — fail** | 100.00% | 39.80% | 73.30% |
+| A2: People's Speech check half flagged ≤ 2% | 0.45% — pass | 0.77% | 1.31% | |
+| A3: `heldout-a` real flagged ≤ 3% | 0.00% — pass | 0.00% | 0.00% | 1.64% |
+| A4: SpeechFake dev fakes passed ≤ 12.94% | **23.70% — fail** | 12.54% | 6.86% | 10.94% |
+
+Per model, passed at the threshold (EER in brackets), D then C: Qwen3-TTS 0.6B
+100% (31.39) / 100% (16.79); Qwen3-TTS 1.7B 100% (32.18) / 100% (16.61);
+VoxCPM 0.5B 100% (32.00) / 100% (11.62); VoxCPM 1.5 100% (28.80) / 100%
+(11.97); Chatterbox 35.40% (0.61) / 36.40% (0.36); Chatterbox Turbo 24.20%
+(0.18) / 25.80% (0.22); SpeechT5 7.70% (0.09) / 3.00% (0.09). `heldout-a`
+pooled EER 24.06% (D), 10.31% (C). SpeechFake dev EER 4.75% (D), 4.41% (C).
+
+**Outcome, by the rule above: No effect. Stage B is not run, In-the-Wild is
+not read, nothing is served; Finding 18 stays.**
+
+What the numbers say, separately from the outcome. The threshold did fall as
+expected (+5.20, inside the predicted +4.5 to +6.5), but the fakes fell
+further. Every Qwen3-TTS and VoxCPM clip passes, in D **and in the control**,
+whose only difference from candidate A is the channel applied to half the
+training clips. So the cause is the audio, not the four labels: adding the
+channel undid what Finding 21 fixed. D scores these fakes at a median of −5.0
+to −5.3, the same as the genuine LibriSpeech clips beside them (−5.51).
+Chatterbox, which candidate A caught at ≤ 2.20% passed, now passes 24–36%. The
+expectation written before the run (A1 between 20% and 35%, C between A and D)
+was wrong on both counts. Not established: whether these runs also miss the
+Qwen3-TTS/VoxCPM clips they trained on, or whether four epochs was simply too
+few for the harder task (D's dev EER was still falling: 4.24% → 3.05%).
+
+**Reported, not criteria: the channel label** (job 60957584, `diag/cond_f22.py`,
+scores in `cond_f22.csv` beside D's checkpoint). D calls 73.0% of People's
+Speech clips "through a channel" and 1.41% of `heldout-a`'s genuine
+LibriSpeech; of the `heldout-a` fakes, 0–4.6% by model. So the second label did
+learn something about recordings it was not made from: public-meeting audio
+reads as processed, audiobook audio as recorded. It did not help the score.
+Of the People's Speech clips D flags, all but one are ones it calls through a
+channel (flagged 1.00% of those, 0.04% of the rest).
+
+### Post-hoc diagnostic (13 October): what sets candidate A's threshold
+
+Run while Finding 22 was training, and before its result was known. A
+diagnostic, not an experiment: it reads the People's Speech calibration sample
+(the same 10,000 clips and halves as `calibrate.py`) and `heldout-a`, on
+Finding 21's candidate A. No Stage B set, no training, no outcome changes.
+Job 60957530 (L40S, 17 min; an earlier attempt, 60957349, died on a file-handle
+limit), `diag/diag_tail.py`, per-clip scores in `diag_tail.csv` beside
+candidate A's checkpoint. The script reproduces `calibrate.py` and Stage A
+exactly before doing anything else: threshold +7.6049, check half 1.31%,
+Qwen3-TTS + VoxCPM passed 39.80%.
+
+**1. Short clips padded with silence are a large part of it.** A clip shorter
+than 4 s has always been filled with digital silence, in training and at
+scoring. People's Speech clips at candidate A's threshold, by length:
+
+| Length | Clips | Median score, as served | Median score, clip repeated instead | Flagged, as served | Flagged, repeated | Share of all flagged clips |
+| --- | --- | --- | --- | --- | --- | --- |
+| under 2 s | 1,942 | −0.67 | −3.58 | 2.47% | 0.93% | 41.7% |
+| 2–3 s | 1,325 | −2.51 | −4.72 | 0.83% | 0.30% | 9.6% |
+| 3–4 s | 1,081 | −4.27 | −4.88 | 0.74% | 0.65% | 7.0% |
+| 4 s and over | 5,652 | −5.7 to −5.9 | same | 0.57–0.96% | same | 41.7% |
+
+Clips under 2 s are 19% of the sample and 42% of the clips at or above the
+threshold. Their median score is 5 log-odds above a full-length clip's, and
+filling the window by repeating the clip takes 3 of those 5 back. The served
+score rises with the padded fraction (Spearman +0.50). `heldout-a` has almost
+no short clips (5th percentile 2.7 s; People's Speech 0.9–1.0 s), so the
+threshold is set on a kind of clip the clean test barely contains.
+
+**2. The same weights, scored differently**, the threshold refitted each time
+by the usual rule (1% of the calibration half):
+
+| Score | Threshold | People's Speech check half flagged | `heldout-a` real flagged | Qwen3-TTS + VoxCPM passed | EER, those fakes against People's Speech |
+| --- | --- | --- | --- | --- | --- |
+| First 4 s, silence-padded (as served) | +7.60 | 1.31% | 0.00% | 39.80% | 9.80% |
+| First 4 s, short clips repeated | +6.58 | 1.88% | 0.00% | 24.15% | 6.91% |
+| Mean of every 4 s window (2 s hop) | +5.87 | 2.03% | 0.00% | 19.45% | 6.54% |
+| Median of every window | +5.87 | 2.16% | 0.00% | 18.80% | 6.60% |
+
+Repeating instead of padding moves candidate A from 39.80% to 24.15% with no
+training, on weights that never saw a repeated clip. These rows were chosen
+among after seeing them, on a set read many times; they show where the problem
+is and are not a result.
+
+**3. The rest is a few narrow-band recordings.** The 115 flagged clips come
+from 31 of the sample's 82 recordings, and five recordings hold half of them:
+a recording dated 1942 by its name (19 of its 40 sampled clips flagged; little
+above 6 kHz), and two US appeals-court hearings from 2020 (15 of 38 and 7 of
+27; nothing above 4 kHz, like a telephone line, with near-silent gaps between
+phrases). These are genuine speech through a narrow-band chain, scored at the
+model's ceiling in nearly every window. This part is a channel effect, as Finding 22
+assumed; Finding 22's way of teaching it cost the clean fakes.
+
+**4. Window position no longer matters.** Unlike Finding 20, candidate A
+scores every 4 s window alike (fakes +8.17 to +8.22 from 0 to 12 s; People's
+Speech −5.4 to −6.2). Of the 34 flagged People's Speech clips long enough to
+have a later window, the later windows' median is +7.18: a flagged long clip is
+flagged throughout.
+
+## Finding 23 — fill short clips by repeating them, and train on a random 4 seconds (pre-registered)
+
+Written 13 October 2026, after Finding 22's Stage A result and the diagnostic
+above, and before any Finding 23 job was submitted. **The owner authorised one
+more training run on 13 October** ("yes to all": pre-register the fix the
+diagnostic points to and submit it), and said the paper may be submitted late.
+Nothing below may be changed after Stage B is scored; the result is reported
+whatever it is.
+
+**Question.** If a clip shorter than 4 s is filled by repeating it rather than
+with silence, in training and at scoring, does a threshold set on 1% of
+People's Speech fall far enough to catch the clean Qwen3-TTS and VoxCPM fakes
+candidate A already ranks correctly?
+
+**Why this, after Finding 22.** The diagnostic shows 42% of the clips that set
+candidate A's threshold are under 2 s, and that silence-padding alone adds
+about 3 log-odds to them. That is a property of our preprocessing, not of the
+recordings, so it is fixed where it is made instead of in the threshold.
+Upstream AASIST repeats short clips and trains on a random window; our
+pipeline did neither. Finding 22's channel is left out: it lost
+the clean fakes in both of its runs.
+
+**R1 — the candidate, retrained.** Finding 21's candidate A exactly
+(SSL-AASIST, RawBoost 5, `--extra-train speechfake+synth20`,
+`--extra-bonafide librispeech`, 4 epochs, batch 14, constant lr 1e-6, one
+seed), with `--random-crop`: each training clip longer than 4 s is read from a
+random 4 s window, cut before RawBoost; each shorter one is repeated to 4 s.
+The padding is stored in the checkpoint (`pad: repeat`) and `calibrate.py`,
+`evaluate.py` and `app.py` read it back, so every score of R1 uses it. The dev
+set and every test set are still read from the start of the clip. Selection is
+unchanged: `best.pth` by EER on LA dev + SpeechFake dev.
+
+**R0 — candidate A's own weights, repeat-padded. No training.** Finding 21's
+candidate A `best.pth`, calibrated with `calibrate.py --pad repeat`, which
+stores the padding in the calibrated checkpoint. **Disclosed:** R0 was chosen
+after the diagnostic showed its `heldout-a` and People's Speech numbers (row 2
+of the table above), so Stage A's A1–A3 are a reproduction for R0, not a test;
+only A4 is new. Its weights were trained on silence-padded clips and are
+scored on repeated ones.
+
+**Calibration**, fixed now: Finding 12's procedure (People's Speech, 1%,
+n 10,000, seed 42), per candidate, under repeat-padding.
+
+**Stage A — no final test set touched.** Finding 21's bars, unchanged, for
+each candidate at its threshold:
+- A1: `heldout-a` Qwen3-TTS + VoxCPM fakes passed, pooled over the four
+  models, **≤ 25%**.
+- A2: People's Speech check half real flagged ≤ 2%.
+- A3: `heldout-a` real (LibriSpeech test-clean) flagged ≤ 3%.
+- A4: SpeechFake dev (English) fakes passed ≤ 12.94%.
+
+**Stage B — once, for one candidate.** R1 if it passes Stage A. R0 only if R1
+fails Stage A and R0 passes it. In-the-Wild is therefore read once whatever
+happens. Finding 20's criteria, unchanged: In-the-Wild EER ≤ 2.5%, real
+flagged ≤ 2.5%, fakes missed ≤ 2.5%; `heldout-c` fakes passed ≤ 24.78%;
+`heldout-b` fakes passed ≤ 17.27%; SpeechFake test fakes passed ≤ 15.65%.
+Reported, not criteria: LA eval, `heldout-b`/`-c` real flagged, per-model
+rates.
+
+**Outcomes:** **Served** (all Stage B criteria met); **Improved, not served**
+(Stage A passed, a Stage B criterion failed); **No effect** (neither candidate
+passes Stage A); **Broken** (In-the-Wild EER ≥ 5%, or A2 > 2% for the
+candidate taken forward).
+
+**Reported, not criteria:** each threshold; R1's dev EER by epoch; People's
+Speech flagged by clip length for R1; and the mean-of-all-windows score for
+both candidates, which the diagnostic suggests is better still but which
+changes what the server computes for long clips and is not adopted here.
+
+**Expected** (so it can be wrong): R0 reproduces the diagnostic (threshold
++6.58, A1 24.15%, A2 1.88%) and passes A4. R1's threshold lands between +5.5
+and +7.0 and A1 between 12% and 28%, so R1 passes Stage A at better than even
+odds; People's Speech clips under 2 s are flagged at under 1.5% (2.47% now).
+If a candidate reaches Stage B, In-the-Wild real flagged is the bar most
+likely to fail: a lower threshold flags more real speech, and Finding 18
+missed that bar at 2.18%.
+
+**Limits, stated now.** The narrow-band recordings (item 3 above) are not
+addressed and will still sit at the top of the scale. `heldout-a` has now been
+read by Findings 18, 20, 21, 22 and two diagnostics; it is a development gate.
+Random cropping and repeat-padding come together in R1 and are not separated.
+One seed. In-the-Wild clips average about 4 s, so padding matters there too,
+in a direction not known in advance.
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

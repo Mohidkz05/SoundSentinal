@@ -29,7 +29,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from model import (ARCHITECTURES, CLASS_NAMES, DEFAULT_ARCH, DEFAULT_FRONTEND,
+from model import (ARCHITECTURES, CLASS_NAMES, DEFAULT_ARCH, DEFAULT_FRONTEND, DEFAULT_PAD,
                    FRONTENDS, LABEL_MAP, build_model, build_transform,
                    default_frontend_for)
 from in_the_wild import get_itw_root, load_protocol as load_itw_protocol
@@ -258,6 +258,8 @@ def main():
     # calibrate.py records the input degradation its threshold was fitted
     # under; scoring without it would pair that threshold with other inputs.
     degradation = ckpt.get("input_degradation") or "none"
+    # How short clips are filled, as the checkpoint was trained or calibrated.
+    pad = ckpt.get("pad") or DEFAULT_PAD
     # calibrate_clean.py's clean-audio route (Finding 15): clips at or above
     # the cleanliness cutoff are held to a second threshold.
     routing = ckpt.get("routing")
@@ -279,6 +281,7 @@ def main():
           f"({sum(p.numel() for p in model.parameters()):,} parameters)")
     print(f"  front-end   {frontend}")
     print(f"  degradation {degradation}")
+    print(f"  padding     {pad}")
     print(f"  regime      {'DP' if ckpt.get('dp') else 'non-private'}")
     # This epoch's own dev EER, not the run's running best. They differ the
     # moment an epoch is worse than its predecessor — LFCC epoch 5 scored 5.73%
@@ -301,7 +304,7 @@ def main():
         itw_root = get_itw_root()
         dataset = AVSpoofDataset(None, itw_root, build_transform(frontend),
                                  protocol=load_itw_protocol(itw_root), suffix="",
-                                 degradation=degradation)
+                                 degradation=degradation, pad=pad)
         paths, key = {}, None
         corpus_label, partition_label = "In-the-Wild", "all"
     elif args.dataset == "speechfake":
@@ -316,7 +319,7 @@ def main():
             meta = speechfake.read_metadata(sf_part, sf_root)
             frame = frame[(meta["language"] == args.language).to_numpy()].reset_index(drop=True)
         dataset = AVSpoofDataset(None, sf_root, build_transform(frontend),
-                                 protocol=frame, suffix="", degradation=degradation)
+                                 protocol=frame, suffix="", degradation=degradation, pad=pad)
         paths, key = {}, None
         corpus_label, partition_label = "SpeechFake-BD", f"{sf_part} ({args.language})"
     elif args.dataset == "synth":
@@ -330,7 +333,7 @@ def main():
                                      "probe": "probe-a"}[args.partition]
         frame, root = synth.load_heldout(split)
         dataset = AVSpoofDataset(None, root, build_transform(frontend),
-                                 protocol=frame, suffix="", degradation=degradation)
+                                 protocol=frame, suffix="", degradation=degradation, pad=pad)
         paths, key = {}, None
         corpus_label, partition_label = "Own fakes, held-out families", split
     else:
@@ -342,7 +345,7 @@ def main():
                 f"Expected ASVspoof2019_{args.corpus}_{args.partition}/flac and a matching protocol.")
         dataset = AVSpoofDataset(
             paths[f"{key}_PROTOCOL_FILE"], paths[f"{key}_AUDIO_DIR"], build_transform(frontend),
-            degradation=degradation)
+            degradation=degradation, pad=pad)
         corpus_label, partition_label = args.corpus, args.partition
 
     dataset.with_cleanliness = routing is not None
@@ -471,6 +474,7 @@ def main():
         "arch": arch,
         "frontend": frontend,
         "input_degradation": degradation,
+        "pad": pad,
         "routing": routing_result,
         "epoch": ckpt.get("epoch"),
         "n_clips": int(len(labels)),

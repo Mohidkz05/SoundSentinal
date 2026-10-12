@@ -85,7 +85,8 @@ import torch
 from torch.utils.data import DataLoader
 
 from evaluate import BATCH_SIZE, DEVICE, log_odds_to_prob, prob_to_log_odds, score_dataset
-from model import DEFAULT_ARCH, DEFAULT_FRONTEND, DEGRADATIONS, build_model, build_transform
+from model import (DEFAULT_ARCH, DEFAULT_FRONTEND, DEFAULT_PAD, DEGRADATIONS, PAD_MODES,
+                   build_model, build_transform)
 import commonvoice
 import peoples_speech
 import voxpopuli
@@ -164,9 +165,9 @@ def to_protocol(clips):
     })
 
 
-def score(model, frame, root, frontend, num_workers, degradation="none"):
+def score(model, frame, root, frontend, num_workers, degradation="none", pad=DEFAULT_PAD):
     dataset = AVSpoofDataset(None, root, build_transform(frontend), protocol=frame, suffix="",
-                             degradation=degradation)
+                             degradation=degradation, pad=pad)
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False,
                         num_workers=num_workers, pin_memory=True)
     scores, _ = score_dataset(model, loader)
@@ -185,7 +186,7 @@ def measure(args, ckpt, model, clips, root, frontend, split):
         raise SystemExit("ERROR: this checkpoint carries no threshold to measure at.")
     sample = clips.sample(n=min(args.n, len(clips)), random_state=args.seed)
     scores = score(model, to_protocol(sample), root, frontend, args.num_workers,
-                   args.degradation)
+                   args.degradation, args.pad)
     rate = flagged(scores, prob_to_log_odds(threshold))
     source = ckpt.get("threshold_source") or "dev EER"
     print(f"Checkpoint   {args.ckpt} (epoch {ckpt.get('epoch')})")
@@ -201,6 +202,7 @@ def measure(args, ckpt, model, clips, root, frontend, split):
         "epoch": ckpt.get("epoch"), "measure_only": True,
         "set": f"{args.calibration_set} ({args.language})", "split": split,
         "n": len(sample), "seed": args.seed, "input_degradation": args.degradation,
+        "pad": args.pad,
         "threshold": threshold, "threshold_source": source,
         "flagged": rate, "score_percentiles_log_odds": pct,
     }
@@ -248,6 +250,12 @@ def main():
                              "in the calibrated checkpoint so app.py and evaluate.py apply "
                              "it too (model.degrade_waveform, RESULTS.md Finding 14). "
                              "Default: whatever the checkpoint already carries, else none.")
+    parser.add_argument("--pad", default=None, choices=PAD_MODES,
+                        help="How clips shorter than 4 s are filled (model.pad_waveform). "
+                             "Default: what the checkpoint was trained with. Passing "
+                             "another fits the threshold under it and stores it in the "
+                             "output checkpoint, so evaluate.py and the server pad the "
+                             "same way (RESULTS.md Finding 23, candidate R0).")
     parser.add_argument("--out", type=Path, default=None,
                         help="Calibrated checkpoint. Default: "
                              "<ckpt dir>/<stem>_calibrated_<calibration set>.pth")
@@ -258,6 +266,8 @@ def main():
     ckpt = torch.load(args.ckpt, map_location=DEVICE, weights_only=False)
     if args.degradation is None:
         args.degradation = ckpt.get("input_degradation") or "none"
+    if args.pad is None:
+        args.pad = ckpt.get("pad") or DEFAULT_PAD
     for name, attr in SPLIT_ARG.items():
         if args.calibration_set != name and getattr(args, attr) != parser.get_default(attr):
             raise SystemExit(f"--{attr.replace('_', '-')} only applies to "
@@ -303,10 +313,11 @@ def main():
     print(f"Calibration  {args.calibration_set} ({args.language}): {len(calib)} clips to fit, "
           f"{len(check)} to check, split {split_kind} (seed {args.seed})")
     print(f"Target       flag {args.target_frr:.1%} of genuine clips")
-    print(f"Degradation  {args.degradation}\n")
+    print(f"Degradation  {args.degradation}")
+    print(f"Padding      {args.pad}\n")
 
-    calib_scores = score(model, calib, root, frontend, args.num_workers, args.degradation)
-    check_scores = score(model, check, root, frontend, args.num_workers, args.degradation)
+    calib_scores = score(model, calib, root, frontend, args.num_workers, args.degradation, args.pad)
+    check_scores = score(model, check, root, frontend, args.num_workers, args.degradation, args.pad)
 
     # The (1 - target) quantile of the bona fide scores: everything at or above
     # it is flagged. "higher" picks an observed score, so the fitted rate is
@@ -324,6 +335,7 @@ def main():
         "halves": split_kind,
         "target_frr": args.target_frr,
         "input_degradation": args.degradation,
+        "pad": args.pad,
         "threshold": thr_prob, "threshold_log_odds": thr,
         "frr_calibrate": flagged(calib_scores, thr),
         "frr_check": flagged(check_scores, thr),
@@ -353,6 +365,8 @@ def main():
     # The threshold was fitted on degraded audio, so it only means something
     # when the same degradation is applied. They travel together.
     ckpt["input_degradation"] = args.degradation
+    # Likewise the padding of short clips.
+    ckpt["pad"] = args.pad
     ckpt["calibration"] = report
     torch.save(ckpt, out)
     report_path = out.with_suffix(".json")

@@ -31,6 +31,7 @@ from model import (
     cleanliness_db,
     default_frontend_for,
     load_audio,
+    DEFAULT_PAD,
     preprocess_waveform,
 )
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
@@ -181,7 +182,7 @@ BONAFIDE_MIXES = {"commonvoice": ("commonvoice",),
 def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = DEFAULT_ARCH,
                    rawboost: int | None = None, extra_train: str | None = None,
                    extra_bonafide: str | None = None, channel_aug: bool = False,
-                   condition_aug: bool = False):
+                   condition_aug: bool = False, random_crop: bool = False):
     """Each (architecture, front-end, privacy regime) triple gets its own directory.
 
     Same reasoning as the DP/non-DP split above, one level out: a log-Mel and an
@@ -200,8 +201,8 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
     Extra training data gets one more level, for the same reason again: a run
     on LA + ASVspoof 5 is a different model from the LA-only one, and the two
     must never share a last.pth. Extra bona fide speech (--extra-bonafide)
-    nests one level below that, and --channel-aug or --condition-aug one
-    below that.
+    nests one level below that, --channel-aug or --condition-aug one below
+    that, and --random-crop one below that.
     """
     ckpt_dir = CKPT_DIR if arch == DEFAULT_ARCH else CKPT_DIR / arch
     if frontend != default_frontend_for(arch):
@@ -216,6 +217,8 @@ def get_ckpt_paths(use_dp: bool, frontend: str = DEFAULT_FRONTEND, arch: str = D
         ckpt_dir = ckpt_dir / "channel"
     if condition_aug:
         ckpt_dir = ckpt_dir / "condition"
+    if random_crop:
+        ckpt_dir = ckpt_dir / "crop"
     if not use_dp:
         ckpt_dir = ckpt_dir / "nodp"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -229,7 +232,7 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
               is_best=False, metrics=None, best_eer=None, frontend=DEFAULT_FRONTEND,
               arch=DEFAULT_ARCH, batch_size=None, scheduler=None, rawboost=None,
               extra_train=None, extra_bonafide=None, channel_aug=False,
-              condition_aug=False):
+              condition_aug=False, random_crop=False):
     """Write the rolling, best and timestamped checkpoints.
 
     `metrics` carries the dev-set numbers for this epoch, and with them the
@@ -268,6 +271,11 @@ def save_ckpt(model, optimizer, epoch, steps_done, paths, use_dp, class_weights=
         "channel_aug": channel_aug,
         # The channel applied to half the clips (Finding 22). Provenance only.
         "condition_aug": condition_aug,
+        # Training on a random 4 s of each clip (Finding 23). Provenance.
+        "random_crop": random_crop,
+        # How a short clip is padded (model.pad_waveform). NOT provenance:
+        # calibrate.py, evaluate.py and app.py read it back and pad the same way.
+        "pad": "repeat" if random_crop else DEFAULT_PAD,
         "model": unwrap(model).state_dict(),
         "optimizer": optimizer.state_dict(),
         # Restored on resume so a cosine schedule survives a job hitting its
@@ -314,7 +322,8 @@ class AVSpoofDataset(Dataset):
 
     def __init__(self, protocol_file, audio_dir, transform_pipeline, target_sample_rate=SAMPLE_RATE,
                  max_len=MAX_LEN, protocol=None, suffix=".flac", augment=None,
-                 degradation="none", with_cleanliness=False, condition_labels=False):
+                 degradation="none", with_cleanliness=False, condition_labels=False,
+                 pad=DEFAULT_PAD, random_crop=False):
         if protocol is not None:
             self.protocol = protocol.reset_index(drop=True)
         else:
@@ -341,6 +350,12 @@ class AVSpoofDataset(Dataset):
         # passed this clip through a channel", the four classes of
         # ssl_aasist.SSLAASISTFourWay. Needs an augment with .apply().
         self.condition_labels = condition_labels
+        # How a clip shorter than max_len is filled (model.pad_waveform). Set
+        # from the checkpoint when scoring, so it always matches training.
+        self.pad = pad
+        # Training only (Finding 23): read a random max_len window of a longer
+        # clip instead of always its start. Scoring still reads the start.
+        self.random_crop = random_crop
 
     def __len__(self):
         return len(self.protocol)
@@ -351,6 +366,13 @@ class AVSpoofDataset(Dataset):
         label = self.label_map[label_str]
 
         waveform, sample_rate = load_audio(str(self.audio_dir / f"{audio_name}{self.suffix}"))
+        if self.random_crop:
+            # Cut at the file's own rate, before any augmentation, so the
+            # augmenters and preprocess_waveform see an ordinary short clip.
+            window = -(-self.max_len * sample_rate // self.target_sample_rate)
+            if waveform.shape[1] > window:
+                start = int(torch.randint(0, waveform.shape[1] - window + 1, (1,)))
+                waveform = waveform[:, start:start + window]
         if self.condition_labels:
             waveform, through_channel = self.augment.apply(waveform, sample_rate)
             label += 2 * int(through_channel)
@@ -360,7 +382,7 @@ class AVSpoofDataset(Dataset):
         # Same preprocessing the Flask server applies at inference time.
         spectrogram = preprocess_waveform(
             waveform, sample_rate, self.transform_pipeline, max_len=self.max_len,
-            degradation=self.degradation,
+            degradation=self.degradation, pad=self.pad,
         )
 
         if self.with_cleanliness:
@@ -522,6 +544,13 @@ def main():
                              "in; with any other architecture the labels stay two, "
                              "which is that finding's control. Runs after --rawboost; "
                              "not with --channel-aug. Checkpoints go to <dir>/condition/.")
+    parser.add_argument("--random-crop", action="store_true",
+                        help="Train on a random 4 s window of each clip instead of its "
+                             "first 4 s, and fill clips shorter than 4 s by repeating "
+                             "them instead of with silence (RESULTS.md Finding 23). The "
+                             "padding is stored in the checkpoint and used at scoring "
+                             "too; the dev set is read from the start, repeat-padded. "
+                             "Checkpoints go to <dir>/crop/.")
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override the architecture's default epoch count.")
     parser.add_argument("--batch-size", type=int, default=None,
@@ -594,11 +623,14 @@ def main():
         augment = ChannelAug(root, before=augment,
                              p_apply=CONDITION_P if args.condition_aug else None)
     print(f"Augmentation: {augment or 'none'}")
+    pad = "repeat" if args.random_crop else DEFAULT_PAD
+    crop = dict(pad=pad, random_crop=args.random_crop)
+    print(f"Window: {'random 4 s' if args.random_crop else 'first 4 s'}, short clips padded by {pad}")
     if four_way:
         print("Labels: four (real/fake x as recorded/through the channel)")
     train_dataset = AVSpoofDataset(PATHS["TRAIN_PROTOCOL_FILE"], PATHS["TRAIN_AUDIO_DIR"],
                                    transform_pipeline, augment=augment,
-                                   condition_labels=four_way)
+                                   condition_labels=four_way, **crop)
     extra_parts = []
     for source in EXTRA_TRAIN_MIXES.get(args.extra_train, ()):
         # (loader, audio-file suffix): ASVspoof 5 names files without an
@@ -618,7 +650,8 @@ def main():
               f"{len(extra_protocol)} clips from {extra_dir}")
         extra_parts.append(AVSpoofDataset(None, extra_dir, transform_pipeline,
                                           protocol=extra_protocol, suffix=suffix,
-                                          augment=augment, condition_labels=four_way))
+                                          augment=augment, condition_labels=four_way,
+                                          **crop))
     for source in BONAFIDE_MIXES.get(args.extra_bonafide, ()):
         bf_protocol, bf_dir = BONAFIDE_SOURCES[source]("train")
         print(f"Extra bona fide: {source} train, "
@@ -627,7 +660,7 @@ def main():
         # not of which corpus a clip came from.
         extra_parts.append(AVSpoofDataset(None, bf_dir, transform_pipeline,
                                           protocol=bf_protocol, suffix="", augment=augment,
-                                          condition_labels=four_way))
+                                          condition_labels=four_way, **crop))
     if extra_parts:
         parts = [train_dataset, *extra_parts]
         train_dataset = ConcatDataset(parts)
@@ -637,7 +670,10 @@ def main():
         train_dataset.protocol = pd.concat([p.protocol for p in parts], ignore_index=True)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True)
-    dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline)
+    # The dev set is read as the model will be served: from the start of each
+    # clip, with this run's padding.
+    dev_dataset = AVSpoofDataset(PATHS["DEV_PROTOCOL_FILE"], PATHS["DEV_AUDIO_DIR"], transform_pipeline,
+                                 pad=pad)
     if "speechfake" in EXTRA_TRAIN_MIXES.get(args.extra_train, ()):
         # SSL-AASIST hits 0.00% on LA dev within a few epochs, after which every
         # epoch ties and best.pth is just the first to tie. SpeechFake dev (117k
@@ -645,7 +681,8 @@ def main():
         # calibrated threshold meaningful. ASVspoof 5 runs keep LA dev alone, so
         # their existing rows are unchanged.
         sf_dev_protocol, sf_dir = speechfake.load_protocol("dev")
-        sf_dev = AVSpoofDataset(None, sf_dir, transform_pipeline, protocol=sf_dev_protocol, suffix="")
+        sf_dev = AVSpoofDataset(None, sf_dir, transform_pipeline, protocol=sf_dev_protocol, suffix="",
+                                pad=pad)
         dev_parts = [dev_dataset, sf_dev]
         dev_dataset = ConcatDataset(dev_parts)
         dev_dataset.protocol = pd.concat([p.protocol for p in dev_parts], ignore_index=True)
@@ -695,7 +732,8 @@ def main():
         )
 
     paths = get_ckpt_paths(args.use_dp, frontend, args.arch, args.rawboost, args.extra_train,
-                           args.extra_bonafide, args.channel_aug, args.condition_aug)
+                           args.extra_bonafide, args.channel_aug, args.condition_aug,
+                           args.random_crop)
     _, LAST_CKPT, _ = paths
 
     start_epoch, prev_steps, best_eer = 1, 0, float("inf")
@@ -748,6 +786,12 @@ def main():
                 f"ERROR: {LAST_CKPT} was trained with condition_aug="
                 f"{bool(ckpt.get('condition_aug'))}, but this run has condition_aug="
                 f"{args.condition_aug}. Check $CKPT_ROOT, currently {CKPT_DIR}."
+            )
+        if bool(ckpt.get("random_crop")) != args.random_crop:
+            raise SystemExit(
+                f"ERROR: {LAST_CKPT} was trained with random_crop="
+                f"{bool(ckpt.get('random_crop'))}, but this run has random_crop="
+                f"{args.random_crop}. Check $CKPT_ROOT, currently {CKPT_DIR}."
             )
         unwrap(model).load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
@@ -848,6 +892,7 @@ def main():
             "extra_bonafide": args.extra_bonafide,
             "channel_aug": args.channel_aug,
             "condition_aug": args.condition_aug,
+            "random_crop": args.random_crop,
             "lr": optimizer.param_groups[0]["lr"],
         }
         save_ckpt(model, optimizer, epoch, steps_done, paths, args.use_dp,
@@ -856,7 +901,7 @@ def main():
                   arch=args.arch, batch_size=batch_size, scheduler=scheduler,
                   rawboost=args.rawboost, extra_train=args.extra_train,
                   extra_bonafide=args.extra_bonafide, channel_aug=args.channel_aug,
-                  condition_aug=args.condition_aug)
+                  condition_aug=args.condition_aug, random_crop=args.random_crop)
         if scheduler is not None:
             scheduler.step()
 

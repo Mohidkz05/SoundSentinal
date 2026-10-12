@@ -20,7 +20,8 @@ import torch.nn as nn
 from model import (ARCH_FRONTENDS, ARCHITECTURES, DEFAULT_ARCH, DP_ARCHITECTURES,
                    DEFAULT_FRONTEND, FRONTENDS, MAX_LEN, N_LFCC, N_MELS,
                    DEGRADATIONS, SAMPLE_RATE, build_model, build_transform, check_pairing,
-                   default_frontend_for, degrade_waveform, load_audio, preprocess_waveform)
+                   default_frontend_for, degrade_waveform, load_audio, pad_waveform,
+                   preprocess_waveform)
 
 from rawboost import ALGOS as RAWBOOST_ALGOS, RawBoost
 
@@ -271,6 +272,45 @@ def main():
     check("'none' is the identity", torch.equal(degrade_waveform(clip16, "none"), clip16))
     short = degrade_waveform(clip16[:, :1000], "opus")
     check("opus keeps a short clip's length", short.shape[1] == 1000, tuple(short.shape))
+
+    print("--- Padding and random crop (--random-crop, Finding 23) ---")
+    # The default must stay zero-padding, bit for bit: every checkpoint before
+    # Finding 23 was trained and calibrated with it.
+    one_s = clip16[:, :SAMPLE_RATE]
+    z, r = pad_waveform(one_s), pad_waveform(one_s, pad="repeat")
+    check("zero-pad is the default and appends silence",
+          tuple(z.shape) == (1, MAX_LEN) and torch.equal(z[:, :SAMPLE_RATE], one_s)
+          and not bool(z[:, SAMPLE_RATE:].any()), tuple(z.shape))
+    check("repeat-pad loops the clip to the window",
+          tuple(r.shape) == (1, MAX_LEN) and all(
+              torch.equal(r[:, i * SAMPLE_RATE:(i + 1) * SAMPLE_RATE], one_s) for i in range(4)),
+          tuple(r.shape))
+    long = torch.cat([clip16] * 3, dim=1)[:, :MAX_LEN + 1000]
+    check("a clip of 4 s or more is the same under both",
+          torch.equal(pad_waveform(long), pad_waveform(long, pad="repeat")))
+    check("an empty clip does not crash repeat-pad",
+          tuple(pad_waveform(clip16[:, :0], pad="repeat").shape) == (1, MAX_LEN))
+    raw_t = build_transform("raw")
+    check("preprocess_waveform(pad='repeat') differs only on short clips",
+          not torch.equal(preprocess_waveform(one_s, SAMPLE_RATE, raw_t),
+                          preprocess_waveform(one_s, SAMPLE_RATE, raw_t, pad="repeat"))
+          and torch.equal(preprocess_waveform(long, SAMPLE_RATE, raw_t),
+                          preprocess_waveform(long, SAMPLE_RATE, raw_t, pad="repeat")))
+    import pandas as pd
+    from train_dp_avspoof import AVSpoofDataset
+    proto = pd.DataFrame({"speaker_id": ["-"], "audio_file_name": [SAMPLE.stem], "_": ["-"],
+                          "system_id": ["-"], "label": ["bonafide"]})
+    def crops(window):
+        ds = AVSpoofDataset(None, SAMPLE.parent, raw_t, protocol=proto, max_len=window,
+                            pad="repeat", random_crop=True)
+        return [ds[0][0] for _ in range(6)]
+    got = crops(8000)
+    check("random crop returns the window size and varies between reads",
+          all(tuple(g.shape) == (1, 8000) for g in got)
+          and any(not torch.equal(got[0], g) for g in got[1:]), tuple(got[0].shape))
+    whole = preprocess_waveform(waveform, sample_rate, raw_t, max_len=10 * MAX_LEN, pad="repeat")
+    check("a clip shorter than the window is not cropped, only repeat-padded",
+          all(torch.equal(g, whole) for g in crops(10 * MAX_LEN)))
 
     print("--- ASVspoof 5 adapter (--extra-train asvspoof5) ---")
     # A two-clip corpus laid out as hpc/get_asvspoof5.slurm leaves it, with a
