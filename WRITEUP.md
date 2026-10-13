@@ -1,5 +1,13 @@
 # SoundSentinal — FYP B write-up and presentation plan
 
+**Status (13 October 2026): the paper is updated to the served model R0
+(Finding 23); the slides are not.** `paper/main.tex` now reports In-the-Wild
+EER 1.51%, threshold +6.58, three overrides and a new Section IV-F (Findings
+20-23); still 7 pages. Still on the previous model: the 12-slide deck, Fig. 5
+(a screenshot, its caption says so), and the plan below (it quotes 2.02%).
+Compute is now 351 GPU-hours in 234 jobs (1 August - 13 October, `sacct`);
+recompute once the Arena benchmark jobs finish.
+
 **Status (7 October 2026): both drafts are complete.**
 - Paper: `paper/main.tex` → 7 pages, no TODOs. Build:
   `~/tools/tectonic/tectonic paper/main.tex`. Figures:
