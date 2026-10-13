@@ -68,6 +68,9 @@ case " $* " in
       exit 1
     fi
     ;;
+  *" --dataset arena "*)
+    # arena.py names the missing set and the job that fetches it.
+    ;;
   *)
     if [ ! -d "$ASVSPOOF_ROOT/LA/ASVspoof2019_LA_eval/flac" ]; then
       echo "ERROR: no eval partition at $ASVSPOOF_ROOT/LA. Run: sbatch hpc/get_la.slurm" >&2

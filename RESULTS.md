@@ -69,31 +69,34 @@ Our AASIST's best single epoch on eval reaches 2.98% EER (epochs 59, 64) and
 0.0807 min t-DCF (epochs 85, 95), but those are picked by looking at eval, so
 the `best.pth` row is the one to quote. See Finding 5.
 
-### The served system, and where it stands (3 October 2026)
+### The served system, and where it stands (13 October 2026)
 
-SSL-AASIST + RawBoost trained on LA + SpeechFake + ~44,000 of our own fakes
-from 8 open TTS families (Finding 18), threshold set so 1% of held-out
-People's Speech is flagged (log-odds +7.07). **Served by owner override**:
-Finding 18's pre-registered outcome is "Improved, not served", because
-In-the-Wild real flagged was 2.18% against a 2% bar. The model was never
-trained, selected or calibrated on any test set below. Previous served model
-(Findings 9 and 12) in brackets.
+SSL-AASIST + RawBoost trained on LA + SpeechFake + our own fakes from the open
+TTS families (`synth20`) + genuine LibriSpeech train-clean-100 as extra real
+speech (Finding 21's candidate A), scored with short clips repeated to 4 s
+instead of padded with silence (Finding 23's R0). Threshold set so 1% of
+held-out People's Speech is flagged (log-odds +6.58). **Served by owner
+override**: Finding 23's pre-registered outcome is "Improved, not served",
+because In-the-Wild fakes missed was 2.58% against a 2.5% bar. The model was
+never trained, selected or calibrated on any test set below. Previous served
+model (Finding 18, also by override) in brackets.
 
 | Test set | What it is | EER | Real flagged | Fakes missed |
 | --- | --- | --- | --- | --- |
-| In-the-Wild | real-world recordings and deepfakes of public figures | 2.02% (2.65) | **2.18%** (0.62) | **1.89%** (3.61) |
-| SpeechFake test (English) | clean modern TTS/VC, 26 systems seen in training | 4.15% (6.26) | 0.00% (0.01) | **13.65%** (32.72) |
-| ASVspoof2019 LA eval | clean studio speech, 2019-era fakes | 0.53% (2.12) | 0.00% (0.00) | **20.65%** (46.25) |
-| Own fakes, heldout-b | Dia, Kitten, Marvis, Piper: open TTS never heard | 7.70% (12.09) | 3.51% (0.00) | **15.27%** (73.86) |
+| In-the-Wild | real-world recordings and deepfakes of public figures | 1.51% (2.02) | 0.63% (2.18) | **2.58%** (1.89) |
+| SpeechFake test (English) | clean modern TTS/VC, 26 systems seen in training | 4.70% (4.15) | 0.05% (0.00) | **9.14%** (13.65) |
+| ASVspoof2019 LA eval | clean studio speech, 2019-era fakes | 1.03% (0.53) | 0.04% (0.00) | **15.18%** (20.65) |
+| Own fakes, heldout-b | Dia, Kitten, Marvis, Piper: open TTS never heard | 1.57% (7.70) | 0.82% (3.51) | **5.07%** (15.27) |
 
-**Strong on real-world audio; on clean synthetic speech it now misses one in
-eight to one in five fakes, down from a third to a half.** The cost is on the
-real side: it flags more genuine speech, 2.18% of In-the-Wild and 3.51% of
-clean LibriSpeech. Two weaknesses remain. Recent LLM-codec TTS it has never
-heard is only partly caught (Qwen3-TTS and VoxCPM: 64–84% still pass, EER
-~25%, Finding 18 Stage A). And clean audio still sits on a different part of
-its scale from noisy real speech (Finding 13), so one threshold serves two
-kinds of audio.
+**It flags far less genuine speech than the model it replaces and misses
+fewer clean fakes, at the cost of 0.69 points more real-world fakes missed.**
+Recent LLM-codec TTS is now mostly caught on the development set (Qwen3-TTS
+and VoxCPM: 24.15% pass at Stage A, from 73.30%; that set was read many times
+and R0 was chosen on it). Never-heard `heldout-c`: 19.34% pass, almost all
+MOSS-TTS v1.5 (54.80%). Two weaknesses remain: the threshold is still set by
+noisy and narrow-band real speech (Finding 13 and the 13 October diagnostic),
+so one threshold serves two kinds of audio; and the weights were trained on
+silence-padded clips but are scored on repeated ones.
 
 What was tried before Finding 18 and did not close the clean-audio gap:
 real-world speech in training (Findings 10, 11), degrading every input
@@ -2637,6 +2640,129 @@ points worse than candidate A silence-padded (6.86%): most SpeechFake clips
 are under 4 s, and these weights were trained on them silence-padded. A1
 clears its bar by 0.85 points, and A2 its bar by 0.12. **R0 does not go to
 Stage B yet:** by the rule above it waits for R1's Stage A.
+
+### Stage A result, R1 (13 October): failed A1
+
+Training 60960742 (13 h 40 min), calibration 60960743, Stage A 60960744 and
+60960745, all logged as `padding repeat`. `best.pth` is epoch 2, dev EER 2.78%.
+
+| Bar | R1 (retrained, random crop) | R0 (repeat-padded) |
+| --- | --- | --- |
+| Threshold (log-odds, People's Speech 1%) | +6.49 | +6.58 |
+| A1: Qwen3-TTS + VoxCPM fakes passed ≤ 25% | **84.20% — fail** | 24.15% — pass |
+| A2: People's Speech check half flagged ≤ 2% | 0.66% — pass | 1.88% — pass |
+| A3: `heldout-a` real flagged ≤ 3% | 0.00% — pass | 0.00% — pass |
+| A4: SpeechFake dev fakes passed ≤ 12.94% | 8.67% — pass | 8.41% — pass |
+
+Per model, passed (EER): Qwen3-TTS 0.6B 90.00% (6.97), 1.7B 89.40% (5.39);
+VoxCPM 0.5B 83.40% (13.41), 1.5 74.00% (8.20); Chatterbox 10.40% (0.36),
+Chatterbox Turbo 6.80% (0.36); SpeechT5 0.20% (0.22). `heldout-a` pooled:
+44.30% of fakes passed, EER 5.70%. SpeechFake dev: EER 4.31%, real flagged
+0.00%.
+
+The expectation was wrong: the threshold landed where predicted (+6.49, inside
++5.5 to +7.0) but A1 was expected between 12% and 28% and came out at 84.20%.
+The ranking is still good (EER 5–13% on the four models), so, as in Finding
+21, the fakes sit below a threshold set by noisy real speech; retraining with
+random crops moved them further down, not up. Random cropping and
+repeat-padding were not separated, so which of the two did it is not known.
+
+**R1 does not go to Stage B. By the rule above R0 does**, as the one candidate.
+
+### Stage B authorised for R0 (13 October)
+
+The owner authorised Stage B for R0 on 13 October, after both Stage A results
+above were known, and chose to stop at this model for the assignment: R0 is
+served if every Stage B criterion is met, and the Finding 18 model stays
+served otherwise. No bar is overridden; the criteria are those registered
+above.
+
+Submitted 13 October from `f23-src/` (`8587bc0`), L40S, on
+`best_calibrated_peoples_speech_1pct_repeatpad.pth`: In-the-Wild **60988525**,
+`heldout-b` 60988526, `heldout-c` 60988527, SpeechFake test 60988528, LA eval
+60988529.
+
+### Stage B result, R0 (13 October): one criterion missed by 0.08 points
+
+All five jobs logged `padding repeat`, threshold +6.58. In-the-Wild was read
+once.
+
+| Criterion | R0 | Bar | Served (F18) |
+| --- | --- | --- | --- |
+| In-the-Wild EER | 1.51% — pass | ≤ 2.5% | 2.02% |
+| In-the-Wild real flagged | 0.63% — pass | ≤ 2.5% | 2.18% |
+| In-the-Wild fakes missed | **2.58% — fail** | ≤ 2.5% | 1.89% |
+| `heldout-c` fakes passed | 19.34% — pass | ≤ 24.78% | 34.78% |
+| `heldout-b` fakes passed | 5.07% — pass | ≤ 17.27% | 15.27% |
+| SpeechFake test (English) fakes passed | 9.14% — pass | ≤ 15.65% | 13.65% |
+
+In-the-Wild: 125 of 19,963 real clips flagged, 305 of 11,816 fakes missed; 10
+fewer misses would have met the bar. Reported, not criteria: LA eval EER 1.03%,
+min t-DCF 0.0328, 15.18% of fakes passed, 0.04% real flagged (served: 0.53%,
+20.65%, 0.00%); `heldout-b` EER 1.57%, real flagged 0.82%, worst model Dia
+16.40%; `heldout-c` EER 6.11%, real flagged 0.82%, MOSS-TTS v1.5 54.80% passed
+(served 94.9%), Bark 3.20%, MiMo-Audio 0.00%; SpeechFake test EER 4.70%, real
+flagged 0.05%.
+
+The expectation named In-the-Wild real flagged as the bar most likely to
+fail; it passed easily (0.63%) and fakes missed is what failed. Against the
+served model R0 is better on every row except that one, where it is 0.69
+points worse.
+
+**Outcome, by the rule above: Improved, not served.** The owner chose on 13
+October to serve R0 only if every criterion was met, so the Finding 18 model
+stayed served.
+
+**Owner override (13 October), written before the swap.** After seeing the
+table above the owner overrode the outcome and asked for R0 to be served, on
+the recommendation that it is better than the served model on every row but
+the one it missed by 0.08 points (10 clips of 11,816), and flags far fewer
+real In-the-Wild clips (0.63% against 2.18%). The pre-registered outcome
+remains **Improved, not served**; R0 is **served by override**, as Finding 18
+was, and any write-up must say so. It costs 0.69 points of In-the-Wild fakes
+missed against the model it replaces. The threshold +6.58 is the last one for
+these weights.
+
+## External benchmark — the Speech Anti-Spoofing Arena (registered before scoring)
+
+Written 13 October 2026, before any job below was submitted, at the owner's
+request for an outside benchmark to place the product against. **Reported
+only: nothing here is a criterion, and no serving decision depends on it.** No
+training, selection or calibration ever reads these sets (`ai_model/arena.py`).
+
+**What it is.** A public leaderboard on Hugging Face
+(`SpeechAntiSpoofingBenchmarks/SpeechAntiSpoofingArena`) that ranks detectors
+by EER on 24 repackaged test sets. Its In-the-Wild set is the same 31,779
+trials we score, so that number is already comparable: entries seen on 13
+October were DF Arena 500M 1.87%, Wav2Vec2-Large-AntiDeepfake 2.89%,
+MMS-1B-AntiDeepfake 3.30%, AMSDF 18.44% (the live table was not read in full).
+Training data differs between systems, ours included.
+
+**Licences** (each dataset card, 13 October). Allowed, 14 sets beyond
+In-the-Wild and ASVspoof2019 LA: ASVspoof2021 LA, ASVspoof 5, ArAD (ODC-By);
+ASVspoof2021 DF (ODbL); CD-ADD, CFAD, CVoiceFake small, DECRO, HABLA, EmoFake
+test (CC BY 4.0); DFADD, DeepVoice (MIT); LibriSeVoc, ODSS (CC BY-SA 4.0).
+Excluded as non-commercial: ADD 2022, ADD 2023, PyAra, XMAD, SONAR, J-SPAW.
+Not checked: LRLspoof, EmoSpoofTTS (spoof-only sets with a different metric).
+
+**First two sets: ASVspoof2021 LA (181,566 trials) and DF (611,829)**, at the
+revisions the Arena pins, all trials as the Arena scores them. Both use
+ASVspoof2019's speakers and attack algorithms passed through telephone and
+media codecs; our models trained on ASVspoof2019 LA train, as most entries
+did. **Two models, each at its own stored threshold:** the served one (Finding
+18, +7.07, silence-padded) and R0 (Finding 23, +6.58, repeat-padded).
+**Reported:** pooled EER (the Arena's metric), and real flagged / fakes passed
+at the threshold.
+
+**Expected** (so it can be wrong): EER between 1% and 6% on LA and between 2%
+and 8% on DF for both models, R0 the lower; at the threshold a large share of
+fakes pass on both sets, as on ASVspoof2019 LA eval (15–21%).
+
+Submitted 13 October from `arena-src/` on M3 scratch: a clone of `8587bc0`
+plus the then-uncommitted `arena.py`, `hpc/get_arena.slurm` and the
+`--dataset arena` option in `evaluate.py`. Downloads **60989329** (LA) and
+60989330 (DF); scoring, chained with `afterok`: LA served 60989331, LA R0
+60989332, DF served 60989333, DF R0 60989334.
 
 ## What has not been measured
 

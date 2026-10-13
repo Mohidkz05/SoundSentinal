@@ -191,7 +191,7 @@ def main():
                         help="An explicit checkpoint path, overriding --arch, "
                              "--frontend and --dp.")
     parser.add_argument("--dataset", default="asvspoof",
-                        choices=["asvspoof", "itw", "speechfake", "synth"],
+                        choices=["asvspoof", "itw", "speechfake", "synth", "arena"],
                         help="'itw' scores In-the-Wild instead: 31,779 real-world "
                              "clips from 58 public figures. ASVspoof2019's attacks "
                              "are from 2019 and predate current voice cloning, so "
@@ -202,7 +202,12 @@ def main():
                              "split: clean, modern TTS/VC/vocoder output, from the "
                              "SAME 30 generators its train split holds, so for a "
                              "model trained with --extra-train speechfake it is a "
-                             "seen-generator test and an optimistic one.")
+                             "seen-generator test and an optimistic one. "
+                             "'arena' scores one of the Speech Anti-Spoofing "
+                             "Arena's test sets, named with --arena-set.")
+    parser.add_argument("--arena-set", default=None,
+                        help="--dataset arena only: which set (see arena.SETS), "
+                             "e.g. ASVspoof2021_LA. Evaluation only.")
     parser.add_argument("--language", default="en", choices=["en", "zh", "all"],
                         help="--dataset speechfake only: which language's rows to "
                              "score. English matches In-the-Wild and the app.")
@@ -220,6 +225,8 @@ def main():
                         help="Where to write the JSON result. Defaults to "
                              "<checkpoint dir>/eval_<partition>_<timestamp>.json")
     args = parser.parse_args()
+    if (args.dataset == "arena") != (args.arena_set is not None):
+        parser.error("--dataset arena and --arena-set go together")
     if args.partition == "probe" and args.dataset != "synth":
         parser.error("--partition probe exists only for --dataset synth (Finding 19)")
 
@@ -336,6 +343,16 @@ def main():
                                  protocol=frame, suffix="", degradation=degradation, pad=pad)
         paths, key = {}, None
         corpus_label, partition_label = "Own fakes, held-out families", split
+    elif args.dataset == "arena":
+        import arena
+        # A published test set as the Speech Anti-Spoofing Arena packages it,
+        # all trials, so the EER compares with the leaderboard's.
+        frame, root = arena.load_protocol(args.arena_set)
+        arena_ids = frame.attrs["utterance_id"]
+        dataset = AVSpoofDataset(None, root, build_transform(frontend),
+                                 protocol=frame, suffix="", degradation=degradation, pad=pad)
+        paths, key = {}, None
+        corpus_label, partition_label = f"Arena {args.arena_set}", "test"
     else:
         paths = get_corpus_paths(args.corpus)
         key = args.partition.upper()
@@ -384,7 +401,7 @@ def main():
     # a different ASV is not the same quantity.
     min_tdcf, tdcf_detail = None, None
     asv_key = f"{key}_ASV_SCORES" if key else None
-    if args.dataset in ("itw", "speechfake", "synth"):
+    if args.dataset in ("itw", "speechfake", "synth", "arena"):
         print("  (min t-DCF not defined here: it needs the organisers' ASV scores,")
         print("   which ship only with ASVspoof. A t-DCF against a different ASV is")
         print("   not the same quantity, so EER is the whole result.)")
@@ -495,6 +512,10 @@ def main():
         },
         "by_attack": by_attack,
     }
+    if args.dataset == "arena":
+        # What arena.py's `scores` command turns into the Arena's scores.txt.
+        result["utterance_ids"] = arena_ids
+        result["scores"] = [float(s) for s in scores]
 
     # Written to disk because metrics that only reach stdout vanish with the
     # Slurm log, and APPROACH.md's comparison table has to be assembled from
@@ -502,6 +523,7 @@ def main():
     # mechanical rather than a matter of scrolling back.
     tag = {"itw": "itw",
            "speechfake": f"speechfake-{args.partition}-{args.language}",
+           "arena": f"arena-{args.arena_set}",
            "synth": f"synth-{args.synth_split or args.partition}"}.get(args.dataset,
                                                                             args.partition)
     out = args.out or ckpt_path.parent / f"eval_{tag}_{strftime('%Y%m%d-%H%M%S')}.json"

@@ -83,6 +83,10 @@ export LIBRISPEECH_ROOT="$SCRATCH_DIR/librispeech"
 # TRAINING-ONLY noise for --channel-aug (Finding 16); in no test set.
 export CHANNEL_AUG_ROOT="$SCRATCH_DIR/channel_aug"
 
+# The Speech Anti-Spoofing Arena's test sets (ai_model/arena.py), one directory
+# per set. Evaluation only; fetched by hpc/get_arena.slurm.
+export ARENA_ROOT="${ARENA_ROOT:-$SCRATCH_DIR/arena}"
+
 # SoundSentinal's own generated fakes (synth/, Finding 18) and what makes them:
 # a uv environment per generator family and those models' weights (~40 GB),
 # all on scratch — project storage is nearly full.
