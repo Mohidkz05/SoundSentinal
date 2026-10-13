@@ -2764,6 +2764,26 @@ plus the then-uncommitted `arena.py`, `hpc/get_arena.slurm` and the
 60989330 (DF); scoring, chained with `afterok`: LA served 60989331, LA R0
 60989332, DF served 60989333, DF R0 60989334.
 
+### ASVspoof2021 LA (13 October)
+
+All 181,566 trials, each model at its own threshold.
+
+| Model | EER | Real flagged | Fakes passed |
+| --- | --- | --- | --- |
+| Served until 13 October (Finding 18, +7.07) | 6.99% | 1.24% | 17.64% |
+| R0, served now (Finding 23, +6.58) | **5.62%** | 2.53% | 11.32% |
+
+The expectation (1-6% for both, R0 lower) held for R0 and was wrong for the
+Finding 18 model. The telephone codecs cost both models: ASVspoof2019 LA eval,
+the same attacks without them, is 1.03% and 0.53%. R0 flags 2.53% of genuine
+codec speech, above its 1% design rate. Not compared with the leaderboard's
+ASVspoof2021 LA column yet: that table has not been read. Per-clip scores are
+in each `eval_arena-ASVspoof2021_LA_*.json` beside the checkpoint
+(`arena.py scores` turns one into the Arena's `scores.txt`).
+
+ASVspoof2021 DF: downloaded (38 GB, job 60989330); scoring jobs 60989333 and
+60989334 were running when this was written (about 3 h each).
+
 ## What has not been measured
 
 - **AASIST under DP.** The port trains under Opacus, but the private AASIST

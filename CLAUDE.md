@@ -13,104 +13,83 @@ University project. Work is on `main` — see "Branching" below.
 Read this first. `RESULTS.md` has every number with its job ID; its
 "Summary → The served system" section is the one-screen version.
 
-**State of play: training is closed (owner's decision, 4 October 2026).**
-Reopened on 8 October for Finding 20, which failed Stage A on 11 October (No effect, nothing served); the owner then asked for the cause and a fix, which was **Finding 21: also No effect at Stage A (12 October)**, though it fixed the ranking (see the table below).
-Reopened again 12 October for Finding 22 (four labels): **No effect at Stage A (13 October)**, and worse than Finding 21 — it passes every Qwen3-TTS/VoxCPM fake.
-**Reopened 13 October for Finding 23 (repeat-pad short clips, random 4 s crops): pre-registered, submitted, results not in yet — see "In flight" just below.**
-Finding 18 (training on our own generated fakes) is the last run that changed the served model (Finding 19 stopped at Stage 0, No room); its model
-is now served by owner override. The next step is the project write-up;
-the open problems below go in it as limitations and future work.
+**State of play (end of 13 October): the model work is finished and R0 is
+served; what is left is the write-up and one benchmark number.** Training was
+closed on 4 October and reopened four times (Findings 20-23). Finding 23
+ended it: its no-training candidate R0 was served by owner override on 13
+October, and the owner chose to stop at this model for the assignment. Paper,
+slides and the site were all updated to R0 the same day.
 
-### In flight: Finding 23 (submitted 13 October, ~06:30 AEDT) — pick up here
+### Pick up here
 
-**What it is.** A diagnostic on Finding 21's candidate A (RESULTS.md, "Post-hoc
-diagnostic (13 October)") found that 42% of the People's Speech clips that set
-its threshold are under 2 s, and that filling them with silence adds about 3
-log-odds. Repeating the clip instead takes candidate A from 39.80% to 24.15%
-of Qwen3-TTS/VoxCPM passed with no training. Finding 23 does that properly:
-`--random-crop` (random 4 s window in training, short clips repeated, the pad
-mode stored in the checkpoint as `pad` and read back by `calibrate.py`,
-`evaluate.py` and `app.py`). Full pre-registration: RESULTS.md "Finding 23".
-The owner authorised the run on 13 October and said the paper can be late.
+**1. Benchmark still running on M3: ASVspoof2021 DF.** Jobs **60989333**
+(Finding 18 model) and **60989334** (R0), submitted from
+`$HOME/df37_scratch/$USER/arena-src/`, about 3 h each from ~23:10 AEDT, 13
+October. When done: read `arena-df21-*.out` there (scratch is slow: wrap reads
+in `timeout`, never wait minutes on one), write EER / real flagged / fakes
+passed into RESULTS.md under "External benchmark", beside the ASVspoof2021 LA
+result already there (R0 5.62% EER, Finding 18's model 6.99%). Reported only;
+nothing depends on it. The other twelve commercially usable Arena sets
+(`ai_model/arena.py` `SETS`) are one `sbatch hpc/get_arena.slurm <name>` and
+one `hpc/evaluate.slurm --dataset arena --arena-set <name>` each; not asked
+for yet. Submitting to the leaderboard needs the scores in a public Hugging
+Face model repo — the owner has not decided.
 
-**Jobs** (`ssh m3 'squeue -u $USER'`; `sacct -X -j <id>`), all run from
-`$HOME/df37_scratch/$USER/f23-src/` (a clone of `8587bc0`), where their `.out`
-logs land:
+**2. The write-up** (`WRITEUP.md` has the state; its top block is current).
+- `paper/main.tex` → `paper/main.pdf` (gitignored), 7 pages of 10, updated to
+  R0 with a new Section IV-F. **The owner has not read IV-F yet.** Not in it:
+  the Arena benchmark. Fig. 5 is a screenshot of the previous model (its
+  caption says so).
+- `paper/presentation/SoundSentinal_FYP_B.pptx`, rebuilt for R0 but **never
+  looked at** — no renderer here. The owner should check slides 8, 9 and 11
+  in PowerPoint. Monash's template is not on this laptop; `WRITEUP.md` says
+  how the rebuild was done without it. Slide 6's screenshot is the old model.
+- `Downloads/SoundSentinal_FYP_B/` on Windows holds the 7 October deck and
+  paper, untouched.
+- GPU-hours: 351 in 234 jobs to 13 October (`sacct`, method in the paper's
+  history: sum of elapsed × allocated GPUs since 1 August). Recompute after
+  the DF jobs.
 
-| Candidate | Train | Calibrate | Stage A `heldout-a` | Stage A SpeechFake dev |
-| --- | --- | --- | --- | --- |
-| **R1**, retrained with `--random-crop` (H100, ~13.5 h) | 60960742 | 60960743 | 60960744 | 60960745 |
-| **R0**, candidate A's weights with `calibrate.py --pad repeat`, no training | — | 60960746 | 60960747 | 60960748 |
+**3. Owed in RESULTS.md from Finding 23, reported not criteria:** People's
+Speech flagged by clip length for R1, and the mean-of-all-windows score for
+both candidates (`diag/diag_tail.py` on M3 scratch; edit `D`/`CKPT` and the
+pad mode). The 13 October diagnostic already has mean-of-windows for R0's
+weights: 19.45% of Qwen3-TTS/VoxCPM pass but People's Speech flagged 2.03%,
+over the 2% bar; the owner declined to override for it.
 
-R1's checkpoints: `.../ssl-aasist/rawboost5/plus-speechfake+synth20/plus-librispeech-bonafide/crop/nodp/`.
-R0's: `.../plus-librispeech-bonafide/nodp/best_calibrated_peoples_speech_1pct_repeatpad.pth`.
+**Ideas raised on 13 October and not taken:** averaging two models' scores
+(needs twice the memory on Azure); a phonetic-feature "evidence" layer (the
+owner wants accuracy, not explanation); DeepfakeBench (it is a face
+image/video benchmark, and CC BY-NC).
 
-**R0 passed Stage A (13 October):** threshold +6.58; A1 24.15%, A2 1.88%, A3
-0.00%, A4 8.41%. Narrow margins on A1 and A2, and A1–A3 were known when it was
-chosen.
+### Finding 23 in brief (full record in RESULTS.md)
 
-**R1 failed Stage A (13 October):** threshold +6.49; A1 **84.20%** (bar ≤ 25%),
-A2 0.66%, A3 0.00%, A4 8.67%. It does not go to Stage B.
+A diagnostic on Finding 21's candidate A found that 42% of the People's Speech
+clips setting its threshold are under 2 s and that filling them with silence
+adds about 3 log-odds. **R0** = candidate A's weights, short clips repeated
+instead (`pad: repeat`, stored in the checkpoint), no training: threshold
++6.58; Stage A 24.15 / 1.88 / 0.00 / 8.41, all four bars passed narrowly.
+**R1** = retrained with `--random-crop`: failed Stage A (84.20% of
+Qwen3-TTS/VoxCPM pass). Stage B for R0: five of six criteria met; In-the-Wild
+fakes missed 2.58% against 2.5% → **Improved, not served**, then **served by
+owner override**. In-the-Wild has been read once for R0; do not score it again.
+R1's checkpoints: `.../plus-librispeech-bonafide/crop/nodp/`. Finding 22's are
+in `.../condition/nodp/`; nothing from either is served.
 
-**Stage B submitted for R0 (13 October), authorised by the owner**, who chose
-to stop at this model for the assignment: serve R0 if every criterion below is
-met, otherwise Finding 18's model stays. Jobs: In-the-Wild 60988525,
-`heldout-b` 60988526, `heldout-c` 60988527, SpeechFake test 60988528, LA eval
-60988529. Read their `.out` logs in `f23-src/` (scratch is slow: wrap reads in
-`timeout`), write the results into RESULTS.md, then serve or not.
-**Stage B result (13 October, in RESULTS.md): Improved, not served.**
-In-the-Wild EER 1.51%, real flagged 0.63%, **fakes missed 2.58% — over the
-2.5% bar by 0.08**; `heldout-b` 5.07%; `heldout-c` 19.34%; SpeechFake test
-9.14%; LA eval EER 1.03%, 15.18% passed. Better than the served model on
-every row but In-the-Wild fakes missed (1.89%). The owner chose "serve only if
-Stage B passes", so Finding 18's model stays served unless they override.
+**This laptop, 13 October.** It crashed once during the session: WSL has
+6.7 GB, and the 1.26 GB model was loaded locally (2.8 GB peak) just before a
+full `npm run build`. Do one heavy thing at a time, or let Cloudflare do the
+build. The Azure hostnames were also unreachable from here that evening while
+the site reached them fine; check the live server through
+`https://soundsentinal.mohidkhanzada.workers.dev/api/model` (it should report
+`threshold_score` 6.58). The session's permission mode blocks
+`deploy/azure.sh`; the owner runs it with `!`.
 
-**Owner override, 13 October: R0 is served** (written in RESULTS.md before
-the swap; details under "The served system"). From this laptop the Azure
-hostname was unreachable that evening while the site reached it fine — check
-the live server through `https://soundsentinal.mohidkhanzada.workers.dev/api/model`.
-
-**External benchmark in flight (13 October):** the Speech Anti-Spoofing Arena
-(RESULTS.md, "External benchmark"), reported only. From `arena-src/` on M3
-scratch: downloads 60989329 (ASVspoof2021 LA) and 60989330 (DF), then scoring
-60989331/60989332 (LA: served, R0) and 60989333/60989334 (DF: served, R0).
-New, uncommitted: `ai_model/arena.py`, `hpc/get_arena.slurm`, `--dataset
-arena --arena-set <name>` in `evaluate.py`, `ARENA_ROOT` in `hpc/env.sh`.
-
-**Reading Stage A.** Same four bars as Findings 21 and 22, per candidate: A1
-Qwen3-TTS + VoxCPM passed ≤ 25%; A2 People's Speech check half ≤ 2% (the
-calibration log); A3 `heldout-a` real ≤ 3%; A4 SpeechFake dev fakes passed
-≤ 12.94%. Write each result into RESULTS.md under Finding 23.
-
-**Stage B is read once, for one candidate:** R1 if it passes Stage A; R0 only
-if R1 fails and R0 passes — which is what happened, so it is R0 (authorised
-and submitted 13 October, see above; do not score In-the-Wild a second time).
-Commands and criteria are as for Finding 22: from
-`f23-src/`, `--gres=gpu:L40S:1 --export=ALL,CKPT_ROOT=$HOME/df37_scratch/$USER/checkpoints
-hpc/evaluate.slurm --ckpt <calibrated file>` plus, per job: `--dataset itw`;
-`--dataset synth --synth-split heldout-b`; `--dataset synth --synth-split
-heldout-c`; `--dataset speechfake` (add `--time=01:00:00`); and LA eval
-(default dataset; reported only). Criteria: In-the-Wild EER, real flagged and
-fakes missed each ≤ 2.5%; `heldout-c` fakes passed ≤ 24.78%; `heldout-b`
-≤ 17.27%; SpeechFake test ≤ 15.65%. All met → **Served**: swap the checkpoint
-and the four `best.measured-*.json` locally, upload the weights to the Azure
-blob, redeploy the image (it must be one built from `8587bc0` or later, so the
-server knows `pad`), refresh `src/lib/measured.js`, and update this file and
-RESULTS.md's summary. Serving is the owner's call.
-
-**Also owed in RESULTS.md, reported not criteria:** People's Speech flagged by
-clip length for R1, and the mean-of-all-windows score for both candidates
-(`diag/diag_tail.py` on M3 scratch does both for one checkpoint; edit `D`/`CKPT`
-and the pad mode).
-
-**Finding 22, closed.** D (four labels) and its two-label control both pass
-100% of Qwen3-TTS/VoxCPM at Stage A; D also failed A4 (23.70%). The channel
-applied to half the training clips undid Finding 21's fix. Its checkpoints are
-in `.../condition/nodp/`; nothing from it is served.
-
-**Code state.** `ai_model/` at `8587bc0` has Findings 21–23; the arena
-adapter came after it (13 October). M3's own checkout (`~/SoundSentinal`) has not been pulled
-and is still at `4749ab6`; jobs run from the scratch clones.
+**Code state.** Everything is committed and pushed. `ai_model/` at `8587bc0`
+has Findings 21-23 and is what the Azure image was built from; the Arena
+adapter (`arena.py`, `hpc/get_arena.slurm`, `evaluate.py --dataset arena`) came
+after it in `525171d`. M3's own checkout (`~/SoundSentinal`) is still at
+`4749ab6`; jobs run from scratch clones (`f23-src/`, `arena-src/`).
 
 ### The served system (changed 13 October — Finding 23's R0, by override)
 
@@ -341,6 +320,11 @@ ai_model/
   in_the_wild.py         Adapter for In-the-Wild (Müller et al.) — the
                          generalisation test set. EVALUATION ONLY; read its
                          header before using it for anything else.
+  arena.py               Adapter: the Speech Anti-Spoofing Arena's test sets
+                         (ASVspoof2021 LA/DF and twelve more with commercial
+                         licences). EVALUATION ONLY. `evaluate.py --dataset
+                         arena --arena-set <name>`; fetch with
+                         hpc/get_arena.slurm.
   tdcf.py                min t-DCF, ASVspoof2019's primary metric.
   summarise_results.py   Tabulates evaluate.py's JSON files.
   train_dp_avspoof.py    DP training loop (Opacus), dev-set eval, checkpointing.
