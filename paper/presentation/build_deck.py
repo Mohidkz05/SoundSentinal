@@ -265,7 +265,7 @@ def build(template):
     cols = [
         ("Small CNN", "267k parameters", "10.2%", "58.5%", False),
         ("AASIST", "297k parameters", "3.2%", "37.2%", False),
-        ("SSL-AASIST", "316M, pre-trained", "0.8%", "2.0%", True),
+        ("SSL-AASIST", "316M, pre-trained", "1.0%", "1.5%", True),
     ]
     for i, (name, size, bench, real_w, chosen) in enumerate(cols):
         x = 0.55 + i * 4.15
@@ -297,12 +297,13 @@ def build(template):
 
     # 8 — The journey (native chart) ---------------------------------------
     s = prs.slides.add_slide(L[L_GREY])
-    fill(s, 13, "THE JOURNEY: 37% TO 2%")
+    fill(s, 13, "THE JOURNEY: 37% TO 1.5%")
     fill(s, 11, "REAL-WORLD ERROR RATE, LOWER IS BETTER")
     drop_empty(s)
     rows = [("CNN, benchmark data", 58.54), ("AASIST", 37.15), ("+ noise augmentation", 48.78),
             ("Pre-trained model", 37.86), ("Pre-trained + augmentation", 11.21),
-            ("+ SpeechFake data", 2.65), ("+ our own fakes (served)", 2.02)]
+            ("+ SpeechFake data", 2.65), ("+ our own fakes", 2.02),
+            ("+ paired real speech (served)", 1.51)]
     cd = CategoryChartData()
     cd.categories = [r[0] for r in rows][::-1]
     cd.add_series("Real-world error (EER %)", [r[1] for r in rows][::-1])
@@ -324,7 +325,7 @@ def build(template):
     ser = plot.series[0]
     ser.format.fill.solid()
     ser.format.fill.fore_color.rgb = LINE
-    for i in (0, 1):  # the last two bars in reading order: the data that worked
+    for i in (0, 1, 2):  # the last three bars in reading order: the data that worked
         pt = ser.points[i]
         pt.format.fill.solid()
         pt.format.fill.fore_color.rgb = BLUE
@@ -338,7 +339,8 @@ def build(template):
         "Trained on the benchmark, our models collapsed on real audio.",
         [("What fixed it", {"size": 17, "bold": True, "color": BLUE})],
         "A pre-trained model, plus many different fake generators, "
-        "including 44,000 clips we generated ourselves.",
+        "including 66,000 clips we generated ourselves and the real "
+        "recordings they were cloned from.",
     ], size=14)
     notes(s, "Mohid", "5:30–6:30",
           "This chart is the project in one picture. Each bar is a model, in "
@@ -347,19 +349,20 @@ def build(template):
           "on the benchmark and then collapsed here, to 37% and worse; 50% is "
           "a coin toss. Augmentation alone made it worse. What worked was the "
           "pre-trained model, then more variety of fakes: a public dataset, "
-          "then 44,000 clips we generated ourselves with eight open "
-          "text-to-speech systems. That took us from 37% to 2%. Farhan will "
-          "explain how we managed it.")
+          "then clips we generated ourselves, 66,000 in the end from twelve "
+          "open text-to-speech systems, and finally the genuine recordings "
+          "those voices were cloned from. That took us from 37% to 1.5%. "
+          "Farhan will explain how we managed it.")
 
     # 9 — Project management --------------------------------------------------
     s = prs.slides.add_slide(L[L_TEX_3])
     fill(s, 13, "PROJECT MANAGEMENT")
-    fill(s, 11, "19 EXPERIMENTS IN 7 WEEKS")
+    fill(s, 11, "23 EXPERIMENTS IN 8 WEEKS")
     drop_empty(s)
     events = [("17 Aug", "Model chosen"), ("14 Sep", "GPU cluster access"),
               ("21 Sep", "Real-world collapse"), ("26 Sep", "2.65% error"),
-              ("27 Sep–1 Oct", "Threshold fixes"), ("3 Oct", "Own fakes: 2.02%"),
-              ("5 Oct", "Live online")]
+              ("27 Sep–1 Oct", "Threshold fixes"), ("3–5 Oct", "Own fakes; live online"),
+              ("13 Oct", "Final model: 1.51%")]
     y0 = 2.75
     line = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.8), Inches(y0), Inches(11.7), Inches(0.04))
     line.fill.solid(); line.fill.fore_color.rgb = LINE; line.line.fill.background()
@@ -373,22 +376,22 @@ def build(template):
         text(s, x - 0.9, y0 + 0.25, 1.8, 0.7, e, size=13, color=GREY, align=PP_ALIGN.CENTER)
     cards = [
         ("Control: pre-registration", "Success criteria written down before each run, so results couldn't be tuned after the fact."),
-        ("Critical path: GPU time", "228.7 GPU-hours on Monash's M3 cluster; 12–13 hours per training run."),
-        ("Setbacks, handled openly", "The real-world collapse; a 2% target missed by 0.18 points and overridden, on record."),
+        ("Critical path: GPU time", "351 GPU-hours on Monash's M3 cluster; 12–13 hours per training run."),
+        ("Setbacks, handled openly", "The real-world collapse; two targets missed by under 0.2 points and overridden, on record."),
     ]
     for i, (h, b) in enumerate(cards):
         x = 1.3 + i * 3.95
         box(s, x, 3.95, 3.7, 1.75, fill_rgb=LIGHT)
         text(s, x + 0.25, 4.12, 3.25, 1.5, [[(h, {"size": 16, "bold": True, "color": BLUE})], b], size=14)
     notes(s, "Farhan", "6:30–7:30",
-          "We ran 19 experiments in seven weeks. Our critical path was GPU "
+          "We ran 23 experiments in eight weeks. Our critical path was GPU "
           "time on Monash's M3 cluster: each serious training run took 12 to "
-          "13 hours on one GPU, 228.7 GPU-hours in total. Our main project "
+          "13 hours on one GPU, about 350 GPU-hours in total. Our main project "
           "control was pre-registration: before every experiment we wrote "
           "down what would count as success, so we couldn't move the goalposts "
           "afterwards. That mattered for setbacks: when the models collapsed on "
           "real audio on 21 September we re-planned around it; and when the "
-          "final model missed one of our own targets by 0.18 points, the "
+          "final model missed one of our own targets by 0.08 points, the "
           "decision to use it anyway was recorded before we switched it on.")
 
     # 10 — Constraints -----------------------------------------------------------
@@ -397,7 +400,7 @@ def build(template):
     fill(s, 11, "COST, CARBON, PRIVACY, LICENCES")
     drop_empty(s)
     grid = [("A$0.53", "hosting cost to date: the server sleeps when unused"),
-            ("~90–125 kg", "CO₂e estimated for all training (228.7 GPU-hours)"),
+            ("~140–190 kg", "CO₂e estimated for all training (351 GPU-hours)"),
             ("0 clips", "stored: uploads are scored in memory and dropped"),
             ("100%", "of training data licensed for commercial use")]
     for i, (big, lab) in enumerate(grid):
@@ -410,8 +413,8 @@ def build(template):
     notes(s, "Amaan", "7:30–8:30",
           "Constraints shaped the design. Cost: the model server scales to zero "
           "when nobody is using it, so hosting has cost 53 cents of student "
-          "credit so far. Carbon: training is the expensive part, about 230 "
-          "GPU-hours, which we estimate at 90 to 125 kilograms of CO2 at "
+          "credit so far. Carbon: training is the expensive part, about 350 "
+          "GPU-hours, which we estimate at 140 to 190 kilograms of CO2 at "
           "Victoria's grid intensity; using it costs almost nothing. Privacy: "
           "clips are never written to disk or logged. Licences: we only used "
           "data that allows commercial use, which ruled out one large dataset. "
@@ -423,9 +426,9 @@ def build(template):
     fill(s, 13, "WHAT IT STILL GETS WRONG")
     fill(s, 11, "AND WHAT THE USER IS TOLD")
     drop_empty(s)
-    lims = [("1 in 5 to 8", "clean, studio-quality fakes still get past it"),
-            ("64–84%", "of clips from two new voice generators still pass"),
-            ("2.18%", "real voices flagged, against our own 2% target"),
+    lims = [("9–15%", "of clean, studio-quality fakes still get past it"),
+            ("55%", "of clips from one new generator it never heard pass"),
+            ("2.58%", "real-world fakes missed, against our own 2.5% target"),
             ("4 s", "only the first four seconds are read")]
     for i, (big, lab) in enumerate(lims):
         x = 0.55 + i * 3.1
@@ -437,10 +440,11 @@ def build(template):
          ("a low score on a clean recording is not proof that it's real.", {"size": 17})]])
     notes(s, "Mohid", "8:30–9:15",
           "It isn't perfect, and we'd rather say so. Clean, studio-quality "
-          "fakes still get past it between one time in five and one in eight. "
-          "Two brand-new voice generators mostly pass. It reads only the first "
+          "fakes still get past it between one time in seven and one in eleven. "
+          "One brand-new voice generator it never heard still passes more than "
+          "half the time. It reads only the first "
           "four seconds. And the model we serve missed one of our own targets "
-          "by 0.18 points; we chose to use it because everything else improved, "
+          "by 0.08 points; we chose to use it because almost everything else improved, "
           "and we wrote that down. That's why the site never says 'real': it "
           "says a low score on a clean recording isn't proof.")
 

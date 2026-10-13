@@ -1,12 +1,17 @@
 # SoundSentinal — FYP B write-up and presentation plan
 
-**Status (13 October 2026): the paper is updated to the served model R0
-(Finding 23); the slides are not.** `paper/main.tex` now reports In-the-Wild
-EER 1.51%, threshold +6.58, three overrides and a new Section IV-F (Findings
-20-23); still 7 pages. Still on the previous model: the 12-slide deck, Fig. 5
-(a screenshot, its caption says so), and the plan below (it quotes 2.02%).
-Compute is now 351 GPU-hours in 234 jobs (1 August - 13 October, `sacct`);
-recompute once the Arena benchmark jobs finish.
+**Status (13 October 2026): paper and slides are updated to the served model
+R0 (Finding 23).** `paper/main.tex` reports In-the-Wild EER 1.51%, threshold
++6.58, three overrides and a new Section IV-F (Findings 20-23); still 7 pages.
+The deck was rebuilt from `build_deck.py` with the same numbers (slides 7-11
+and their notes). Monash's template file is not on this machine: the rebuild
+used the previous deck as the template, with its Acknowledgement slide moved
+to index 4, which keeps every layout. **The rebuilt slides have not been
+looked at** (no renderer here): open them in PowerPoint and check slides 8, 9
+and 11 for overflow. Still on the previous model: Fig. 5 and slide 6's
+screenshot (`img/result.png`), and the plan below (it quotes 2.02%). Hosting
+cost (A$0.53) was not re-read. Compute is 351 GPU-hours in 234 jobs (1 August
+- 13 October, `sacct`); recompute once the Arena benchmark jobs finish.
 
 **Status (7 October 2026): both drafts are complete.**
 - Paper: `paper/main.tex` → 7 pages, no TODOs. Build:
