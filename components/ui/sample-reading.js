@@ -15,7 +15,7 @@ import {
   usePrefersReducedMotion,
 } from '../three/use-stage';
 import { VerdictScale } from './verdict-scale';
-import { motion } from 'motion/react';
+import * as m from 'motion/react-m';
 import { ToggleGroup, ToggleGroupItem } from '@components/ui/toggle-group';
 import { duration, easing } from '../../src/lib/motion';
 
@@ -147,7 +147,7 @@ export function SampleReading({ className = '' }) {
               className="relative min-h-[var(--hit)] rounded-[var(--radius-sm)] px-3.5 text-small text-secondary hover:bg-transparent hover:text-primary data-[state=on]:bg-transparent data-[state=on]:font-semibold data-[state=on]:text-primary"
             >
               {i === index && (
-                <motion.span
+                <m.span
                   layoutId="sample-toggle-highlight"
                   className="absolute inset-0 -z-10 rounded-[var(--radius-sm)] bg-raised shadow-[var(--shadow-panel)]"
                   transition={{ duration: duration.base, ease: easing.instrument }}

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { motion } from 'motion/react';
+import * as m from 'motion/react-m';
 import { duration, easing } from '../../src/lib/motion';
 
 /**
@@ -39,7 +39,7 @@ const group = (delay = 0) => ({
 const VIEW = { once: true, amount: 0.2 };
 
 export function Rise({ as = 'div', delay = 0, className, children, ...props }) {
-  const C = motion[as];
+  const C = m[as];
   return (
     <C
       className={className}
@@ -54,7 +54,7 @@ export function Rise({ as = 'div', delay = 0, className, children, ...props }) {
 }
 
 export function Reveal({ as = 'div', className, children, ...props }) {
-  const C = motion[as];
+  const C = m[as];
   return (
     <C className={className} initial="hidden" whileInView="show" viewport={VIEW} variants={reveal} {...props}>
       {children}
@@ -65,7 +65,7 @@ export function Reveal({ as = 'div', className, children, ...props }) {
 /** `above` = the list is above the fold: items rise (opaque) on mount
  *  instead of waiting to be scrolled into view. */
 export function Stagger({ as = 'div', above = false, delay = 0, className, children, ...props }) {
-  const C = motion[as];
+  const C = m[as];
   const trigger = above ? { animate: 'show' } : { whileInView: 'show', viewport: VIEW };
   return (
     <C className={className} initial="hidden" {...trigger} variants={group(delay)} {...props}>
@@ -75,7 +75,7 @@ export function Stagger({ as = 'div', above = false, delay = 0, className, child
 }
 
 export function StaggerItem({ as = 'div', above = false, className, children, ...props }) {
-  const C = motion[as];
+  const C = m[as];
   return (
     <C className={className} variants={above ? rise : reveal} {...props}>
       {children}
