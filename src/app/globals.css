@@ -374,6 +374,12 @@
     scrollbar-color: var(--line-strong) var(--canvas);
     accent-color: var(--accent);
   }
+
+  /* In-page links ("How it works", "How often it is wrong") glide rather than
+     jump, so the reader keeps their place. Route changes still land at once:
+     `data-scroll-behavior` on <html> (layout.js) tells Next.js to switch this
+     off while it navigates. Reduced motion turns it off (section 5). */
+  html { scroll-behavior: smooth; }
   input, textarea { caret-color: var(--accent); }
   a { text-underline-offset: 0.22em; text-decoration-thickness: 1px; }
 

@@ -74,7 +74,8 @@ export function VerdictScale({
 
   return (
     <div>
-      <div className="relative pt-7">
+      {/* An inline-size container, so the needle can travel in `cqw`. */}
+      <div className="relative pt-7 [container-type:inline-size]">
         <span
           className="tick-label pointer-events-none absolute top-0 whitespace-nowrap text-secondary"
           style={{ left: `${t * 100}%`, transform: anchor(t) }}
@@ -104,12 +105,17 @@ export function VerdictScale({
           /* The needle. A zero-width rail so the two parts can each centre
              themselves on the reading without compounding the translate that
              positions the group. This is the only element on the scale that
-             carries hue — it is the only one that is the reading. */
+             carries hue — it is the only one that is the reading.
+
+             It travels by transform, in container widths, rather than by
+             `left`: a transform runs on the compositor, so the sweep stays
+             smooth while /result is busy loading and compiling its waveform
+             scene, which is exactly when it plays. */
           <div
-            className="pointer-events-none absolute bottom-[-0.5rem] top-[1.25rem] w-0"
+            className="pointer-events-none absolute bottom-[-0.5rem] left-0 top-[1.25rem] w-0 will-change-transform"
             style={{
-              left: `${(armed ? s : 0) * 100}%`,
-              transition: 'left var(--duration-sweep) var(--ease-needle)',
+              transform: `translateX(${(armed ? s : 0) * 100}cqw)`,
+              transition: 'transform var(--duration-sweep) var(--ease-needle)',
             }}
             aria-hidden="true"
           >
