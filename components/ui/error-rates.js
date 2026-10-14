@@ -13,12 +13,18 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
  * things, and folding them together is how detectors end up quoting a number
  * nobody can act on.
  */
+/* "of 19,963". The rows can come from the live server, so a count it left
+   out is dropped rather than crashing the table on `undefined`. */
+function ofCount(n) {
+  return Number.isFinite(n) ? `of ${n.toLocaleString('en-GB')}` : null;
+}
+
 function Figure({ label, value, of }) {
   return (
     <div className="flex flex-col gap-[var(--space-tight)]">
       <span className="field-label">{label}</span>
       <span className="tabular text-h3 leading-none text-primary">{formatPercent(value)}</span>
-      <span className="tabular text-small text-muted">of {of.toLocaleString('en-GB')}</span>
+      {ofCount(of) && <span className="tabular text-small text-muted">{ofCount(of)}</span>}
     </div>
   );
 }
@@ -64,11 +70,15 @@ export function ErrorRates({ measured }) {
               </TableHead>
               <TableCell className="py-[1.125rem]">
                 <span className="tabular block text-h3 leading-none text-primary">{formatPercent(m.real_flagged)}</span>
-                <span className="tabular mt-2 block text-small text-muted">of {m.n_real.toLocaleString('en-GB')}</span>
+                {ofCount(m.n_real) && (
+                  <span className="tabular mt-2 block text-small text-muted">{ofCount(m.n_real)}</span>
+                )}
               </TableCell>
               <TableCell className="py-[1.125rem] pr-0">
                 <span className="tabular block text-h3 leading-none text-primary">{formatPercent(m.fakes_passed)}</span>
-                <span className="tabular mt-2 block text-small text-muted">of {m.n_fake.toLocaleString('en-GB')}</span>
+                {ofCount(m.n_fake) && (
+                  <span className="tabular mt-2 block text-small text-muted">{ofCount(m.n_fake)}</span>
+                )}
               </TableCell>
             </TableRow>
           ))}

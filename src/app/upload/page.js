@@ -116,6 +116,9 @@ function formatTake(seconds) {
 
 const isVideo = (name) => VIDEO_FORMATS.includes(extensionOf(name));
 
+/* A drag carrying files, as opposed to selected text or a link. */
+const carriesFiles = (e) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
 function extensionOf(name) {
   const i = name.lastIndexOf('.');
   return i === -1 ? '' : name.slice(i + 1).toLowerCase();
@@ -124,6 +127,7 @@ function extensionOf(name) {
 /** Returns an error string, or null when the file is acceptable. Messages say
  *  what went wrong and what to do — never just "invalid file". */
 function validate(file) {
+  if (file.size === 0) return 'That file is empty. Choose another one.';
   const ext = extensionOf(file.name);
   const video = VIDEO_FORMATS.includes(ext);
   if (!FORMATS.includes(ext) && !video) {
@@ -147,6 +151,19 @@ export default function UploadPage() {
   const router = useRouter();
   const inputId = useId();
   const inputRef = useRef(null);
+
+  /* /result is where every analysis ends, so fetch its code while the clip
+     is being chosen: the hand-off then lands at once instead of waiting on a
+     route chunk after the model has already answered. */
+  useEffect(() => {
+    router.prefetch('/result');
+  }, [router]);
+
+  /* An analysis in flight belongs to this page. Leaving it (the cold start
+     can take a minute) must not yank the visitor to /result from wherever
+     they went next, so the request is cancelled on the way out. */
+  const inFlight = useRef(null);
+  useEffect(() => () => inFlight.current?.abort(), []);
 
   /* `pageDrag`: a file is being dragged anywhere over the window, so the deck
      announces itself as the place to put it. `dragging`: it is over the deck. */
@@ -217,15 +234,13 @@ export default function UploadPage() {
       setExtracting(true);
       setDecoding(false);
       extractAudio(candidate)
-        .then(async (extracted) => {
-          if (decodeToken.current !== token) return;
-          const preview = await analyseAudioFile(extracted.file).catch(() => null);
+        .then((extracted) => {
           if (decodeToken.current !== token) return;
           setFile(extracted.file);
           // The original soundtrack's length and channels, the extract's shape.
           // Its sample rate isn't knowable from here, so it isn't shown.
           setAnalysis({
-            peaks: preview?.peaks ?? null,
+            peaks: extracted.peaks,
             duration: extracted.duration,
             channels: extracted.channels,
             sampleRate: null,
@@ -300,7 +315,6 @@ export default function UploadPage() {
      and anything chosen on it, gone. */
   useEffect(() => {
     let depth = 0;
-    const carriesFiles = (e) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
     const enter = (e) => {
       if (!carriesFiles(e)) return;
       depth += 1;
@@ -365,12 +379,19 @@ export default function UploadPage() {
     if (!file || submitting) return;
     setSubmitting(true);
     setError(null);
+    const controller = new AbortController();
+    inFlight.current = controller;
 
     try {
       const body = new FormData();
       body.append('file', file);
-      const response = await fetch('/api/predict', { method: 'POST', body });
+      const response = await fetch('/api/predict', {
+        method: 'POST',
+        body,
+        signal: controller.signal,
+      });
       const payload = await response.json().catch(() => null);
+      if (controller.signal.aborted) return;
 
       if (!response.ok) {
         setError(payload?.error ?? 'The clip could not be analysed. Try again.');
@@ -393,8 +414,12 @@ export default function UploadPage() {
          button should stay spent rather than flicking back to "Analyse clip"
          for the moment before the route changes. */
     } catch {
+      // Aborted: the page has been left, and there is no one to tell.
+      if (controller.signal.aborted) return;
       setError('The clip could not be sent for analysis. Check your connection and try again.');
       setSubmitting(false);
+    } finally {
+      if (inFlight.current === controller) inFlight.current = null;
     }
   };
 
@@ -440,7 +465,13 @@ export default function UploadPage() {
               until a clip arrives. Dragging a file anywhere over the page
               outlines it; over the deck itself, it lights. */}
           <div
-            onDragEnter={() => setDragging(true)}
+            /* Only a file that would be accepted lights the deck: dragged
+               text never reaches the window's drop handler, so it would leave
+               the deck lit with nothing to put out, and mid-send or mid-take
+               the drop is refused anyway. */
+            onDragEnter={(e) => {
+              if (carriesFiles(e) && !busy.current) setDragging(true);
+            }}
             onDragLeave={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
             }}
