@@ -116,10 +116,38 @@ function containerSampleRate(bytes) {
 }
 
 /**
- * Decode `file` and reduce it to `buckets` RMS envelope values in 0–1.
+ * Reduce mono samples to `buckets` RMS envelope values in 0–1.
  *
  * RMS rather than peak amplitude: peak picking on a sparse bucket grid latches
  * onto single-sample transients and draws a spiky, misleading envelope.
+ *
+ * @param {Float32Array} mono
+ * @returns {Float32Array}
+ */
+export function envelope(mono, buckets = 320) {
+  const length = mono.length;
+  const peaks = new Float32Array(buckets);
+  const per = Math.max(1, Math.floor(length / buckets));
+  let max = 0;
+
+  for (let b = 0; b < buckets; b++) {
+    const start = b * per;
+    const end = Math.min(length, start + per);
+    let sum = 0;
+    for (let i = start; i < end; i++) sum += mono[i] * mono[i];
+    const rms = end > start ? Math.sqrt(sum / (end - start)) : 0;
+    peaks[b] = rms;
+    if (rms > max) max = rms;
+  }
+
+  // Normalise so a quiet recording still draws at full height — the picture
+  // is of the clip's shape, not its absolute level.
+  if (max > 0) for (let b = 0; b < buckets; b++) peaks[b] /= max;
+  return peaks;
+}
+
+/**
+ * Decode `file` and reduce it to `buckets` RMS envelope values in 0–1.
  *
  * `sampleRate` comes from the container header and is null when unreadable —
  * never from the decoded buffer, which reports the output device's rate.
@@ -142,32 +170,18 @@ export async function analyseAudioFile(file, buckets = 320) {
     const channels = buffer.numberOfChannels;
     const length = buffer.length;
 
-    // Downmix to mono, which is what the model reads anyway.
-    const mono = new Float32Array(length);
-    for (let c = 0; c < channels; c++) {
-      const data = buffer.getChannelData(c);
-      for (let i = 0; i < length; i++) mono[i] += data[i] / channels;
+    // Downmix to mono, which is what the model reads anyway. A mono file is
+    // already that, and is read in place rather than copied.
+    let mono = buffer.getChannelData(0);
+    if (channels > 1) {
+      mono = new Float32Array(length);
+      for (let c = 0; c < channels; c++) {
+        const data = buffer.getChannelData(c);
+        for (let i = 0; i < length; i++) mono[i] += data[i] / channels;
+      }
     }
 
-    const peaks = new Float32Array(buckets);
-    const per = Math.max(1, Math.floor(length / buckets));
-    let max = 0;
-
-    for (let b = 0; b < buckets; b++) {
-      const start = b * per;
-      const end = Math.min(length, start + per);
-      let sum = 0;
-      for (let i = start; i < end; i++) sum += mono[i] * mono[i];
-      const rms = end > start ? Math.sqrt(sum / (end - start)) : 0;
-      peaks[b] = rms;
-      if (rms > max) max = rms;
-    }
-
-    // Normalise so a quiet recording still draws at full height — the picture
-    // is of the clip's shape, not its absolute level.
-    if (max > 0) for (let b = 0; b < buckets; b++) peaks[b] /= max;
-
-    return { peaks, duration: buffer.duration, sampleRate, channels };
+    return { peaks: envelope(mono, buckets), duration: buffer.duration, sampleRate, channels };
   } finally {
     // Contexts are a limited resource and this one has done its job.
     ctx.close?.();

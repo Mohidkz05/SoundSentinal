@@ -14,7 +14,7 @@
  * nothing the model would not have done to the audio itself.
  */
 
-import { MODEL_SAMPLE_RATE } from './peaks';
+import { MODEL_SAMPLE_RATE, envelope } from './peaks';
 
 /** Containers the server can't read and the browser can. */
 export const VIDEO_FORMATS = ['mp4', 'm4a', 'mov', 'webm'];
@@ -60,8 +60,11 @@ function encodeWav(samples, sampleRate) {
  * Decode `file`'s audio track and return it as a 16 kHz mono WAV `File`.
  * Throws when the browser can't decode it or the file has no audio track.
  *
- * @returns {Promise<{file: File, duration: number, channels: number}>}
- *          `duration` and `channels` describe the original soundtrack.
+ * @returns {Promise<{file: File, peaks: Float32Array, duration: number, channels: number}>}
+ *          `duration` and `channels` describe the original soundtrack;
+ *          `peaks` is the envelope of what was kept, drawn from the samples
+ *          already rendered here rather than by decoding the WAV a second
+ *          time.
  */
 export async function extractAudio(file) {
   const Ctx =
@@ -93,9 +96,11 @@ export async function extractAudio(file) {
   const rendered = await offline.startRendering();
 
   const base = file.name.replace(/\.[^.]+$/, '') || 'clip';
-  const wav = encodeWav(rendered.getChannelData(0), MODEL_SAMPLE_RATE);
+  const mono = rendered.getChannelData(0);
+  const wav = encodeWav(mono, MODEL_SAMPLE_RATE);
   return {
     file: new File([wav], `${base}.wav`, { type: 'audio/wav' }),
+    peaks: envelope(mono),
     duration: buffer.duration,
     channels: buffer.numberOfChannels,
   };

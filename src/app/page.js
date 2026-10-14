@@ -34,6 +34,9 @@ const STEPS = [
 const FIELD_MASK =
   'radial-gradient(closest-side, #000 0%, #000 55%, transparent 100%)';
 
+const isRow = (r) =>
+  typeof r?.set === 'string' && Number.isFinite(r.real_flagged) && Number.isFinite(r.fakes_passed);
+
 /* The served model's measured error rates. They render at once from the copy
    bundled in src/lib/measured.js — waiting on the model server left this panel
    empty for up to a minute after it had scaled to zero, which is what most
@@ -45,7 +48,12 @@ function useMeasured() {
     let live = true;
     fetch('/api/model')
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d) => live && d.measured?.length && setMeasured(d.measured))
+      /* Only well-formed rows replace the bundled copy: a row without its
+         rates would otherwise render as a confident 0.0%. */
+      .then((d) => {
+        const rows = d?.measured;
+        if (live && Array.isArray(rows) && rows.length && rows.every(isRow)) setMeasured(rows);
+      })
       .catch(() => {});
     return () => {
       live = false;
