@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { motion } from 'motion/react';
+import * as m from 'motion/react-m';
 import { duration, easing } from '../../src/lib/motion';
 
 /**
@@ -138,7 +138,7 @@ export function ListeningWindow({ peaks = null, duration = null, active = false,
         )}
 
         {!live && end !== null && end > 0.2 && (
-          <motion.div
+          <m.div
             key={end}
             className="pointer-events-none absolute bottom-2 top-16 w-px bg-primary"
             style={{ left: `${x(end) * 100}%` }}
@@ -149,7 +149,7 @@ export function ListeningWindow({ peaks = null, duration = null, active = false,
             <span className="tick-label absolute -top-5 left-1.5 whitespace-nowrap text-primary">
               {duration > MAX ? 'cut at 2 min' : `end · ${duration < 10 ? duration.toFixed(1) : Math.round(duration)} s`}
             </span>
-          </motion.div>
+          </m.div>
         )}
       </div>
 

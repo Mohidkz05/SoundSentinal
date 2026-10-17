@@ -67,7 +67,7 @@ export default function RootLayout({ children }) {
        its var() where it is declared — so with the variables on <body>,
        `var(--font-bricolage)` (then Archivo) was undefined at :root, the whole font stack was
        dropped, and until 1 October 2026 every page rendered in the system sans. */
-    <html lang="en" suppressHydrationWarning className={`${bricolage.variable} ${martian.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" suppressHydrationWarning className={`${bricolage.variable} ${martian.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>

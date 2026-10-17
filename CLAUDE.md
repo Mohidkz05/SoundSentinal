@@ -392,6 +392,11 @@ it was Archivo + IBM Plex Mono). Self-hosted in `src/app/fonts/`, OFL.
 
 Note `motion` (Framer Motion), `three` and `@react-three/fiber` are now
 dependencies, and `npm install` has been run — `node_modules/` exists.
+**Never import from `motion/react`** (14 October 2026): its barrel pins the
+full-feature `motion` component into every bundle (~35 kB gzipped per page).
+Components use `import * as m from 'motion/react-m'`; `LazyMotion`,
+`MotionConfig` and the lazily loaded features come from `framer-motion`. See
+`components/providers.js`.
 
 **The 3D layer**: six WebGL scenes in `components/three/`, each depicting
 something the model actually does — the log-Mel spectrogram it reads, the

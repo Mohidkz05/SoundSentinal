@@ -47,6 +47,11 @@ export function useRecorder({ maxSeconds, onDone, onError }) {
   const [state, setState] = useState('idle');
   const [levels, setLevels] = useState(null);
   const session = useRef(null);
+  /* Bumped by cancel() and on unmount. A permission prompt can be open for as
+     long as the visitor likes; if they discard or leave in the meantime, the
+     stream that arrives afterwards belongs to nobody and is released at once
+     instead of starting a recording (and a lit microphone) on its own. */
+  const attempt = useRef(0);
   // The callbacks change identity on every render; the session outlives that.
   const done = useRef(onDone);
   const fail = useRef(onError);
@@ -68,19 +73,23 @@ export function useRecorder({ maxSeconds, onDone, onError }) {
     s.recorder.stop();
   }, []);
 
-  /** Throw the recording away, e.g. when the page is left mid-take. */
+  /** Throw the recording away, e.g. when the page is left mid-take. Also
+   *  abandons a take still waiting on the permission prompt. */
   const cancel = useCallback(() => {
+    attempt.current += 1;
     const s = session.current;
-    if (!s) return;
-    s.discard = true;
-    if (s.recorder.state !== 'inactive') s.recorder.stop();
-    teardown();
+    if (s) {
+      s.discard = true;
+      if (s.recorder.state !== 'inactive') s.recorder.stop();
+      teardown();
+    }
     setState('idle');
     setLevels(null);
   }, [teardown]);
 
   const start = useCallback(async () => {
     if (session.current) return;
+    const mine = ++attempt.current;
     setState('requesting');
 
     let stream;
@@ -94,6 +103,7 @@ export function useRecorder({ maxSeconds, onDone, onError }) {
         },
       });
     } catch (e) {
+      if (attempt.current !== mine) return;
       setState('idle');
       fail.current(
         e?.name === 'NotAllowedError'
@@ -105,9 +115,29 @@ export function useRecorder({ maxSeconds, onDone, onError }) {
       return;
     }
 
+    const release = () => stream.getTracks().forEach((track) => track.stop());
+    if (attempt.current !== mine) {
+      release();
+      return;
+    }
+
     const [type, ext] = TYPES.find(([t]) => MediaRecorder.isTypeSupported(t));
-    const recorder = new MediaRecorder(stream, { mimeType: type });
-    const context = new AudioContext();
+    let recorder;
+    let context;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: type });
+      context = new (window.AudioContext || window.webkitAudioContext)();
+    } catch {
+      release();
+      context?.close().catch(() => {});
+      setState('idle');
+      fail.current('The microphone could not be started. Choose a file instead.');
+      return;
+    }
+    /* Created after an await, so outside the click that asked for it: some
+       browsers start such a context suspended, and a suspended analyser reads
+       silence — the take would be recorded but drawn flat. */
+    context.resume?.().catch(() => {});
     const analyser = context.createAnalyser();
     analyser.fftSize = 2048;
     context.createMediaStreamSource(stream).connect(analyser);
@@ -128,9 +158,9 @@ export function useRecorder({ maxSeconds, onDone, onError }) {
     recorder.onstop = () => {
       const seconds = elapsed();
       teardown();
+      if (s.discard) return;
       setState('idle');
       setLevels(null);
-      if (s.discard) return;
       const blob = new Blob(chunks, { type: recorder.mimeType || type });
       done.current(new File([blob], `recording.${ext}`, { type: blob.type }), seconds);
     };
@@ -144,7 +174,9 @@ export function useRecorder({ maxSeconds, onDone, onError }) {
       // A floor, so a silent room is drawn flat rather than amplified to full.
       loudest = Math.max(loudest, rms, 0.02);
       const seconds = elapsed();
-      setLevels({ peaks: raw.map((v) => v / loudest), duration: seconds });
+      const peaks = new Float32Array(raw.length);
+      for (let i = 0; i < raw.length; i++) peaks[i] = raw[i] / loudest;
+      setLevels({ peaks, duration: seconds });
       if (seconds >= maxSeconds) stop();
     }, 1000 / RATE);
 
@@ -152,7 +184,7 @@ export function useRecorder({ maxSeconds, onDone, onError }) {
     setState('recording');
   }, [maxSeconds, stop, teardown]);
 
-  // Leaving the page mid-take releases the microphone.
+  // Leaving the page mid-take (or mid-prompt) releases the microphone.
   useEffect(() => cancel, [cancel]);
 
   return { state, levels, start, stop, cancel };
