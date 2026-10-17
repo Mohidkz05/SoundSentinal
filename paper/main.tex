@@ -302,9 +302,8 @@ at the same threshold.
 \begin{figure*}[!t]
 \centering
 \includegraphics[width=0.82\textwidth]{figures/fig5_result.png}
-\caption{A reading in the web application, captured with the previous
-served model: a genuine clip scored $-7.2$ against its threshold of $+7.1$
-(the served model's is $+6.6$). The scale is the model's log-odds score,
+\caption{A reading in the web application, from the served model: a
+genuine clip scored $-6.5$ against the threshold of $+6.6$. The scale is the model's log-odds score,
 with the uncertain band bracketed below it; the page continues with the
 measured error rates of Table~\ref{tab:served}.}
 \label{fig:ui}
@@ -335,6 +334,18 @@ evaluation. Selection by development EER also chose a worse CNN than an
 earlier epoch: development EER fell to 0.24\% while evaluation EER stayed
 near 10\%. Per attack, LFCC and log-Mel are complementary rather than ranked:
 LFCC is better on nine of thirteen attacks, log-Mel on A18 and A19.
+
+ASVspoof~2021~\cite{liu2023asvspoof2021} passes the same attacks through
+telephone and media codecs, and we scored the served model on both of its
+tracks as repackaged by the Speech Anti-Spoofing Arena~\cite{arena}, which
+none of our training, selection or calibration read. On LA (181,566 trials)
+its EER is 5.62\%; at the served threshold it flags 2.53\% of genuine
+clips and passes 11.32\% of fakes. On DF (611,829 trials) the EER is
+3.49\%, with 1.91\% flagged and 4.84\% passed, but the spread by attack
+is wide (0.02--12.53\% EER): A10, A16 and A18 each pass 31--47\%. The
+codecs cost ranking (1.03\% on 2019 LA) and push genuine speech over the
+threshold at about twice the 1\% design rate. The previous served model was
+worse on both (6.99\% and 3.93\%).
 
 \begin{table}[!t]
 \caption{ASVspoof 2019 LA evaluation partition. Published rows from the
@@ -599,7 +610,7 @@ low score on a clean recording is not proof that it is real.
 % ===========================================================================
 \section*{Acknowledgment}
 The authors thank Hui Cui for supervision, and the MASSIVE M3
-cluster for compute (project df37; 351 GPU-hours). We thank the creators of
+cluster for compute (project df37; 376 GPU-hours). We thank the creators of
 the datasets in Table~\ref{tab:data}, used under the licences listed there.
 
 \section*{Use of Generative AI}

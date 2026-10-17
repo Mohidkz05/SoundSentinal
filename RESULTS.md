@@ -2781,8 +2781,27 @@ ASVspoof2021 LA column yet: that table has not been read. Per-clip scores are
 in each `eval_arena-ASVspoof2021_LA_*.json` beside the checkpoint
 (`arena.py scores` turns one into the Arena's `scores.txt`).
 
-ASVspoof2021 DF: downloaded (38 GB, job 60989330); scoring jobs 60989333 and
-60989334 were running when this was written (about 3 h each).
+### ASVspoof2021 DF (15 October)
+
+All 611,829 trials (22,617 bonafide, 589,212 spoof), each model at its own
+threshold. The first attempt (60989333/4, 4 h limit) timed out at 294k clips;
+rerun as **61013393** (Finding 18) and **61013394** (R0) with 10 h, 8.4 h and
+8.2 h elapsed.
+
+| Model | EER | Real flagged | Fakes passed |
+| --- | --- | --- | --- |
+| Served until 13 October (Finding 18, +7.07) | 3.93% | 2.37% | 5.31% |
+| R0, served now (Finding 23, +6.58) | **3.49%** | 1.91% | 4.84% |
+
+The expectation (2-8% for both, R0 lower) held. The second half did not: far
+fewer fakes pass than on LA (4.84% against 11.32%), because DF's spoofs are
+mostly the strong-artefact vocoders. The spread by attack is wide (R0
+0.02%-12.53% EER): A10 (46.70% passed), A16 (33.38%), A18 (31.20%), A11
+(25.29%) and A19 (19.55%) carry nearly all the misses; the VCC 2018/2020
+submissions are mostly under 1%. Real flagged is again above the 1% design
+rate on codec speech (1.91%), as on LA (2.53%). Results:
+`eval_arena-ASVspoof2021_DF_20261015-031627.json` (R0) and
+`..._20261015-032502.json` (Finding 18) beside each checkpoint.
 
 ## What has not been measured
 

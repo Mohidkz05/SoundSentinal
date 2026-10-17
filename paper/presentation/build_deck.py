@@ -376,7 +376,7 @@ def build(template):
         text(s, x - 0.9, y0 + 0.25, 1.8, 0.7, e, size=13, color=GREY, align=PP_ALIGN.CENTER)
     cards = [
         ("Control: pre-registration", "Success criteria written down before each run, so results couldn't be tuned after the fact."),
-        ("Critical path: GPU time", "351 GPU-hours on Monash's M3 cluster; 12–13 hours per training run."),
+        ("Critical path: GPU time", "376 GPU-hours on Monash's M3 cluster; 12–13 hours per training run."),
         ("Setbacks, handled openly", "The real-world collapse; two targets missed by under 0.2 points and overridden, on record."),
     ]
     for i, (h, b) in enumerate(cards):
@@ -386,7 +386,7 @@ def build(template):
     notes(s, "Farhan", "6:30–7:30",
           "We ran 23 experiments in eight weeks. Our critical path was GPU "
           "time on Monash's M3 cluster: each serious training run took 12 to "
-          "13 hours on one GPU, about 350 GPU-hours in total. Our main project "
+          "13 hours on one GPU, about 375 GPU-hours in total. Our main project "
           "control was pre-registration: before every experiment we wrote "
           "down what would count as success, so we couldn't move the goalposts "
           "afterwards. That mattered for setbacks: when the models collapsed on "
@@ -400,7 +400,7 @@ def build(template):
     fill(s, 11, "COST, CARBON, PRIVACY, LICENCES")
     drop_empty(s)
     grid = [("A$0.53", "hosting cost to date: the server sleeps when unused"),
-            ("~140–190 kg", "CO₂e estimated for all training (351 GPU-hours)"),
+            ("~150–200 kg", "CO₂e estimated for all training (376 GPU-hours)"),
             ("0 clips", "stored: uploads are scored in memory and dropped"),
             ("100%", "of training data licensed for commercial use")]
     for i, (big, lab) in enumerate(grid):
@@ -413,8 +413,8 @@ def build(template):
     notes(s, "Amaan", "7:30–8:30",
           "Constraints shaped the design. Cost: the model server scales to zero "
           "when nobody is using it, so hosting has cost 53 cents of student "
-          "credit so far. Carbon: training is the expensive part, about 350 "
-          "GPU-hours, which we estimate at 140 to 190 kilograms of CO2 at "
+          "credit so far. Carbon: training is the expensive part, about 375 "
+          "GPU-hours, which we estimate at 150 to 200 kilograms of CO2 at "
           "Victoria's grid intensity; using it costs almost nothing. Privacy: "
           "clips are never written to disk or logged. Licences: we only used "
           "data that allows commercial use, which ruled out one large dataset. "

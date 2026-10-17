@@ -1,5 +1,14 @@
 # SoundSentinal — FYP B write-up and presentation plan
 
+**Status (17 October 2026): ASVspoof2021 benchmark added to the paper.** A
+paragraph in Section IV-A gives LA (5.62% EER) and DF (3.49%, jobs 61013393/4)
+for R0, citing the Arena as a web reference (`arena` in `refs.bib`). Compute
+recomputed: 376 GPU-hours in 238 jobs to 17 October (paper and deck
+updated too: ~150–200 kg CO₂e). Fig. 5 and slide 6 are a fresh capture of the
+live site on R0 (bonafide sample, −6.5 vs +6.6). The deck was rebuilt the same
+way as on 13 October and is still unchecked in PowerPoint. Paper is now 8
+pages. Section IV-F still unread by the owner.
+
 **Status (13 October 2026): paper and slides are updated to the served model
 R0 (Finding 23).** `paper/main.tex` reports In-the-Wild EER 1.51%, threshold
 +6.58, three overrides and a new Section IV-F (Findings 20-23); still 7 pages.

@@ -22,33 +22,26 @@ slides and the site were all updated to R0 the same day.
 
 ### Pick up here
 
-**1. Benchmark still running on M3: ASVspoof2021 DF.** Jobs **60989333**
-(Finding 18 model) and **60989334** (R0), submitted from
-`$HOME/df37_scratch/$USER/arena-src/`, about 3 h each from ~23:10 AEDT, 13
-October. When done: read `arena-df21-*.out` there (scratch is slow: wrap reads
-in `timeout`, never wait minutes on one), write EER / real flagged / fakes
-passed into RESULTS.md under "External benchmark", beside the ASVspoof2021 LA
-result already there (R0 5.62% EER, Finding 18's model 6.99%). Reported only;
-nothing depends on it. The other twelve commercially usable Arena sets
-(`ai_model/arena.py` `SETS`) are one `sbatch hpc/get_arena.slurm <name>` and
-one `hpc/evaluate.slurm --dataset arena --arena-set <name>` each; not asked
-for yet. Submitting to the leaderboard needs the scores in a public Hugging
-Face model repo — the owner has not decided.
+**1. ASVspoof2021 DF benchmark: done** (17 October; jobs 61013393/4). R0
+3.49% EER, 1.91% real flagged, 4.84% fakes passed; Finding 18's model 3.93%.
+In RESULTS.md under "External benchmark" and in the paper (Section IV-A, with
+LA). The other twelve commercially usable Arena sets (`ai_model/arena.py`
+`SETS`) are one `sbatch hpc/get_arena.slurm <name>` and one
+`hpc/evaluate.slurm --dataset arena --arena-set <name>` each; not asked for.
+Leaderboard submission needs a public Hugging Face model repo; undecided.
 
 **2. The write-up** (`WRITEUP.md` has the state; its top block is current).
-- `paper/main.tex` → `paper/main.pdf` (gitignored), 7 pages of 10, updated to
-  R0 with a new Section IV-F. **The owner has not read IV-F yet.** Not in it:
-  the Arena benchmark. Fig. 5 is a screenshot of the previous model (its
-  caption says so).
+- `paper/main.tex` → `paper/main.pdf` (gitignored), 8 pages of 10, updated to
+  R0 with a new Section IV-F. **The owner has not read IV-F yet.** Fig. 5 was
+  recaptured from the live site on R0 (17 October).
 - `paper/presentation/SoundSentinal_FYP_B.pptx`, rebuilt for R0 but **never
   looked at** — no renderer here. The owner should check slides 8, 9 and 11
   in PowerPoint. Monash's template is not on this laptop; `WRITEUP.md` says
-  how the rebuild was done without it. Slide 6's screenshot is the old model.
+  how the rebuild was done without it. Slide 6's screenshot was recaptured on R0 (17 October).
 - `Downloads/SoundSentinal_FYP_B/` on Windows holds the 7 October deck and
   paper, untouched.
-- GPU-hours: 351 in 234 jobs to 13 October (`sacct`, method in the paper's
-  history: sum of elapsed × allocated GPUs since 1 August). Recompute after
-  the DF jobs.
+- GPU-hours: 376 in 238 jobs to 17 October (`sacct`, method in the paper's
+  history: sum of elapsed × allocated GPUs since 1 August).
 
 **3. Owed in RESULTS.md from Finding 23, reported not criteria:** People's
 Speech flagged by clip length for R1, and the mean-of-all-windows score for
